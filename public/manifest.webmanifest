@@ -1,0 +1,16 @@
+{
+  "name": "双人人生愿望清单",
+  "short_name": "愿望清单",
+  "description": "双人人生愿望清单的 Vue 3 + Vite 工程骨架",
+  "display": "standalone",
+  "start_url": "/",
+  "background_color": "#fff6eb",
+  "theme_color": "#efe2cf",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
