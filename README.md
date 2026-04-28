@@ -92,6 +92,32 @@ Vercel 负责把这套前端公开出去。
 
 所以你现在没有自己的公网网址也没关系，Vercel 会先给你一个免费的公网网址，已经能满足多端使用。
 
+## 如果 Vercel 域名在你的网络环境里打不开
+
+如果 Vercel 后台显示已经 `Ready`，但电脑和手机在不同网络下都打不开 `*.vercel.app` 地址，这通常更像是你所在网络环境对 Vercel 域名的可访问性问题，而不是项目没部署成功。
+
+这时可以直接切到 GitHub Pages：
+
+- 当前项目已经补好 [app/.github/workflows/deploy-pages.yml](.github/workflows/deploy-pages.yml)
+- 构建时会自动把静态资源 base 调整到仓库路径
+- 在 `github.io` 域名下会自动切成 hash 路由，避免 Vue history 路由 404
+
+如果你的 GitHub 仓库名是 `duo-wish-board-app`，用户名是 `Baishijuju`，那么 GitHub Pages 的最终地址会是：
+
+- `https://baishijuju.github.io/duo-wish-board-app/`
+
+页面内路由会长成这样：
+
+- `https://baishijuju.github.io/duo-wish-board-app/#/list`
+- `https://baishijuju.github.io/duo-wish-board-app/#/stats`
+
+启用方法：
+
+1. 把这几个更新后的文件同步到 GitHub 仓库
+2. 到 GitHub 仓库 `Settings -> Pages`
+3. 把 Source 设为 `GitHub Actions`
+4. 等待 `Deploy App To GitHub Pages` 工作流跑完
+
 ## 当前仓库里的说明
 
 根目录原本那套 GitHub Pages 工作流只会发布旧静态版 `index.html + styles.css + script.js`，不适合现在这套 Vue 正式版前端。
