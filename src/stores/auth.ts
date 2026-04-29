@@ -116,6 +116,7 @@ interface PersistedAuthState {
   dataMode: SpaceDataMode
   inviteCode: string
   joinedSpaceAt: string | null
+  lastSupabaseSpaceId: string
   lastMagicLinkSentAt: string | null
   sessionEmail: string
   sessionState: SessionState
@@ -217,6 +218,7 @@ export const useAuthStore = defineStore('auth', () => {
   const lastMagicLinkSentAt = ref<string | null>(persisted?.lastMagicLinkSentAt || null)
   const joinedSpaceAt = ref<string | null>(persisted?.joinedSpaceAt || null)
   const dataMode = ref<SpaceDataMode>(persisted?.dataMode || 'mock')
+  const lastSupabaseSpaceId = ref(persisted?.lastSupabaseSpaceId || '')
   const activeSession = ref<Session | null>(null)
   const authCallbackMessage = ref('')
   const isRefreshingSpace = ref(false)
@@ -399,9 +401,10 @@ export const useAuthStore = defineStore('auth', () => {
       const spaces = await listSpaces([...new Set(memberships.map((membership) => membership.space_id))])
       const spacesById = new Map(spaces.map((space) => [space.id, space]))
 
-      const targetMembership = memberships.find((membership) => membership.space_id === preferredSpaceId)
-        ?? memberships.find((membership) => membership.space_id === currentSpace.value.id)
-        ?? memberships[0]
+      const rememberedSpaceId = preferredSpaceId || lastSupabaseSpaceId.value || (dataMode.value === 'supabase' ? currentSpace.value.id : '')
+
+      const targetMembership = memberships.find((membership) => membership.space_id === rememberedSpaceId)
+        ?? memberships[memberships.length - 1]
 
       const targetSpace = targetMembership ? spacesById.get(targetMembership.space_id) ?? null : null
 
@@ -416,6 +419,7 @@ export const useAuthStore = defineStore('auth', () => {
         inviteCode: targetSpace.invite_code,
         createdAt: targetSpace.created_at,
       }
+      lastSupabaseSpaceId.value = targetSpace.id
       sessionEmail.value = session.user.email?.trim().toLowerCase() ?? ''
       currentMemberId.value = session.user.id
       joinedSpaceAt.value = targetMembership.joined_at
@@ -790,7 +794,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   if (storage) {
     watch(
-      [currentMemberId, currentSpaceId, dataMode, inviteCode, joinedSpaceAt, lastMagicLinkSentAt, sessionEmail, sessionState, spaceName],
+      [currentMemberId, currentSpaceId, dataMode, inviteCode, joinedSpaceAt, lastSupabaseSpaceId, lastMagicLinkSentAt, sessionEmail, sessionState, spaceName],
       () => {
         storage.setItem(
           STORAGE_KEY,
@@ -800,6 +804,7 @@ export const useAuthStore = defineStore('auth', () => {
             dataMode: dataMode.value,
             inviteCode: inviteCode.value,
             joinedSpaceAt: joinedSpaceAt.value,
+            lastSupabaseSpaceId: lastSupabaseSpaceId.value,
             lastMagicLinkSentAt: lastMagicLinkSentAt.value,
             sessionEmail: sessionEmail.value,
             sessionState: sessionState.value,
