@@ -372,6 +372,32 @@ export const useAuthStore = defineStore('auth', () => {
     return null
   }
 
+  async function ensureBoundSpacesForSession(session: Session) {
+    if (!supabase) {
+      return
+    }
+
+    const normalizedEmail = session.user.email?.trim().toLowerCase()
+
+    if (!normalizedEmail) {
+      return
+    }
+
+    const { error } = await supabase.rpc('ensure_bound_space_memberships', {
+      email_input: normalizedEmail,
+    })
+
+    if (!error) {
+      return
+    }
+
+    if (error.code === '42883' || /ensure_bound_space_memberships/i.test(error.message)) {
+      return
+    }
+
+    throw error
+  }
+
   async function refreshSpaceContext(preferredSpaceId?: string, session: Session | null = activeSession.value) {
     if (!supabase || !session) {
       return false
@@ -380,6 +406,8 @@ export const useAuthStore = defineStore('auth', () => {
     isRefreshingSpace.value = true
 
     try {
+      await ensureBoundSpacesForSession(session)
+
       let memberships = await listMemberships(session.user.id)
 
       if (!memberships.length) {
@@ -757,6 +785,58 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function bindEmailToCurrentSpace(email: string, displayName = ''): Promise<AuthActionResult> {
+    const normalizedEmail = email.trim().toLowerCase()
+    const normalizedDisplayName = displayName.trim()
+
+    if (!normalizedEmail) {
+      return {
+        ok: false,
+        message: '请输入要固定到当前空间的邮箱。',
+        mode: supabase ? 'supabase' : 'mock',
+      }
+    }
+
+    if (!supabase || !activeSession.value || !isAuthenticated.value || !currentSpace.value.id) {
+      return {
+        ok: false,
+        message: '请先登录到 Supabase 空间，再绑定固定邮箱。',
+        mode: supabase ? 'supabase' : 'mock',
+      }
+    }
+
+    if (currentMember.value?.role !== 'owner') {
+      return {
+        ok: false,
+        message: '只有当前空间的 owner 可以绑定固定邮箱。',
+        mode: 'supabase',
+      }
+    }
+
+    const { error } = await supabase.rpc('bind_email_to_space', {
+      display_name_input: normalizedDisplayName || null,
+      email_input: normalizedEmail,
+      role_input: sessionEmail.value === normalizedEmail ? 'owner' : 'member',
+      target_space_id: currentSpace.value.id,
+    })
+
+    if (error) {
+      return {
+        ok: false,
+        message: `固定邮箱失败：${error.message}`,
+        mode: 'supabase',
+      }
+    }
+
+    return {
+      ok: true,
+      message: normalizedDisplayName
+        ? `已把 ${normalizedEmail} 绑定到当前空间，默认身份会显示为 ${normalizedDisplayName}。`
+        : `已把 ${normalizedEmail} 绑定到当前空间。后续这个邮箱登录时会优先进入这里。`,
+      mode: 'supabase',
+    }
+  }
+
   function switchMember(memberId: string) {
     if (!canSwitchMembers.value) {
       return
@@ -822,6 +902,7 @@ export const useAuthStore = defineStore('auth', () => {
     currentMemberId,
     currentSpaceId,
     dataMode,
+    bindEmailToCurrentSpace,
     initializeAuthSession,
     inviteCode,
     isAuthenticated,
