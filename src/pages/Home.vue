@@ -11,6 +11,8 @@ const wishStore = useWishStore()
 const loginEmail = ref(authStore.sessionEmail || authStore.currentMember?.email || '')
 const loginOtp = ref('')
 const inviteDraft = ref(authStore.inviteCode)
+const fixedEmailDraft = ref('')
+const fixedDisplayNameDraft = ref('')
 const loginMessage = ref('')
 const loginTone = ref<'success' | 'danger'>('success')
 const inviteMessage = ref('')
@@ -18,9 +20,11 @@ const inviteTone = ref<'success' | 'danger'>('success')
 const isSendingMagicLink = ref(false)
 const isVerifyingOtp = ref(false)
 const isJoiningSpace = ref(false)
+const isBindingEmail = ref(false)
 const showOtpForm = computed(() => !authStore.isAuthenticated)
 const otpTargetEmail = computed(() => authStore.sessionEmail || loginEmail.value.trim().toLowerCase())
 const canCopyInviteCode = computed(() => authStore.usesSupabaseSpace && !!authStore.inviteCode)
+const canBindFixedEmail = computed(() => authStore.usesSupabaseSpace && authStore.currentMember?.role === 'owner')
 const overdueWishes = computed(() => wishStore.overdueWishes.slice(0, 3))
 const dueSoonWishes = computed(() => wishStore.dueSoonWishes.slice(0, 3))
 const recentlyCompletedWishes = computed(() => wishStore.recentlyCompletedWishes.slice(0, 3))
@@ -98,6 +102,23 @@ async function copyInviteCode() {
   await navigator.clipboard.writeText(authStore.inviteCode)
   inviteMessage.value = '邀请码已复制。把它发给对方后，对方先完成邮箱登录，再在这里输入邀请码即可加入同一个空间。'
   inviteTone.value = 'success'
+}
+
+async function bindFixedEmail() {
+  isBindingEmail.value = true
+
+  try {
+    const result = await authStore.bindEmailToCurrentSpace(fixedEmailDraft.value, fixedDisplayNameDraft.value)
+    inviteMessage.value = result.message
+    inviteTone.value = result.ok ? 'success' : 'danger'
+
+    if (result.ok) {
+      fixedEmailDraft.value = ''
+      fixedDisplayNameDraft.value = ''
+    }
+  } finally {
+    isBindingEmail.value = false
+  }
 }
 
 function getCoverImageUrl(wish: WishRecord) {
@@ -376,6 +397,26 @@ function getRelativeDueLabel(dueDate: string) {
             </div>
           </div>
 
+          <form v-if="canBindFixedEmail" class="access-form" @submit.prevent="bindFixedEmail">
+            <div class="stack-item fixed-email-card">
+              <h3>固定邮箱自动进入当前空间</h3>
+              <p>给你们常用的邮箱做一次绑定。后面这些邮箱登录时，会优先补齐当前空间成员关系，不用再反复靠邀请码加入。</p>
+            </div>
+            <label>
+              <span class="muted">邮箱</span>
+              <input v-model="fixedEmailDraft" type="email" placeholder="partner@example.com" />
+            </label>
+            <label>
+              <span class="muted">显示名称（可选）</span>
+              <input v-model="fixedDisplayNameDraft" type="text" maxlength="50" placeholder="例如：晨光 / 星野" />
+            </label>
+            <div class="button-row">
+              <button class="button-subtle" :disabled="isBindingEmail" type="submit">
+                {{ isBindingEmail ? '绑定中...' : '锁定邮箱到当前空间' }}
+              </button>
+            </div>
+          </form>
+
           <p v-if="inviteMessage" :class="['access-message', inviteTone]">{{ inviteMessage }}</p>
           <p class="muted">
             {{ authStore.usesSupabaseSpace ? '当前空间已经连接到 Supabase；首次登录时如果没有空间，会自动创建一个个人空间。' : '未登录时仍会回退到本地演示空间。' }}
@@ -511,6 +552,15 @@ function getRelativeDueLabel(dueDate: string) {
 
 .space-identity-card {
   gap: 0.8rem;
+}
+
+.fixed-email-card {
+  gap: 0.55rem;
+}
+
+.fixed-email-card h3,
+.fixed-email-card p {
+  margin: 0;
 }
 
 .space-identity-card h3 {
