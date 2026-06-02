@@ -569,7 +569,8 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     const messageToSend = draftMessage.value.trim()
 
     try {
-      const result = await wishStore.addComment(selectedWish.value.id, draftAuthorId.value, messageToSend, commentImageFiles.value)
+      const authorId = authStore.currentMemberId || authStore.currentMember?.id || draftAuthorId.value
+      const result = await wishStore.addComment(selectedWish.value.id, authorId, messageToSend, commentImageFiles.value)
 
       commentFeedback.value = result.message
       commentFeedbackTone.value = result.ok ? 'success' : 'danger'

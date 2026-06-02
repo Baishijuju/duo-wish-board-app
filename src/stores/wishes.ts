@@ -23,7 +23,8 @@ export type WishThreadEventKind =
   | 'premium_redeem'
 export type MonthlyJournalSnapshotStatus = 'ready'
 
-const STORAGE_KEY = 'duo-wish-board-app:v2'
+const STORAGE_KEY = 'duo-wish-board-app:v3'
+const LEGACY_STORAGE_KEYS = ['duo-wish-board-app:v2'] as const
 const WISH_IMAGE_BUCKET = 'wish-images'
 const WISH_COMMENT_IMAGE_BUCKET = 'wish-comment-images'
 const WISH_IMAGE_MAX_BYTES = 10 * 1024 * 1024
@@ -111,11 +112,14 @@ export interface WishCoinSnapshot {
 export interface WishBottleSnapshot {
   activeWishCount: number
   colorTier: WishBottleColorTier
+  completedCountUnits: number
   completedStepStarCount: number
   completedTrackedUnits: number
   isRainbowGlow: boolean
   overallPercent: number
+  progressedCountWishCount: number
   progressedWishCount: number
+  totalCountUnits: number
   totalTrackedUnits: number
   trackedWishCount: number
 }
@@ -1305,11 +1309,13 @@ const seedWishes: WishRecord[] = [
     ],
     comments: [
       createWishComment({
+        id: 'comment-trip-member-a',
         authorId: 'member-a',
         message: '这条在正式版里就是愿望详情下留言的最小形态。',
         createdAt: '2026-04-24T11:20:00.000Z',
       }),
       createWishComment({
+        id: 'comment-trip-member-b',
         authorId: 'member-b',
         message: '后面接 Supabase Realtime 时，这里可以直接替换成云端订阅。',
         createdAt: '2026-04-24T12:05:00.000Z',
@@ -1335,6 +1341,7 @@ const seedWishes: WishRecord[] = [
     steps: [],
     comments: [
       createWishComment({
+        id: 'comment-cert-member-a',
         authorId: 'member-a',
         message: '私密愿望在后续会接 RLS 隔离。',
         createdAt: '2026-04-24T09:10:00.000Z',
@@ -1342,6 +1349,58 @@ const seedWishes: WishRecord[] = [
     ],
     createdAt: '2026-04-18T07:30:00.000Z',
     updatedAt: '2026-04-24T09:10:00.000Z',
+  }),
+  createWishRecord({
+    id: 'wish-health-run',
+    title: '在夏天前累计完成 12 次慢跑',
+    category: '健康',
+    priority: 'medium',
+    dueDate: '2026-07-20',
+    note: '每周至少跑两次，先把出门频率养稳，再慢慢拉长距离。',
+    ownerId: 'member-b',
+    scope: 'shared',
+    status: 'active',
+    progressMode: 'count',
+    progressCurrent: 5,
+    progressTarget: 12,
+    progressUnit: '次',
+    steps: [],
+    comments: [
+      createWishComment({
+        id: 'comment-health-member-a',
+        authorId: 'member-a',
+        message: '这条会在首页里展示成数字型进度愿望。',
+        createdAt: '2026-04-23T18:10:00.000Z',
+      }),
+    ],
+    createdAt: '2026-04-16T09:20:00.000Z',
+    updatedAt: '2026-04-23T18:10:00.000Z',
+  }),
+  createWishRecord({
+    id: 'wish-home-corner',
+    title: '把客厅整理成周末电影角',
+    category: '居家',
+    priority: 'low',
+    dueDate: '2026-06-18',
+    note: '先挑一盏落地灯和一条薄毯，再把零散线材、边桌和投影位收顺。',
+    ownerId: 'member-b',
+    scope: 'shared',
+    status: 'active',
+    progressMode: 'none',
+    progressCurrent: 0,
+    progressTarget: 0,
+    progressUnit: '',
+    steps: [],
+    comments: [
+      createWishComment({
+        id: 'comment-home-member-b',
+        authorId: 'member-b',
+        message: '这条故意不设进度，保留成只写下来的轻愿望。',
+        createdAt: '2026-04-25T12:30:00.000Z',
+      }),
+    ],
+    createdAt: '2026-04-19T10:10:00.000Z',
+    updatedAt: '2026-04-25T12:30:00.000Z',
   }),
   createWishRecord({
     id: 'wish-dinner',
@@ -1359,7 +1418,20 @@ const seedWishes: WishRecord[] = [
     progressUnit: '道',
     completedAt: '2026-04-22T10:00:00.000Z',
     steps: [],
-    comments: [],
+    comments: [
+      createWishComment({
+        id: 'comment-dinner-member-b',
+        authorId: 'member-b',
+        message: '终于能把这三道菜顺着做完一轮了，下次可以直接请你吃。',
+        createdAt: '2026-04-22T10:08:00.000Z',
+      }),
+      createWishComment({
+        id: 'comment-dinner-member-a',
+        authorId: 'member-a',
+        message: '这条会保留成软件里默认的“已完成愿望”示例。',
+        createdAt: '2026-04-22T10:16:00.000Z',
+      }),
+    ],
     createdAt: '2026-04-12T11:00:00.000Z',
     updatedAt: '2026-04-22T10:00:00.000Z',
   }),
@@ -1456,13 +1528,65 @@ const seedWishCoins: WishCoinRecord[] = [
   }),
 ]
 
+const seedThreadReactions: ThreadReactionRecord[] = [
+  createThreadReactionRecord({
+    id: 'reaction-trip-comment-heart-b',
+    targetThreadId: 'comment-trip-member-a',
+    actorId: 'member-b',
+    emoji: '❤️',
+    createdAt: '2026-04-24T11:40:00.000Z',
+  }),
+  createThreadReactionRecord({
+    id: 'reaction-trip-comment-sparkle-a',
+    targetThreadId: 'comment-trip-member-b',
+    actorId: 'member-a',
+    emoji: '✨',
+    createdAt: '2026-04-24T12:10:00.000Z',
+  }),
+  createThreadReactionRecord({
+    id: 'reaction-trip-coin-fire-b',
+    targetThreadId: 'thread-wish-coin-coin-trip-current-a-1',
+    actorId: 'member-b',
+    emoji: '🔥',
+    createdAt: currentSeedCoinCycle.startsAt,
+  }),
+  createThreadReactionRecord({
+    id: 'reaction-cert-comment-muscle-b',
+    targetThreadId: 'comment-cert-member-a',
+    actorId: 'member-b',
+    emoji: '💪',
+    createdAt: '2026-04-24T09:20:00.000Z',
+  }),
+  createThreadReactionRecord({
+    id: 'reaction-home-comment-hand-a',
+    targetThreadId: 'comment-home-member-b',
+    actorId: 'member-a',
+    emoji: '🫶',
+    createdAt: '2026-04-25T12:45:00.000Z',
+  }),
+  createThreadReactionRecord({
+    id: 'reaction-dinner-complete-party-a',
+    targetThreadId: 'thread-wish-completed-wish-dinner',
+    actorId: 'member-a',
+    emoji: '🎉',
+    createdAt: '2026-04-22T10:10:00.000Z',
+  }),
+  createThreadReactionRecord({
+    id: 'reaction-dinner-comment-love-b',
+    targetThreadId: 'comment-dinner-member-a',
+    actorId: 'member-b',
+    emoji: '🥰',
+    createdAt: '2026-04-22T10:18:00.000Z',
+  }),
+]
+
 function createSeedWishState() {
   return {
     coins: seedWishCoins.map((coin) => createWishCoinRecord(coin)),
     monthlyJournalSnapshots: [] as MonthlyJournalSnapshotRecord[],
     rewardClaims: [] as RewardClaimRecord[],
     rewardPoolItems: [] as RewardPoolItem[],
-    threadReactions: [] as ThreadReactionRecord[],
+    threadReactions: seedThreadReactions.map((reaction) => createThreadReactionRecord(reaction)),
     wishes: seedWishes.map((wish) => createWishRecord(wish)),
   }
 }
@@ -1475,12 +1599,20 @@ function getBrowserStorage() {
   return window.localStorage
 }
 
+function clearLegacyWishStorage(storage: Storage) {
+  for (const legacyStorageKey of LEGACY_STORAGE_KEYS) {
+    storage.removeItem(legacyStorageKey)
+  }
+}
+
 function hydrateWishState() {
   const storage = getBrowserStorage()
 
   if (!storage) {
     return createSeedWishState()
   }
+
+  clearLegacyWishStorage(storage)
 
   const raw = storage.getItem(STORAGE_KEY)
 
@@ -2001,26 +2133,30 @@ export const useWishStore = defineStore('wishes', () => {
       return {
         activeWishCount: 0,
         colorTier: 'blue',
+        completedCountUnits: 0,
         completedStepStarCount: 0,
         completedTrackedUnits: 0,
         isRainbowGlow: false,
         overallPercent: 0,
+        progressedCountWishCount: 0,
         progressedWishCount: 0,
+        totalCountUnits: 0,
         totalTrackedUnits: 0,
         trackedWishCount: 0,
       }
     }
 
+    let completedCountUnits = 0
     let completedTrackedUnits = 0
     let completedStepStarCount = 0
-    let normalizedProgressTotal = 0
+    let progressedCountWishCount = 0
     let progressedWishCount = 0
+    let totalCountUnits = 0
     let totalTrackedUnits = 0
     let trackedWishCount = 0
 
     for (const wish of activeWishes) {
       const progressSnapshot = getWishProgressSnapshot(wish)
-      normalizedProgressTotal += progressSnapshot.percent
 
       if (progressSnapshot.percent > 0) {
         progressedWishCount += 1
@@ -2036,21 +2172,32 @@ export const useWishStore = defineStore('wishes', () => {
 
       if (wish.progressMode === 'count') {
         trackedWishCount += 1
+        completedCountUnits += progressSnapshot.current
         completedTrackedUnits += progressSnapshot.current
+        totalCountUnits += progressSnapshot.target
         totalTrackedUnits += progressSnapshot.target
+
+        if (progressSnapshot.current > 0) {
+          progressedCountWishCount += 1
+        }
       }
     }
 
-    const overallPercent = Math.max(0, Math.min(100, Math.round(normalizedProgressTotal / activeWishes.length)))
+    const overallPercent = totalTrackedUnits
+      ? Math.max(0, Math.min(100, Math.round((completedTrackedUnits / totalTrackedUnits) * 100)))
+      : 0
 
     return {
       activeWishCount: activeWishes.length,
       colorTier: getWishBottleColorTier(overallPercent),
+      completedCountUnits,
       completedStepStarCount,
       completedTrackedUnits,
       isRainbowGlow: overallPercent > 80,
       overallPercent,
+      progressedCountWishCount,
       progressedWishCount,
+      totalCountUnits,
       totalTrackedUnits,
       trackedWishCount,
     }

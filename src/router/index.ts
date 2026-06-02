@@ -2,6 +2,11 @@ import { createRouter, createWebHashHistory, createWebHistory } from 'vue-router
 import HomePage from '../pages/HomeAtelier.vue'
 import ListPage from '../pages/List.vue'
 import ComposePage from '../pages/ComposeAtelier.vue'
+import PreviewLabPage from '../pages/PreviewLab.vue'
+import HomePreviewPage from '../pages/HomePreviewAtelier.vue'
+import ComposePreviewPage from '../pages/ComposePreviewAtelier.vue'
+import ReviewPreviewPage from '../pages/ReviewPreviewAtelier.vue'
+import SpacePreviewPage from '../pages/SpacePreviewAtelier.vue'
 import StatsPage from '../pages/Stats.vue'
 import WishDetailPage from '../pages/WishDetailAtelier.vue'
 import SettingsPage from '../pages/Settings.vue'
@@ -17,6 +22,31 @@ const router = createRouter({
       path: '/',
       name: 'home',
       component: HomePage,
+    },
+    {
+      path: '/preview',
+      name: 'preview-lab',
+      component: PreviewLabPage,
+    },
+    {
+      path: '/preview/home',
+      name: 'preview-home',
+      component: HomePreviewPage,
+    },
+    {
+      path: '/preview/compose',
+      name: 'preview-compose',
+      component: ComposePreviewPage,
+    },
+    {
+      path: '/preview/review',
+      name: 'preview-review',
+      component: ReviewPreviewPage,
+    },
+    {
+      path: '/preview/space',
+      name: 'preview-space',
+      component: SpacePreviewPage,
     },
     {
       path: '/list',

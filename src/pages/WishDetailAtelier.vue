@@ -12,8 +12,7 @@ const priorityLabels = {
 } as const
 
 const {
-  EXTENDED_THREAD_REACTION_OPTIONS,
-  FEATURED_THREAD_REACTION_OPTIONS,
+  THREAD_REACTION_OPTIONS,
   adjustCountProgress,
   authStore,
   beginImageSelection,
@@ -47,7 +46,6 @@ const {
   deleteWish,
   deletableImageCount,
   deletingThreadId,
-  draftAuthorId,
   draftMessage,
   dueDateLabel,
   editingImageNoteId,
@@ -64,7 +62,6 @@ const {
   getThreadEyebrow,
   getThreadHeadline,
   getThreadReactionCount,
-  getThreadReactionOverflowLabel,
   getWishActionLabel,
   hasActiveOverflowThreadReaction,
   handleCommentImageSelection,
@@ -245,14 +242,19 @@ async function confirmDeleteWish() {
               >
                 {{ selectedWish.status === 'done' ? '愿望已实现' : wishStore.currentMemberRemainingCoins > 0 ? '投 1 币' : '本周已投完' }}
               </button>
-              <button class="detail-atelier-secondary" type="button" @click="void handleWishCompletionAction()">{{ getWishActionLabel() }}</button>
+              <button class="detail-atelier-secondary detail-atelier-secondary-action" type="button" @click="void handleWishCompletionAction()">{{ getWishActionLabel() }}</button>
             </div>
           </div>
 
-          <div class="detail-atelier-danger-row">
+          <details class="detail-atelier-danger-row detail-atelier-danger-details">
+            <summary class="detail-atelier-danger-summary">
+              <span>低频操作</span>
+              <strong>移走这条愿望</strong>
+            </summary>
+
             <div class="detail-atelier-danger-copy-block">
               <p class="detail-atelier-danger-copy">如果这条愿望已经不需要了，再从这里移走就好。</p>
-              <p v-if="deleteWishFeedback" class="detail-atelier-feedback danger">{{ deleteWishFeedback }}</p>
+              <p v-if="deleteWishFeedback" class="detail-atelier-feedback danger" role="status" aria-live="polite">{{ deleteWishFeedback }}</p>
             </div>
 
             <div class="detail-atelier-inline-buttons detail-atelier-danger-actions">
@@ -265,9 +267,9 @@ async function confirmDeleteWish() {
               </template>
               <button v-else class="detail-atelier-text danger" type="button" @click="openWishDeleteConfirm()">删除愿望</button>
             </div>
-          </div>
+          </details>
 
-          <p v-if="rewardFeedback && !pendingCompletionKind" :class="['detail-atelier-feedback', rewardFeedbackTone]">{{ rewardFeedback }}</p>
+          <p v-if="rewardFeedback && !pendingCompletionKind" :class="['detail-atelier-feedback', rewardFeedbackTone]" role="status" aria-live="polite">{{ rewardFeedback }}</p>
         </article>
 
         <article class="page-card detail-atelier-cover-card">
@@ -311,34 +313,18 @@ async function confirmDeleteWish() {
           <p class="detail-atelier-support detail-atelier-support-wide">先写一句，想带图也可以；发出去后会顺着往下留下。</p>
 
           <form class="detail-atelier-comment-form is-front" @submit.prevent="submitComment">
-            <div class="detail-atelier-compose-presence detail-atelier-compose-block">
-              <label v-if="!wishStore.isUsingCloudWishes" class="detail-atelier-compose-identity-field">
-                <span>以谁的身份留言</span>
-                <select v-model="draftAuthorId" :disabled="isSubmittingComment">
-                  <option v-for="member in authStore.members" :key="member.id" :value="member.id">{{ member.displayName }}</option>
-                </select>
-              </label>
-
-              <div v-else class="detail-atelier-identity-card detail-atelier-compose-identity-card">
-                <span>当前留言身份</span>
-                <strong>{{ authStore.currentMember?.displayName || '当前成员' }}</strong>
-              </div>
-
-              <p class="detail-atelier-compose-hint">先写一句今天的近况，再决定要不要带图。</p>
-            </div>
-
             <label class="detail-atelier-compose-message-field detail-atelier-compose-block">
               <span>留言内容</span>
-              <textarea v-model="draftMessage" rows="4" maxlength="180" :disabled="isSubmittingComment" placeholder="例如：这周末一起把这条愿望拆成三个小步骤"></textarea>
+              <textarea v-model="draftMessage" rows="3" maxlength="180" :disabled="isSubmittingComment" placeholder="先写一句今天的近况"></textarea>
             </label>
 
-            <div v-if="wishStore.isUsingCloudWishes" class="detail-atelier-attachment-panel detail-atelier-compose-attachment-panel detail-atelier-compose-block">
+            <div class="detail-atelier-attachment-panel detail-atelier-compose-attachment-panel detail-atelier-compose-block" :class="{ 'is-disabled': !wishStore.isUsingCloudWishes }">
               <div class="detail-atelier-compose-attachment-copy">
                 <span>图片附件</span>
-                <p>可选，会和这笔近况一起留在下面。</p>
+                <p>{{ wishStore.isUsingCloudWishes ? '可选，会和这笔近况一起留在下面。' : '连接云端愿望后，就能把图片和这笔近况一起留下。' }}</p>
               </div>
 
-              <div class="detail-atelier-inline-buttons detail-atelier-compose-upload-row">
+              <div v-if="wishStore.isUsingCloudWishes" class="detail-atelier-inline-buttons detail-atelier-compose-upload-row">
                 <label class="detail-atelier-secondary upload-trigger">
                   <input
                     :key="commentImageInputVersion"
@@ -353,6 +339,8 @@ async function confirmDeleteWish() {
                 <button v-if="commentImageFiles.length" class="detail-atelier-secondary" type="button" @click="clearCommentImageFiles()">清空已选</button>
               </div>
 
+              <span v-else class="detail-atelier-upload-unavailable">图片留言暂需云端同步</span>
+
               <div v-if="commentImageFiles.length" class="detail-atelier-chip-row compact">
                 <button v-for="(file, index) in commentImageFiles" :key="getCommentImageFileKey(file)" class="detail-atelier-chip chip-button" type="button" @click="removeCommentImageFile(index)">
                   {{ file.name }} · 移除
@@ -361,10 +349,7 @@ async function confirmDeleteWish() {
             </div>
 
             <div class="detail-atelier-compose-submit-row detail-atelier-compose-block">
-              <div class="detail-atelier-compose-submit-copy">
-                <span>现在就把它送进共同手账</span>
-                <p>一句话也可以，后面的变化会顺着这一笔继续留下。</p>
-              </div>
+              <span class="detail-atelier-compose-author-note">默认以 {{ authStore.currentMember?.displayName || '当前成员' }} 留言</span>
 
               <div class="detail-atelier-inline-buttons detail-atelier-compose-submit-buttons">
                 <button class="detail-atelier-primary" type="submit" :disabled="!draftMessage.trim() || isSubmittingComment">
@@ -374,7 +359,7 @@ async function confirmDeleteWish() {
               </div>
             </div>
 
-            <p v-if="commentFeedback" :class="['detail-atelier-feedback', commentFeedbackTone]">{{ commentFeedback }}</p>
+            <p v-if="commentFeedback" :class="['detail-atelier-feedback', commentFeedbackTone]" role="status" aria-live="polite">{{ commentFeedback }}</p>
           </form>
         </article>
       </section>
@@ -566,54 +551,25 @@ async function confirmDeleteWish() {
               </div>
 
               <div class="detail-atelier-reaction-row">
-                <div class="detail-atelier-reaction-copy">
-                  <span class="detail-atelier-reaction-label">留个回应</span>
-                  <p>先用眼前这几个表情轻轻接一句；如果还不够，再展开更多。</p>
-                </div>
-
                 <div class="detail-atelier-reaction-groups">
-                  <div class="detail-atelier-reaction-list">
-                    <button
-                      v-for="emoji in FEATURED_THREAD_REACTION_OPTIONS"
-                      :key="`${thread.id}-${emoji}`"
-                      :class="['detail-atelier-reaction-button', { active: isThreadReactionActive(thread, emoji), 'is-pending': isTogglingThreadReaction(thread.id, emoji) }]"
-                      type="button"
-                      :disabled="isThreadReactionRowPending(thread.id)"
-                      :aria-label="getThreadReactionAriaLabel(thread, emoji)"
-                      :aria-pressed="isThreadReactionActive(thread, emoji)"
-                      @click="void toggleThreadReaction(thread.id, emoji)"
-                    >
-                      <span class="detail-atelier-reaction-emoji">{{ emoji }}</span>
-                      <span
-                        :class="[
-                          'detail-atelier-reaction-count',
-                          {
-                            'is-empty': !getThreadReactionCount(thread, emoji) && !isTogglingThreadReaction(thread.id, emoji),
-                            'is-loading': isTogglingThreadReaction(thread.id, emoji),
-                          },
-                        ]"
-                      >
-                        {{ isTogglingThreadReaction(thread.id, emoji) ? '处理中' : getThreadReactionCount(thread, emoji) || '·' }}
-                      </span>
-                    </button>
-                  </div>
-
                   <div class="detail-atelier-reaction-more">
                     <button
                       :class="['detail-atelier-secondary', 'detail-atelier-reaction-toggle', { active: isThreadReactionExpanded(thread.id) || hasActiveOverflowThreadReaction(thread) }]"
                       type="button"
                       :aria-expanded="isThreadReactionExpanded(thread.id)"
-                      :aria-controls="`thread-reaction-more-${thread.id}`"
-                      :aria-label="isThreadReactionExpanded(thread.id) ? '收起更多表情' : getThreadReactionOverflowLabel(thread)"
+                      :aria-controls="`thread-reaction-panel-${thread.id}`"
+                      :aria-label="isThreadReactionExpanded(thread.id) ? '收起表情选项' : '打开表情选项'"
                       @click="toggleThreadReactionExpansion(thread.id)"
                     >
-                      {{ isThreadReactionExpanded(thread.id) ? '收起更多表情' : getThreadReactionOverflowLabel(thread) }}
+                      {{ isThreadReactionExpanded(thread.id) ? '收起表情' : '表情' }}
                     </button>
 
-                    <div v-if="isThreadReactionExpanded(thread.id)" :id="`thread-reaction-more-${thread.id}`" class="detail-atelier-reaction-list is-extended">
+                    <span v-if="thread.reactions.length" class="detail-atelier-reaction-summary">{{ thread.reactions.length }} 种回应</span>
+
+                    <div v-if="isThreadReactionExpanded(thread.id)" :id="`thread-reaction-panel-${thread.id}`" class="detail-atelier-reaction-list is-extended">
                       <button
-                        v-for="emoji in EXTENDED_THREAD_REACTION_OPTIONS"
-                        :key="`${thread.id}-more-${emoji}`"
+                        v-for="emoji in THREAD_REACTION_OPTIONS"
+                        :key="`${thread.id}-reaction-${emoji}`"
                         :class="['detail-atelier-reaction-button', { active: isThreadReactionActive(thread, emoji), 'is-pending': isTogglingThreadReaction(thread.id, emoji) }]"
                         type="button"
                         :disabled="isThreadReactionRowPending(thread.id)"
@@ -646,7 +602,7 @@ async function confirmDeleteWish() {
             <p>先从上面的留言口写下一句，后面的变化会继续接进来。</p>
           </div>
 
-          <p v-if="threadFeedback" :class="['detail-atelier-feedback', threadFeedbackTone]">{{ threadFeedback }}</p>
+          <p v-if="threadFeedback" :class="['detail-atelier-feedback', threadFeedbackTone]" role="status" aria-live="polite">{{ threadFeedback }}</p>
         </article>
 
         <article class="page-card detail-atelier-image-card">
@@ -845,7 +801,7 @@ async function confirmDeleteWish() {
           <p>先去空间页放进一两个大奖励，再回来会更顺。</p>
         </div>
 
-        <p v-if="rewardFeedback && pendingCompletionKind" :class="['detail-atelier-feedback', rewardFeedbackTone]">{{ rewardFeedback }}</p>
+        <p v-if="rewardFeedback && pendingCompletionKind" :class="['detail-atelier-feedback', rewardFeedbackTone]" role="status" aria-live="polite">{{ rewardFeedback }}</p>
 
         <div class="detail-atelier-inline-buttons detail-atelier-dialog-actions">
           <button class="detail-atelier-secondary" type="button" @click="closeRewardDialog()">先放一放</button>
@@ -1045,6 +1001,12 @@ async function confirmDeleteWish() {
   box-shadow: 0 14px 28px rgba(163, 91, 73, 0.22);
 }
 
+.detail-atelier-secondary-action {
+  background: rgba(255, 250, 244, 0.72);
+  color: rgba(57, 41, 34, 0.84);
+  box-shadow: none;
+}
+
 .detail-atelier-primary:hover,
 .detail-atelier-secondary:hover,
 .detail-atelier-text:hover,
@@ -1180,25 +1142,33 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-story-card h1 {
-  max-width: 10ch;
+  max-width: 20ch;
   font-size: var(--type-page-title-size);
   line-height: var(--type-page-title-line);
   letter-spacing: var(--type-page-title-tracking);
 }
 
 .detail-atelier-lead,
-.detail-atelier-support,
-.detail-atelier-summary-card p,
-.detail-atelier-empty-block p,
 .detail-atelier-thread-message,
-.detail-atelier-reward-block p,
-.detail-atelier-image-note,
-.detail-atelier-choice-card p {
+.detail-atelier-image-note {
   margin: 0;
   font-family: var(--font-body);
   color: rgba(61, 46, 40, 0.76);
   font-size: var(--type-body-size);
   line-height: var(--type-body-line);
+}
+
+.detail-atelier-support,
+.detail-atelier-summary-card p,
+.detail-atelier-empty-block p,
+.detail-atelier-reward-block p,
+.detail-atelier-choice-card p {
+  margin: 0;
+  font-family: var(--font-body);
+  color: rgba(61, 46, 40, 0.62);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
 }
 
 .detail-atelier-lead {
@@ -1232,10 +1202,10 @@ async function confirmDeleteWish() {
 .detail-atelier-meta-item strong {
   color: #2e1f19;
   font-family: var(--font-heading);
-  font-size: 0.92rem;
+  font-size: var(--type-l6-size);
   font-weight: 600;
-  line-height: 1.54;
-  letter-spacing: -0.02em;
+  line-height: var(--type-l6-line);
+  letter-spacing: var(--type-l6-spacing);
 }
 
 .detail-atelier-chip-row-primary {
@@ -1252,8 +1222,7 @@ async function confirmDeleteWish() {
   max-width: 24rem;
 }
 
-.detail-atelier-action-copy span,
-.detail-atelier-compose-submit-copy span {
+.detail-atelier-action-copy span {
   margin: 0;
   font-family: var(--font-body);
   color: rgba(70, 53, 45, 0.68);
@@ -1268,9 +1237,10 @@ async function confirmDeleteWish() {
 .detail-atelier-danger-copy {
   margin: 0;
   font-family: var(--font-body);
-  color: rgba(76, 59, 50, 0.74);
-  font-size: var(--type-body-size);
-  line-height: var(--type-body-line);
+  color: rgba(76, 59, 50, 0.62);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
 }
 
 .detail-atelier-danger-copy-block {
@@ -1288,9 +1258,46 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-danger-row {
+  gap: 0.64rem;
+  padding-top: 0.78rem;
+  border-top: 1px dashed rgba(126, 96, 76, 0.16);
+}
+
+.detail-atelier-danger-details {
+  display: grid;
+  justify-content: stretch;
+}
+
+.detail-atelier-danger-summary {
+  display: flex;
   justify-content: space-between;
+  gap: 0.75rem;
   align-items: center;
-  padding-top: 0.15rem;
+  width: 100%;
+  cursor: pointer;
+  list-style: none;
+  color: rgba(76, 59, 50, 0.62);
+  font-family: var(--font-body);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
+}
+
+.detail-atelier-danger-summary::-webkit-details-marker {
+  display: none;
+}
+
+.detail-atelier-danger-summary span {
+  color: rgba(70, 53, 45, 0.56);
+}
+
+.detail-atelier-danger-summary strong {
+  color: rgba(122, 77, 64, 0.78);
+  font-weight: 500;
+}
+
+.detail-atelier-danger-details[open] .detail-atelier-danger-summary {
+  padding-bottom: 0.56rem;
 }
 
 .detail-atelier-danger-actions {
@@ -1305,9 +1312,8 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-cover-card {
-  background:
-    linear-gradient(180deg, rgba(255, 251, 246, 0.98), rgba(249, 241, 232, 0.8)),
-    radial-gradient(circle at top right, rgba(216, 231, 220, 0.22), transparent 28%);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-soft);
 }
 
 .detail-atelier-cover-head {
@@ -1322,7 +1328,8 @@ async function confirmDeleteWish() {
   width: 100%;
   aspect-ratio: 16 / 10;
   object-fit: cover;
-  border-radius: 22px;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--line);
 }
 
 .detail-atelier-cover-empty,
@@ -1330,14 +1337,14 @@ async function confirmDeleteWish() {
   display: grid;
   gap: 0.5rem;
   padding: 1rem;
-  border-radius: 22px;
-  border: 1px dashed rgba(126, 96, 76, 0.18);
-  background: rgba(255, 255, 255, 0.52);
+  border-radius: var(--radius-xl);
+  border: 1px dashed var(--line-strong);
+  background: var(--surface-soft);
 }
 
 .detail-atelier-summary-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.72rem;
+  gap: 0.56rem;
 }
 
 .detail-atelier-summary-card,
@@ -1350,14 +1357,17 @@ async function confirmDeleteWish() {
 .detail-atelier-image-figure,
 .detail-atelier-thread-entry {
   padding: 0.95rem;
-  border-radius: 22px;
-  border: 1px solid rgba(126, 96, 76, 0.12);
-  background: rgba(255, 255, 255, 0.72);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--line);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-card);
 }
 
 .detail-atelier-summary-card {
-  gap: 0.38rem;
+  gap: 0.28rem;
   align-content: start;
+  padding: 0.72rem 0.78rem;
+  border-radius: 16px;
 }
 
 .detail-atelier-summary-card-featured {
@@ -1384,9 +1394,9 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-summary-card-featured strong {
-  font-size: var(--type-section-title-size);
-  line-height: var(--type-section-title-line);
-  letter-spacing: var(--type-section-title-tracking);
+  font-size: var(--type-card-title-size);
+  line-height: var(--type-card-title-line);
+  letter-spacing: var(--type-card-title-tracking);
 }
 
 .detail-atelier-overview-card.is-warm {
@@ -1450,65 +1460,72 @@ async function confirmDeleteWish() {
   border-top: 1px solid rgba(126, 96, 76, 0.1);
 }
 
-.detail-atelier-compose-presence,
-.detail-atelier-compose-attachment-copy,
-.detail-atelier-compose-submit-row,
-.detail-atelier-compose-submit-copy {
-  display: grid;
-  gap: 0.62rem;
+.detail-atelier-compose-attachment-copy {
+  gap: 0.28rem;
 }
 
-.detail-atelier-compose-presence {
-  grid-template-columns: minmax(220px, auto) minmax(0, 1fr);
-  gap: 0.75rem 1rem;
-  align-items: start;
-}
-
-.detail-atelier-compose-hint,
 .detail-atelier-compose-attachment-copy p,
-.detail-atelier-compose-submit-copy p {
+.detail-atelier-compose-author-note {
   margin: 0;
   font-family: var(--font-body);
-  color: rgba(76, 59, 50, 0.72);
-  font-size: var(--type-body-size);
-  line-height: var(--type-body-line);
+  color: rgba(76, 59, 50, 0.62);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
 }
 
 .detail-atelier-compose-submit-row {
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.75rem 1rem;
-  align-items: end;
+  gap: 0.62rem 0.82rem;
+  align-items: center;
 }
 
 .detail-atelier-compose-attachment-panel {
-  padding: 0.88rem 0.92rem;
-  border-radius: 22px;
+  padding: 0.72rem 0.78rem;
+  border-radius: 18px;
   border: 1px solid rgba(126, 96, 76, 0.12);
   background: rgba(255, 255, 255, 0.56);
 }
 
+.detail-atelier-compose-attachment-panel.is-disabled {
+  background: rgba(250, 244, 237, 0.54);
+}
+
+.detail-atelier-upload-unavailable {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 36px;
+  align-items: center;
+  padding: 0.4rem 0.72rem;
+  border-radius: 999px;
+  border: 1px dashed rgba(126, 96, 76, 0.18);
+  color: rgba(76, 59, 50, 0.62);
+  font-family: var(--font-body);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
+}
+
 .detail-atelier-compose-card .detail-atelier-primary,
 .detail-atelier-compose-card .detail-atelier-secondary,
-.detail-atelier-compose-card .upload-trigger,
-.detail-atelier-compose-card .detail-atelier-identity-card {
+.detail-atelier-compose-card .upload-trigger {
   min-height: 44px;
   border-radius: 18px;
 }
 
-.detail-atelier-compose-card select,
 .detail-atelier-compose-card textarea {
-  border-radius: 20px;
+  border-radius: 18px;
   background: rgba(255, 255, 255, 0.9);
 }
 
 .detail-atelier-compose-card textarea {
-  min-height: 150px;
+  min-height: 112px;
 }
 
 .detail-atelier-step-list,
 .detail-atelier-member-grid {
   display: grid;
-  gap: 0.8rem;
+  gap: 0.58rem;
 }
 
 .detail-atelier-member-grid {
@@ -1518,10 +1535,10 @@ async function confirmDeleteWish() {
 .detail-atelier-step-card {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 0.8rem;
-  align-items: start;
-  padding: 1rem;
-  border-radius: 22px;
+  gap: 0.58rem 0.68rem;
+  align-items: center;
+  padding: 0.72rem 0.78rem;
+  border-radius: 18px;
   border: 1px solid rgba(126, 96, 76, 0.12);
   background: rgba(255, 255, 255, 0.72);
 }
@@ -1532,14 +1549,15 @@ async function confirmDeleteWish() {
 
 .detail-atelier-step-copy {
   display: grid;
-  gap: 0.45rem;
+  gap: 0.28rem;
 }
 
 .detail-atelier-step-copy strong {
   color: #2e1f19;
   font-family: var(--font-heading);
+  font-size: var(--type-l5-size);
   font-weight: 600;
-  line-height: 1.45;
+  line-height: 1.34;
   letter-spacing: -0.02em;
 }
 
@@ -1571,8 +1589,7 @@ async function confirmDeleteWish() {
   max-width: 28rem;
 }
 
-.detail-atelier-image-toolbar-copy span,
-.detail-atelier-reaction-label {
+.detail-atelier-image-toolbar-copy span {
   margin: 0;
   font-family: var(--font-body);
   color: rgba(70, 53, 45, 0.68);
@@ -1613,18 +1630,18 @@ async function confirmDeleteWish() {
 .detail-atelier-image-memory-note span {
   margin: 0;
   color: rgba(70, 53, 45, 0.66);
-  font-size: 11px;
-  letter-spacing: 0.12em;
+  font-size: var(--type-l7-size);
+  letter-spacing: var(--type-l7-spacing);
   text-transform: uppercase;
 }
 
 .detail-atelier-image-memory-card strong {
   color: #2e1f19;
   font-family: var(--font-heading);
-  font-size: 1.02rem;
+  font-size: var(--type-l5-size);
   font-weight: 600;
-  line-height: 1.42;
-  letter-spacing: -0.02em;
+  line-height: var(--type-l5-line);
+  letter-spacing: var(--type-button-tracking);
 }
 
 .detail-atelier-image-memory-card p {
@@ -1695,7 +1712,7 @@ async function confirmDeleteWish() {
 .detail-atelier-thread-image {
   width: 100%;
   object-fit: cover;
-  border-radius: 18px;
+  border-radius: var(--radius-lg);
 }
 
 .detail-atelier-image {
@@ -1710,9 +1727,9 @@ async function confirmDeleteWish() {
   display: grid;
   place-items: center;
   min-height: 160px;
-  border-radius: 18px;
-  background: rgba(244, 237, 229, 0.9);
-  color: rgba(61, 46, 40, 0.7);
+  border-radius: var(--radius-lg);
+  background: var(--surface-soft);
+  color: var(--text-soft);
 }
 
 .detail-atelier-image-caption {
@@ -1772,15 +1789,13 @@ async function confirmDeleteWish() {
 
 .detail-atelier-reward-block {
   padding: 0.92rem 0.95rem;
-  border-radius: 22px;
-  border: 1px solid rgba(126, 96, 76, 0.12);
-  background:
-    linear-gradient(180deg, rgba(255, 251, 246, 0.88), rgba(255, 244, 236, 0.72)),
-    radial-gradient(circle at top right, rgba(241, 214, 202, 0.18), transparent 28%);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
 }
 
 .detail-atelier-thread-entry.is-system {
-  background: rgba(244, 237, 229, 0.74);
+  background: var(--surface-soft);
 }
 
 .detail-atelier-thread-toolbar {
@@ -1802,13 +1817,10 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-reaction-row {
-  display: grid;
-  gap: 0.72rem;
-  align-items: start;
-}
-
-.detail-atelier-reaction-label {
-  flex: 0 0 auto;
+  display: flex;
+  gap: 0.52rem;
+  align-items: center;
+  justify-content: flex-start;
 }
 
 .detail-atelier-reaction-copy {
@@ -1818,14 +1830,21 @@ async function confirmDeleteWish() {
 .detail-atelier-reaction-copy p {
   margin: 0;
   font-family: var(--font-body);
-  color: rgba(76, 59, 50, 0.72);
-  font-size: var(--type-body-size);
-  line-height: var(--type-body-line);
+  color: rgba(76, 59, 50, 0.62);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
 }
 
 .detail-atelier-reaction-groups,
 .detail-atelier-reaction-more {
-  gap: 0.58rem;
+  gap: 0.46rem;
+}
+
+.detail-atelier-reaction-more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 .detail-atelier-reaction-list {
@@ -1835,24 +1854,33 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-reaction-list.is-extended {
-  padding-top: 0.08rem;
+  flex: 1 1 100%;
+  padding-top: 0.12rem;
 }
 
 .detail-atelier-reaction-toggle {
   justify-self: start;
-  min-height: 40px;
-  padding: 0.48rem 0.86rem;
+  min-height: 38px;
+  padding: 0.44rem 0.78rem;
+}
+
+.detail-atelier-reaction-summary {
+  color: rgba(76, 59, 50, 0.56);
+  font-family: var(--font-body);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
 }
 
 .detail-atelier-reaction-button {
-  min-height: 42px;
-  padding: 0.48rem 0.82rem;
-  gap: 0.34rem;
-  border-radius: 18px;
+  min-height: 38px;
+  padding: 0.42rem 0.66rem;
+  gap: 0.28rem;
+  border-radius: 16px;
 }
 
 .detail-atelier-reaction-emoji {
-  font-size: 1rem;
+  font-size: var(--type-l5-size);
   line-height: 1;
 }
 
@@ -1948,12 +1976,29 @@ async function confirmDeleteWish() {
   background: rgba(251, 244, 234, 0.9);
 }
 
+.detail-atelier-feedback {
+  margin: 0;
+  padding: 0.68rem 0.78rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(126, 96, 76, 0.12);
+  background: rgba(255, 255, 255, 0.68);
+  color: rgba(61, 46, 40, 0.72);
+  font-family: var(--font-body);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
+}
+
 .detail-atelier-feedback.success {
   color: var(--success);
+  border-color: rgba(75, 129, 96, 0.18);
+  background: rgba(226, 239, 229, 0.72);
 }
 
 .detail-atelier-feedback.danger {
   color: var(--danger);
+  border-color: rgba(142, 91, 73, 0.18);
+  background: rgba(249, 238, 232, 0.8);
 }
 
 @media (max-width: 1080px) {
@@ -1999,6 +2044,10 @@ async function confirmDeleteWish() {
   }
 
   .detail-atelier-danger-row {
+    align-items: flex-start;
+  }
+
+  .detail-atelier-danger-summary {
     align-items: flex-start;
   }
 
@@ -2126,6 +2175,31 @@ async function confirmDeleteWish() {
     width: 100%;
   }
 
+  .detail-atelier-chip-row.compact,
+  .detail-atelier-reaction-list {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+    grid-template-columns: none;
+    overflow-x: auto;
+    max-width: 100%;
+    padding-bottom: 0.08rem;
+    scrollbar-width: none;
+  }
+
+  .detail-atelier-chip-row.compact::-webkit-scrollbar,
+  .detail-atelier-reaction-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .detail-atelier-chip-row.compact .detail-atelier-chip,
+  .detail-atelier-chip-row.compact .chip-button {
+    max-width: 16rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .detail-atelier-compose-submit-buttons .detail-atelier-primary,
   .detail-atelier-compose-submit-buttons .detail-atelier-secondary,
   .detail-atelier-compose-upload-row .detail-atelier-secondary,
@@ -2151,19 +2225,18 @@ async function confirmDeleteWish() {
 
   .detail-atelier-compose-card .detail-atelier-primary,
   .detail-atelier-compose-card .detail-atelier-secondary,
-  .detail-atelier-compose-card .upload-trigger,
-  .detail-atelier-compose-card .detail-atelier-identity-card {
+  .detail-atelier-compose-card .upload-trigger {
     min-height: 42px;
     padding: 0.5rem 0.78rem;
   }
 
   .detail-atelier-compose-card textarea {
-    min-height: 132px;
+    min-height: 108px;
   }
 
   .detail-atelier-step-card {
     grid-template-columns: auto minmax(0, 1fr);
-    gap: 0.58rem 0.72rem;
+    gap: 0.5rem 0.62rem;
     align-items: center;
   }
 
@@ -2215,6 +2288,29 @@ async function confirmDeleteWish() {
   .detail-atelier-reaction-toggle {
     min-height: 38px;
     padding: 0.44rem 0.72rem;
+  }
+
+  .detail-atelier-reaction-row {
+    align-items: flex-start;
+  }
+
+  .detail-atelier-reaction-more {
+    width: 100%;
+  }
+
+  .detail-atelier-reaction-list.is-extended {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+    grid-template-columns: none;
+    overflow-x: auto;
+    max-width: 100%;
+    padding-bottom: 0.08rem;
+    scrollbar-width: none;
+  }
+
+  .detail-atelier-reaction-list.is-extended::-webkit-scrollbar {
+    display: none;
   }
 
   .detail-atelier-image-actions .detail-atelier-secondary,

@@ -496,10 +496,10 @@ onBeforeUnmount(() => {
   --list-ink: #2f211b;
   --list-ink-soft: rgba(61, 46, 40, 0.74);
   --list-ink-faint: rgba(76, 59, 50, 0.72);
-  --list-line: rgba(126, 96, 76, 0.12);
-  --list-line-strong: rgba(126, 96, 76, 0.18);
-  --list-paper: rgba(255, 255, 255, 0.68);
-  --list-paper-strong: rgba(255, 255, 255, 0.78);
+  --list-line: var(--line);
+  --list-line-strong: var(--line-strong);
+  --list-paper: var(--surface-card);
+  --list-paper-strong: var(--surface-raised);
   font-family: var(--list-body-font);
 }
 
@@ -746,7 +746,7 @@ onBeforeUnmount(() => {
 .list-board-hero-card h1 {
   display: grid;
   gap: 0.52rem;
-  max-width: 11ch;
+  max-width: 22ch;
   font-size: var(--type-page-title-size);
   line-height: var(--type-page-title-line);
   letter-spacing: var(--type-page-title-tracking);
@@ -759,7 +759,7 @@ onBeforeUnmount(() => {
 }
 
 .list-board-hero-name {
-  max-width: 7ch;
+  max-width: 14ch;
   color: rgba(47, 33, 27, 0.86);
   font-family: var(--list-heading-font);
   font-size: var(--type-card-title-size);
@@ -769,7 +769,7 @@ onBeforeUnmount(() => {
 }
 
 .list-board-hero-promise {
-  max-width: 10ch;
+  max-width: 18ch;
 }
 
 .list-board-toolbar-copy h2,
@@ -788,15 +788,24 @@ onBeforeUnmount(() => {
 
 .list-board-summary-card p,
 .list-board-toolbar-copy p,
-.list-board-item p,
 .list-board-empty p,
 .list-board-data-block p,
 .list-board-toolbar-side p {
   margin: 0;
   font-family: var(--list-body-font);
   color: var(--list-ink-soft);
-  font-size: var(--type-body-size);
-  line-height: var(--type-body-line);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
+}
+
+.list-board-item p {
+  margin: 0;
+  font-family: var(--list-body-font);
+  color: rgba(76, 59, 50, 0.7);
+  font-size: var(--type-l6-size);
+  line-height: var(--type-l6-line);
+  letter-spacing: var(--type-l6-spacing);
 }
 
 .list-board-summary-grid {
@@ -822,9 +831,9 @@ onBeforeUnmount(() => {
 .list-board-empty,
 .list-board-data-block {
   border: 1px solid var(--list-line);
-  border-radius: 24px;
+  border-radius: var(--radius-xl);
   background: var(--list-paper);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52);
+  box-shadow: var(--shadow-card);
 }
 
 .list-board-summary-card {
@@ -840,8 +849,7 @@ onBeforeUnmount(() => {
 .list-board-summary-card-compact,
 .list-board-toolbar-side,
 .list-board-filter-group {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(255, 250, 244, 0.62));
+  background: var(--surface-soft);
 }
 
 .list-board-summary-card strong,
@@ -859,8 +867,9 @@ onBeforeUnmount(() => {
   max-width: 176px;
   aspect-ratio: 4 / 3;
   object-fit: cover;
-  border-radius: 20px;
-  box-shadow: 0 14px 24px rgba(92, 63, 47, 0.08);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--list-line);
+  box-shadow: none;
 }
 
 .list-board-card-copy p {
@@ -900,10 +909,10 @@ onBeforeUnmount(() => {
   gap: 0.46rem;
   max-width: 34rem;
   padding: 0.92rem 0.96rem;
-  border-radius: 22px;
+  border-radius: var(--radius-xl);
   border: 1px solid var(--list-line);
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.56);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-card);
 }
 
 .list-board-search-field input {
@@ -917,7 +926,7 @@ onBeforeUnmount(() => {
 .list-board-toolbar-card {
   grid-template-columns: minmax(0, 1fr) minmax(300px, 0.82fr);
   gap: 0.94rem 1.08rem;
-  background: rgba(255, 252, 246, 0.84);
+  background: var(--surface-card);
 }
 
 .list-board-toolbar-copy {
@@ -932,9 +941,9 @@ onBeforeUnmount(() => {
 
 .list-board-toolbar-actions {
   grid-column: 1 / -1;
-  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+  grid-template-columns: minmax(0, 1.24fr) minmax(260px, 0.76fr);
   align-items: start;
-  gap: 1rem 1.08rem;
+  gap: 0.88rem;
   padding-top: 0.42rem;
   border-top: 1px solid rgba(126, 96, 76, 0.12);
 }
@@ -945,12 +954,12 @@ onBeforeUnmount(() => {
 }
 
 .list-board-filter-group {
-  gap: 0.62rem;
-  padding: 0.92rem 0.96rem;
-  border-radius: 22px;
+  gap: 0.54rem;
+  padding: 0.76rem;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--list-line);
-  background: rgba(255, 255, 255, 0.58);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52);
+  background: var(--surface-soft);
+  box-shadow: none;
 }
 
 .list-board-filter-label {
@@ -966,29 +975,29 @@ onBeforeUnmount(() => {
 
 .list-board-filter-pill {
   width: 100%;
-  min-height: 48px;
-  padding: 0.68rem 0.86rem;
-  border-radius: 20px;
+  min-height: 42px;
+  padding: 0.56rem 0.72rem;
+  border-radius: var(--radius-md);
   justify-content: center;
   text-align: center;
   white-space: nowrap;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.48);
+  box-shadow: none;
 }
 
 .list-board-filter-pill.is-active {
-  background: linear-gradient(135deg, rgba(210, 121, 87, 0.2), rgba(255, 247, 241, 0.96));
+  background: linear-gradient(135deg, rgba(210, 121, 87, 0.22), rgba(255, 247, 241, 0.98));
   border-color: rgba(185, 108, 79, 0.28);
   color: #2e211b;
-  box-shadow: 0 12px 22px rgba(185, 108, 79, 0.12);
+  box-shadow: 0 8px 16px rgba(185, 108, 79, 0.1);
 }
 
 .list-board-toolbar-side {
-  gap: 0.74rem;
+  gap: 0.62rem;
   justify-items: start;
-  padding: 0.94rem 0.98rem;
-  border-radius: 22px;
+  padding: 0.78rem 0.82rem;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--list-line);
-  background: rgba(255, 255, 255, 0.54);
+  background: var(--surface-card);
 }
 
 .list-board-toolbar-side-copy {
@@ -1020,20 +1029,21 @@ onBeforeUnmount(() => {
 
 .list-board-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
+  gap: 0.9rem;
 }
 
 .list-board-item {
   position: relative;
-  gap: 0.88rem;
-  padding: 1rem 1rem 1.04rem;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 249, 243, 0.7)),
-    radial-gradient(circle at top right, rgba(241, 214, 202, 0.18), transparent 28%);
+  gap: 0.76rem;
+  padding: 0.96rem;
+  background: var(--surface-card);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 10px 24px rgba(82, 61, 48, 0.06);
 }
 
 .list-board-card-top {
-  gap: 0.48rem 0.68rem;
+  gap: 0.42rem 0.6rem;
+  align-items: flex-start;
 }
 
 .list-board-card-tools {
@@ -1047,8 +1057,8 @@ onBeforeUnmount(() => {
 .list-board-card-scope {
   display: inline-flex;
   align-items: center;
-  min-height: 32px;
-  padding: 0.36rem 0.68rem;
+  min-height: 30px;
+  padding: 0.32rem 0.62rem;
   border-radius: 999px;
   font-family: var(--list-body-font);
   color: rgba(61, 46, 40, 0.86);
@@ -1071,20 +1081,21 @@ onBeforeUnmount(() => {
 .list-board-card-mood {
   display: inline-flex;
   align-items: center;
-  min-height: 32px;
-  padding: 0.38rem 0.68rem;
+  min-height: 30px;
+  padding: 0.34rem 0.62rem;
   border-radius: 999px;
   border: 1px solid rgba(126, 96, 76, 0.12);
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--surface-raised);
 }
 
 .list-board-more-trigger {
-  width: 42px;
-  min-width: 42px;
+  width: 38px;
+  min-width: 38px;
+  min-height: 38px;
   padding: 0;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: none;
 }
 
 .list-board-dot-column {
@@ -1102,7 +1113,7 @@ onBeforeUnmount(() => {
 
 .list-board-card-body {
   display: grid;
-  gap: 0.82rem;
+  gap: 0.68rem;
 }
 
 .list-board-card-body.has-image {
@@ -1111,7 +1122,7 @@ onBeforeUnmount(() => {
 }
 
 .list-board-card-copy {
-  gap: 0.38rem;
+  gap: 0.32rem;
   max-width: 34ch;
 }
 
@@ -1124,13 +1135,16 @@ onBeforeUnmount(() => {
 
 .list-board-card-data {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.76rem;
-  margin-top: 0.04rem;
+  gap: 0.58rem;
+  margin-top: 0;
 }
 
 .list-board-data-block {
-  gap: 0.42rem;
-  padding: 0.88rem 0.92rem 0.94rem;
+  gap: 0.28rem;
+  padding: 0.7rem 0.74rem 0.74rem;
+  border-radius: var(--radius-lg);
+  background: var(--surface-soft);
+  box-shadow: none;
 }
 
 .list-board-data-block.is-coin {
@@ -1147,9 +1161,9 @@ onBeforeUnmount(() => {
 .list-board-card-actions {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 0.66rem;
+  gap: 0.54rem;
   align-items: start;
-  padding-top: 0.82rem;
+  padding-top: 0.68rem;
   border-top: 1px solid rgba(126, 96, 76, 0.12);
 }
 
@@ -1165,8 +1179,8 @@ onBeforeUnmount(() => {
 }
 
 .list-board-card-actions .list-board-action {
-  min-height: 44px;
-  border-radius: 20px;
+  min-height: 42px;
+  border-radius: var(--radius-md);
 }
 
 .list-board-card-actions .list-board-action.is-soft {
@@ -1174,11 +1188,15 @@ onBeforeUnmount(() => {
 }
 
 .list-board-card-actions .list-board-action.is-solid {
-  box-shadow: 0 12px 22px rgba(163, 91, 73, 0.18);
+  box-shadow: 0 10px 18px rgba(163, 91, 73, 0.14);
 }
 
 .list-board-card-actions .list-board-action.is-detail {
-  min-height: 48px;
+  min-height: 44px;
+  border: 1px solid rgba(201, 124, 97, 0.2);
+  background: linear-gradient(135deg, rgba(210, 121, 87, 0.14), rgba(255, 250, 245, 0.94));
+  color: #3a2922;
+  box-shadow: none;
 }
 
 .list-board-card-actions .list-board-action.is-ghost {
@@ -1286,8 +1304,8 @@ onBeforeUnmount(() => {
   }
 
   .list-board-hero-card h1 {
-    max-width: 10ch;
-    font-size: clamp(2.18rem, 11vw, 3rem);
+    max-width: 18ch;
+    font-size: var(--type-l0-size);
   }
 
   .list-board-card-body.has-image,
@@ -1312,9 +1330,9 @@ onBeforeUnmount(() => {
   }
 
   .list-board-filter-pill {
-    min-height: 44px;
-    padding: 0.58rem 0.72rem;
-    border-radius: 18px;
+    min-height: 40px;
+    padding: 0.52rem 0.66rem;
+    border-radius: var(--radius-md);
   }
 
   .list-board-card-image {
@@ -1371,11 +1389,22 @@ onBeforeUnmount(() => {
 
   .list-board-filter-row {
     gap: 0.4rem;
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+    grid-template-columns: none;
+    overflow-x: auto;
+    padding-bottom: 0.1rem;
+    scrollbar-width: none;
+  }
+
+  .list-board-filter-row::-webkit-scrollbar {
+    display: none;
   }
 
   .list-board-filter-pill {
+    width: auto;
     padding-inline: 0.6rem;
-    font-size: 0.92rem;
+    font-size: var(--type-l6-size);
   }
 
   .list-board-inline-actions {

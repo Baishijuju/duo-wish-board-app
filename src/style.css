@@ -4,45 +4,86 @@
   --font-display: 'ZCOOL XiaoWei', 'Noto Serif SC', 'Songti SC', serif;
   --font-heading: 'Noto Serif SC', 'Songti SC', serif;
   --font-body: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  --type-eyebrow-size: 11px;
+
+  --type-l0-size: 2.5rem;
+  --type-l0-line: 1.06;
+  --type-l0-tracking: -0.028em;
+  --type-l1-size: 1.625rem;
+  --type-l1-line: 1.2;
+  --type-l1-tracking: -0.018em;
+  --type-l2-size: 1.125rem;
+  --type-l2-line: 1.34;
+  --type-l2-tracking: -0.01em;
+  --type-l3-size: 1rem;
+  --type-l3-line: 1.7;
+  --type-l3-tracking: 0;
+  --type-l4-size: 0.875rem;
+  --type-l4-line: 1.5;
+  --type-l4-spacing: 0.025em;
+  --type-l5-size: var(--type-l3-size);
+  --type-l5-line: var(--type-l3-line);
+  --type-l6-size: 0.8125rem;
+  --type-l6-line: 1.45;
+  --type-l6-spacing: 0.03em;
+  --type-l7-size: 0.75rem;
+  --type-l7-line: 1.42;
+  --type-l7-spacing: 0.035em;
+  --type-d0-size: 2.75rem;
+  --type-d0-line: 1.02;
+  --type-d1-size: 2rem;
+  --type-d1-line: 1.1;
+
+  --type-eyebrow-size: var(--type-l7-size);
   --type-eyebrow-spacing: 0.18em;
-  --type-kicker-sub-size: 0.7rem;
+  --type-kicker-sub-size: var(--type-l7-size);
   --type-kicker-sub-spacing: 0.16em;
-  --type-supporting-size: 0.84rem;
-  --type-supporting-line: 1.58;
-  --type-supporting-spacing: 0.03em;
-  --type-nav-size: 0.84rem;
-  --type-nav-line: 1.2;
-  --type-card-title-size: clamp(1.24rem, 2.3vw, 1.6rem);
-  --type-card-title-line: 1.22;
-  --type-card-title-tracking: -0.024em;
-  --type-page-title-size: clamp(2.38rem, 5vw, 3.95rem);
-  --type-page-title-line: 1.02;
-  --type-page-title-tracking: -0.032em;
-  --type-section-title-size: clamp(1.56rem, 3.6vw, 2.28rem);
-  --type-section-title-line: 1.12;
-  --type-section-title-tracking: -0.032em;
-  --type-body-size: 0.96rem;
-  --type-body-line: 1.82;
-  --type-lead-size: 1.04rem;
-  --type-lead-line: 1.9;
-  --type-meta-size: 0.79rem;
-  --type-meta-line: 1.5;
-  --type-meta-spacing: 0.04em;
+  --type-supporting-size: var(--type-l7-size);
+  --type-supporting-line: var(--type-l7-line);
+  --type-supporting-spacing: var(--type-l7-spacing);
+  --type-nav-size: var(--type-l4-size);
+  --type-nav-line: 1.25;
+  --type-card-title-size: var(--type-l2-size);
+  --type-card-title-line: var(--type-l2-line);
+  --type-card-title-tracking: var(--type-l2-tracking);
+  --type-page-title-size: var(--type-l0-size);
+  --type-page-title-line: var(--type-l0-line);
+  --type-page-title-tracking: var(--type-l0-tracking);
+  --type-section-title-size: var(--type-l1-size);
+  --type-section-title-line: var(--type-l1-line);
+  --type-section-title-tracking: var(--type-l1-tracking);
+  --type-body-size: var(--type-l3-size);
+  --type-body-line: var(--type-l3-line);
+  --type-lead-size: var(--type-l3-size);
+  --type-lead-line: var(--type-l3-line);
+  --type-meta-size: var(--type-l6-size);
+  --type-meta-line: var(--type-l6-line);
+  --type-meta-spacing: var(--type-l6-spacing);
   --type-button-tracking: 0.01em;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
   --bg: #f5eee5;
   --bg-deep: #efe4d7;
-  --paper: rgba(255, 252, 246, 0.88);
+  --paper: #fffaf3;
   --paper-solid: #fffaf2;
   --paper-soft: #fbf4ea;
+  --surface-base: #f7efe5;
   --surface: var(--paper);
-  --surface-strong: rgba(255, 250, 244, 0.94);
-  --surface-soft: rgba(251, 244, 234, 0.72);
-  --line: rgba(95, 74, 55, 0.1);
-  --line-strong: rgba(95, 74, 55, 0.16);
-  --shadow: 0 14px 36px rgba(80, 58, 40, 0.06);
-  --shadow-soft: 0 12px 26px rgba(80, 58, 40, 0.05);
-  --shadow-card: 0 10px 22px rgba(80, 58, 40, 0.04);
+  --surface-card: #fffaf3;
+  --surface-raised: #fffdf8;
+  --surface-strong: #fffdf8;
+  --surface-soft: #f9f1e7;
+  --surface-popover: #fffefa;
+  --line: rgba(86, 64, 49, 0.13);
+  --line-strong: rgba(86, 64, 49, 0.2);
+  --shadow: 0 12px 30px rgba(78, 55, 39, 0.075);
+  --shadow-soft: 0 8px 18px rgba(78, 55, 39, 0.055);
+  --shadow-card: 0 4px 14px rgba(78, 55, 39, 0.045);
+  --shadow-raised: 0 16px 34px rgba(78, 55, 39, 0.1);
   --accent: #c96f4a;
   --accent-dark: #b95f3e;
   --accent-soft: #f3ded2;
@@ -55,14 +96,14 @@
   --rose: #f1d6ca;
   --mist: #dce9e6;
   --text-main: #241b16;
-  --text-soft: #847367;
-  --text-muted: #847367;
-  --text-faint: #b19b8d;
+  --text-soft: #6f5d52;
+  --text-muted: #5f5048;
+  --text-faint: #9a8577;
   --success: #6d9778;
   --danger: #8e5b49;
-  --radius-xl: 28px;
-  --radius-lg: 22px;
-  --radius-md: 16px;
+  --radius-xl: 18px;
+  --radius-lg: 14px;
+  --radius-md: 12px;
   --radius-pill: 999px;
   font-family: var(--font-body);
   line-height: 1.5;
@@ -87,9 +128,8 @@ body {
   min-height: 100vh;
   color: var(--text-main);
   background:
-    radial-gradient(circle at 20% 0%, rgba(255, 238, 218, 0.65), transparent 34%),
-    radial-gradient(circle at 90% 18%, rgba(220, 237, 229, 0.45), transparent 30%),
-    radial-gradient(circle at 82% 72%, rgba(241, 232, 200, 0.32), transparent 25%),
+    radial-gradient(circle at 18% 0%, rgba(255, 238, 218, 0.42), transparent 33%),
+    radial-gradient(circle at 90% 14%, rgba(220, 237, 229, 0.26), transparent 28%),
     linear-gradient(180deg, var(--bg) 0%, var(--bg-deep) 100%);
 }
 
@@ -100,8 +140,8 @@ body::after {
   width: 24rem;
   height: 24rem;
   border-radius: 999px;
-  filter: blur(34px);
-  opacity: 0.22;
+  filter: blur(30px);
+  opacity: 0.14;
   pointer-events: none;
   z-index: -1;
 }
@@ -147,11 +187,11 @@ select,
 textarea {
   width: 100%;
   border: 1px solid var(--line);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.72);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
   color: var(--text-main);
   padding: 0.88rem 1rem;
-  transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
 
 input:focus,
@@ -160,7 +200,7 @@ textarea:focus {
   outline: none;
   border-color: rgba(215, 133, 95, 0.38);
   box-shadow: 0 0 0 4px rgba(215, 133, 95, 0.12);
-  transform: translateY(-1px);
+  background: var(--surface-popover);
 }
 
 textarea {
@@ -175,13 +215,11 @@ textarea {
 .page-card {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(95, 74, 55, 0.1);
+  border: 1px solid var(--line);
   border-radius: var(--radius-xl);
-  background: var(--paper);
-  box-shadow: 0 14px 36px rgba(80, 58, 40, 0.06);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  padding: 1.25rem;
+  background: var(--surface-card);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-5);
 }
 
 .eyebrow {
@@ -260,7 +298,7 @@ textarea {
 .pill-row,
 .button-row {
   display: flex;
-  gap: 0.65rem;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
@@ -271,7 +309,7 @@ textarea {
   gap: 0.35rem;
   padding: 0.38rem 0.8rem;
   border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--surface-raised);
   border: 1px solid var(--line);
   color: var(--text-main);
   font-family: var(--font-body);
@@ -288,7 +326,7 @@ textarea {
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1rem;
+  gap: var(--space-4);
 }
 
 .summary-card {
@@ -296,7 +334,7 @@ textarea {
   overflow: hidden;
   padding: 1rem 1.05rem;
   border-radius: var(--radius-lg);
-  background: var(--surface-strong);
+  background: var(--surface-raised);
   border: 1px solid var(--line);
   box-shadow: var(--shadow-card);
 }
@@ -346,10 +384,10 @@ textarea {
 .summary-card strong {
   display: block;
   margin: 0.45rem 0 0.18rem;
-  font-size: clamp(2rem, 4vw, 2.8rem);
+  font-size: var(--type-d1-size);
   font-family: var(--font-heading);
   font-weight: 600;
-  line-height: 1.04;
+  line-height: var(--type-d1-line);
   letter-spacing: -0.03em;
 }
 
@@ -433,10 +471,10 @@ textarea {
 .stat-card strong {
   display: block;
   margin-top: 0.35rem;
-  font-size: 1.9rem;
+  font-size: var(--type-d1-size);
   font-family: var(--font-heading);
   font-weight: 600;
-  line-height: 1.08;
+  line-height: var(--type-d1-line);
   letter-spacing: -0.028em;
 }
 

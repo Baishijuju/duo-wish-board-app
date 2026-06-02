@@ -7,6 +7,10 @@
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
+    "playwright:install": "playwright install chromium",
+    "test:compose-detail": "npm run build && playwright test tests/visual-screenshots.spec.ts --grep \"compose|wish-detail|space\" && playwright test tests/compose-detail-acceptance.spec.ts",
+    "test:home-list": "npm run build && playwright test tests/visual-screenshots.spec.ts --grep \"home|list\" && playwright test tests/home-list-acceptance.spec.ts",
+    "test:screenshots": "npm run build && playwright test tests/visual-screenshots.spec.ts",
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
@@ -17,6 +21,7 @@
     "vue-router": "^5.0.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/node": "^24.12.2",
     "@vitejs/plugin-vue": "^6.0.6",
     "@vue/tsconfig": "^0.9.1",

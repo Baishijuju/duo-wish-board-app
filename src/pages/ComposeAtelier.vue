@@ -6,10 +6,9 @@ import { useComposePreviewState } from '../composables/useComposePreviewState'
 const {
   addInitialStepField,
   applyCategory,
-  authStore,
   cancelEditing,
-  composerHeadline,
   categorySuggestions,
+  composerHeadline,
   composerLead,
   draft,
   draftNotePreview,
@@ -20,7 +19,6 @@ const {
   feedbackTone,
   initialStepCount,
   initialStepDrafts,
-  progressDetail,
   progressOptions,
   progressSummary,
   priorityOptions,
@@ -28,524 +26,314 @@ const {
   resetDraft,
   scopeOptions,
   selectedOwnerLabel,
-  selectedPriorityDescription,
   selectedPriorityLabel,
-  selectedProgressDescription,
   selectedProgressLabel,
-  selectedScopeDescription,
   selectedScopeLabel,
   submitWish,
   viewerName,
-  wishStore,
 } = useComposePreviewState({ allowEditing: true })
 
-const overviewCards = computed(() => {
-  return [
-    {
-      label: '写下的人',
-      note: wishStore.isUsingCloudWishes ? '当前空间会自动锁定成员。' : '本地模式下可以自由选择。',
-      value: selectedOwnerLabel.value,
-    },
-    {
-      label: '可见范围',
-      note: selectedScopeDescription.value,
-      value: selectedScopeLabel.value,
-    },
-    {
-      label: '想先怎么靠近',
-      note: selectedPriorityDescription.value,
-      value: selectedPriorityLabel.value,
-    },
-  ]
+const feedbackToneClass = computed(() => {
+  return `compose-preview-feedback-${feedbackTone.value}`
 })
 
-const previewChips = computed(() => {
-  return [selectedScopeLabel.value, selectedPriorityLabel.value, dueDateLabel.value]
+const stepPreview = computed(() => {
+  return initialStepDrafts.value.map((step) => step.trim()).filter(Boolean).slice(0, 4)
+})
+
+const sideLead = computed(() => {
+  if (editingWish.value) {
+    return '这里只改基本信息；步骤、图片和留言继续回详情页。'
+  }
+
+  return '这里只留下必要字段，让内容比说明更先被看见。'
+})
+
+const resetButtonLabel = computed(() => {
+  return editingWish.value ? '先不改了' : '重置草稿'
+})
+
+const submitButtonLabel = computed(() => {
+  return editingWish.value ? '保存这次整理' : '把这条愿望收进清单'
 })
 </script>
 
 <template>
-  <section class="compose-atelier-page">
-    <section class="compose-atelier-hero">
-      <article class="page-card compose-atelier-intro">
-        <p class="compose-atelier-kicker">写下页 Compose</p>
-        <div class="compose-atelier-intro-copy">
+  <section class="compose-preview-page compose-live-page">
+    <article class="compose-preview-shell page-card">
+      <header class="compose-preview-hero">
+        <div class="compose-preview-hero-copy">
+          <p class="eyebrow">Compose</p>
           <h1>
             <span class="compose-atelier-hero-name">{{ viewerName }}</span>
             <span class="compose-atelier-hero-headline">{{ composerHeadline }}</span>
           </h1>
-          <p class="compose-atelier-lead">{{ composerLead }}</p>
-          <p class="compose-atelier-sublead">
-            {{
-              editingWish
-                ? '先整理标题、范围和进度方式；步骤、图片和留言回详情页再补。'
-                : '先定名字、方向和一句想实现它的原因。'
-            }}
-          </p>
+          <p class="compose-preview-hero-copy-note">{{ composerLead }}</p>
         </div>
+        <p class="compose-preview-lead">{{ sideLead }}</p>
+      </header>
 
-        <div class="compose-atelier-hero-actions">
-          <button class="compose-submit-button" type="submit" form="compose-atelier-form">
-            {{ editingWish ? '保存这次整理' : '现在写下' }}
-          </button>
-          <button class="compose-atelier-button is-soft" type="button" @click="editingWish ? cancelEditing() : resetDraft()">
-            {{ editingWish ? '先不改了' : '清空重写' }}
-          </button>
-          <RouterLink
-            class="compose-atelier-button is-ghost"
-            :to="editingWish ? { name: 'wish-detail', params: { id: editingWish.id } } : { name: 'list' }"
-          >
-            {{ editingWish ? '回这条愿望' : '去清单继续推进' }}
-          </RouterLink>
-        </div>
+      <div class="compose-preview-grid">
+        <form id="compose-atelier-form" class="compose-preview-form-stage" @submit.prevent="submitWish">
+          <label class="compose-field compose-field-title">
+            <span>愿望名字</span>
+            <input v-model="draft.title" type="text" maxlength="36" placeholder="例如：一起去看海边的日出" />
+          </label>
 
-        <div class="compose-atelier-overview-grid">
-          <article v-for="(card, index) in overviewCards" :key="card.label" :class="['compose-atelier-overview-card', { 'is-wide': index === 0 }]">
-            <span>{{ card.label }}</span>
-            <strong>{{ card.value }}</strong>
-            <p>{{ card.note }}</p>
-          </article>
-        </div>
-      </article>
-
-      <article class="page-card compose-atelier-preview-card">
-        <p class="compose-atelier-kicker">这一页会先长成这样 Preview</p>
-        <div class="compose-atelier-preview-copy">
-          <h2>{{ draftTitlePreview }}</h2>
-          <p>{{ draftNotePreview }}</p>
-        </div>
-
-        <p class="compose-atelier-preview-note">写下后它会先落进清单里，步骤和回应后面再补。</p>
-
-        <div class="compose-atelier-chip-row">
-          <span v-for="chip in previewChips" :key="chip" class="compose-atelier-chip">{{ chip }}</span>
-        </div>
-
-        <div class="compose-atelier-preview-meta">
-          <article class="compose-atelier-preview-panel is-wide">
-            <span>分类</span>
-            <strong>{{ draft.category || '还没选分类' }}</strong>
-            <p>先写一句也可以，后面还能继续补全。</p>
-          </article>
-          <article class="compose-atelier-preview-panel">
-            <span>记录方式</span>
-            <strong>{{ progressSummary }}</strong>
-            <p>{{ selectedProgressDescription }}</p>
-          </article>
-          <article class="compose-atelier-preview-panel">
-            <span>完成时间</span>
-            <strong>{{ dueDateLabel }}</strong>
-            <p>{{ draft.dueDate ? '定了日子，会更容易往前放。' : '没定也没关系，后面再补。' }}</p>
-          </article>
-        </div>
-      </article>
-    </section>
-
-    <article class="page-card compose-atelier-form-shell">
-      <div class="compose-atelier-section-head">
-        <div class="compose-atelier-section-copy">
-          <p class="compose-atelier-kicker">录入台 Form</p>
-          <h2>{{ editingWish ? '在这里把基本信息改成现在最像它的样子' : '把一个愿望认真放进生活里' }}</h2>
-        </div>
-        <div class="compose-atelier-section-aside">
-          <span class="compose-atelier-state-pill">{{ editingWish ? '正在整理已有愿望' : '先写下一句也可以' }}</span>
-          <p class="compose-atelier-form-note">
-            {{
-              editingWish
-                ? '这里只改基本信息；步骤、图片和留言回详情页处理。'
-                : '先定标题、方向和进度方式，后面都还能再改。'
-            }}
-          </p>
-        </div>
-      </div>
-
-      <div class="compose-atelier-sequence">
-        <article class="compose-atelier-sequence-card">
-          <span>第一段</span>
-          <strong>愿望先落地</strong>
-          <p>把标题、日期和分类先定下来。</p>
-        </article>
-        <article class="compose-atelier-sequence-card">
-          <span>第二段</span>
-          <strong>再决定怎么被看见</strong>
-          <p>范围、轻重和推进方式，会决定后面怎么继续靠近。</p>
-        </article>
-        <article class="compose-atelier-sequence-card">
-          <span>第三段</span>
-          <strong>最后留一句原因</strong>
-          <p>留一句原因就够，让这一页更像你现在真的想要的。</p>
-        </article>
-      </div>
-
-      <form id="compose-atelier-form" class="compose-atelier-form" @submit.prevent="submitWish">
-        <section class="compose-atelier-block is-foundation">
-          <div class="compose-atelier-block-head">
-            <h3>先给它一个清楚的名字</h3>
-            <p>先把愿望落下来，细节后面再补。</p>
+          <div class="compose-preview-chip-row" aria-label="分类建议">
+            <button
+              v-for="category in categorySuggestions"
+              :key="category"
+              type="button"
+              class="compose-chip"
+              :class="{ active: draft.category === category }"
+              @click="applyCategory(category)"
+            >
+              {{ category }}
+            </button>
           </div>
 
-          <div class="compose-atelier-form-grid">
-            <label class="compose-field is-wide">
-              <span class="compose-label">想写下什么愿望？</span>
-              <input v-model="draft.title" type="text" maxlength="60" placeholder="例如：一起去看一次极光" />
-            </label>
+          <label class="compose-field compact">
+            <span>分类</span>
+            <input v-model="draft.category" type="text" maxlength="20" placeholder="旅行 / 生活 / 成长" />
+          </label>
 
-            <label v-if="!wishStore.isUsingCloudWishes" class="compose-field">
-              <span class="compose-label">写下的人</span>
-              <div class="compose-select-shell">
-                <select v-model="draft.ownerId">
-                  <option v-for="member in authStore.members" :key="member.id" :value="member.id">
-                    {{ member.displayName }}
-                  </option>
-                </select>
-                <span class="compose-select-caret" aria-hidden="true"></span>
+          <label class="compose-field">
+            <span>一句心情</span>
+            <textarea
+              v-model="draft.note"
+              rows="3"
+              maxlength="180"
+              placeholder="只留一句就够，比如为什么现在想把它写下来。"
+            />
+          </label>
+
+          <section class="compose-preview-section">
+            <header class="compose-preview-section-head">
+              <div>
+                <p class="eyebrow">Visibility</p>
+                <h2>给它一个被看见的方式</h2>
               </div>
-            </label>
+              <span>{{ selectedScopeLabel }}</span>
+            </header>
 
-            <div v-else class="compose-owner-card compose-field">
-              <span class="compose-label">写下的人</span>
-              <strong>{{ authStore.currentMember?.displayName || '当前成员' }}</strong>
+            <div class="compose-preview-option-grid">
+              <button
+                v-for="option in scopeOptions"
+                :key="option.value"
+                type="button"
+                class="compose-option-card"
+                :class="{ active: draft.scope === option.value }"
+                @click="draft.scope = option.value"
+              >
+                <strong>{{ option.label }}</strong>
+              </button>
+            </div>
+          </section>
+
+          <section class="compose-preview-section compact">
+            <header class="compose-preview-section-head">
+              <div>
+                <p class="eyebrow">Priority</p>
+                <h2>想把它放在哪一层</h2>
+              </div>
+              <span>{{ selectedPriorityLabel }}</span>
+            </header>
+
+            <div class="compose-preview-member-row priority-row">
+              <button
+                v-for="option in priorityOptions"
+                :key="option.value"
+                type="button"
+                class="compose-member-chip"
+                :class="{ active: draft.priority === option.value }"
+                @click="draft.priority = option.value"
+              >
+                {{ option.label }}
+              </button>
+            </div>
+          </section>
+
+          <section class="compose-preview-section">
+            <header class="compose-preview-section-head">
+              <div>
+                <p class="eyebrow">Progress</p>
+                <h2>推进方式</h2>
+              </div>
+              <span>{{ selectedProgressLabel }}</span>
+            </header>
+
+            <div class="compose-preview-option-grid compact">
+              <button
+                v-for="option in progressOptions"
+                :key="option.value"
+                type="button"
+                class="compose-option-card"
+                :class="{ active: draft.progressMode === option.value }"
+                @click="draft.progressMode = option.value"
+              >
+                <strong>{{ option.label }}</strong>
+              </button>
             </div>
 
-            <label class="compose-field">
-              <span class="compose-label">希望完成的日子</span>
+            <div v-if="draft.progressMode === 'count'" class="compose-preview-count-grid">
+              <label class="compose-field compact">
+                <span>当前</span>
+                <input v-model.number="draft.progressCurrent" type="number" min="0" />
+              </label>
+              <label class="compose-field compact">
+                <span>目标</span>
+                <input v-model.number="draft.progressTarget" type="number" min="1" />
+              </label>
+              <label class="compose-field compact">
+                <span>单位</span>
+                <input v-model="draft.progressUnit" type="text" maxlength="10" placeholder="次 / 公里 / 页" />
+              </label>
+            </div>
+
+            <div v-else-if="draft.progressMode === 'steps' && !editingWish" class="compose-preview-steps-stage">
+              <div class="compose-preview-step-head">
+                <span>起步步骤 {{ initialStepCount }}</span>
+                <button type="button" class="compose-inline-action" @click="addInitialStepField">再加一步</button>
+              </div>
+
+              <div class="compose-preview-step-list">
+                <label v-for="index in initialStepDrafts.length" :key="index" class="compose-field compact">
+                  <span>第 {{ index }} 步</span>
+                  <div class="compose-preview-step-field">
+                    <input
+                      v-model="initialStepDrafts[index - 1]"
+                      type="text"
+                      maxlength="30"
+                      placeholder="写一个很小的起步动作"
+                    />
+                    <button type="button" class="compose-inline-action subtle" @click="removeInitialStepField(index - 1)">
+                      移除
+                    </button>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div v-else-if="draft.progressMode === 'steps' && editingWish" class="compose-preview-step-notice">
+              <strong>这条愿望已经有步骤管理区了</strong>
+              <p>写下页只改基本信息；如果要继续拆步骤，回详情页会更顺。</p>
+              <RouterLink class="compose-inline-action" :to="{ name: 'wish-detail', params: { id: editingWish.id } }">
+                去详情页管理步骤
+              </RouterLink>
+            </div>
+          </section>
+
+          <div class="compose-preview-bottom-row">
+            <label class="compose-field compact compose-field-date">
+              <span>想在什么时候开始靠近</span>
               <input v-model="draft.dueDate" type="date" />
             </label>
 
-            <label class="compose-field is-wide">
-              <span class="compose-label">放进哪一类生活里？</span>
-              <input v-model="draft.category" type="text" maxlength="20" placeholder="旅行 / 生活 / 成长" />
-              <div class="compose-category-row">
-                <button
-                  v-for="category in categorySuggestions"
-                  :key="category"
-                  class="compose-category-chip"
-                  type="button"
-                  @click="applyCategory(category)"
-                >
-                  {{ category }}
-                </button>
-              </div>
-            </label>
-          </div>
-        </section>
-
-        <section class="compose-atelier-block is-direction">
-          <div class="compose-atelier-block-head">
-            <h3>再决定它怎样被一起看见</h3>
-            <p>把范围、轻重和推进方式先定下来。</p>
-          </div>
-
-          <div class="compose-choice-stack">
-            <label class="compose-choice-card">
-              <div class="compose-choice-copy">
-                <span class="compose-label">公开范围</span>
-                <strong>{{ selectedScopeLabel }}</strong>
-                <p class="compose-select-hint">{{ selectedScopeDescription }}</p>
-              </div>
-              <div class="compose-select-shell">
-                <select v-model="draft.scope">
-                  <option v-for="option in scopeOptions" :key="option.value" :value="option.value">
-                    {{ option.label }}
-                  </option>
-                </select>
-                <span class="compose-select-caret" aria-hidden="true"></span>
-              </div>
-            </label>
-
-            <label class="compose-choice-card">
-              <div class="compose-choice-copy">
-                <span class="compose-label">优先级</span>
-                <strong>{{ selectedPriorityLabel }}</strong>
-                <p class="compose-select-hint">{{ selectedPriorityDescription }}</p>
-              </div>
-              <div class="compose-select-shell">
-                <select v-model="draft.priority">
-                  <option v-for="option in priorityOptions" :key="option.value" :value="option.value">
-                    {{ option.label }}
-                  </option>
-                </select>
-                <span class="compose-select-caret" aria-hidden="true"></span>
-              </div>
-            </label>
-
-            <label class="compose-choice-card">
-              <div class="compose-choice-copy">
-                <span class="compose-label">进度方式</span>
-                <strong>{{ selectedProgressLabel }}</strong>
-                <p class="compose-select-hint">{{ selectedProgressDescription }}</p>
-              </div>
-              <div class="compose-select-shell">
-                <select v-model="draft.progressMode">
-                  <option v-for="option in progressOptions" :key="option.value" :value="option.value">
-                    {{ option.label }}
-                  </option>
-                </select>
-                <span class="compose-select-caret" aria-hidden="true"></span>
-              </div>
-            </label>
-          </div>
-
-          <p class="compose-inline-note">{{ progressDetail }}</p>
-
-          <div v-if="draft.progressMode === 'count'" class="compose-detail-card">
-            <div class="compose-detail-grid">
-              <label class="compose-field">
-                <span class="compose-label">目标是多少？</span>
-                <input v-model.number="draft.progressTarget" type="number" min="1" max="9999" placeholder="例如：10" />
-              </label>
-
-              <label class="compose-field">
-                <span class="compose-label">现在走到哪里了？</span>
-                <input v-model.number="draft.progressCurrent" type="number" min="0" max="9999" placeholder="例如：2" />
-              </label>
-
-              <label class="compose-field is-wide">
-                <span class="compose-label">量词是什么？</span>
-                <input v-model="draft.progressUnit" type="text" maxlength="12" placeholder="例如：本 / 次 / 节 / 公里" />
-              </label>
+            <div class="compose-preview-actions">
+              <button type="button" class="compose-secondary-button" @click="editingWish ? cancelEditing() : resetDraft()">
+                {{ resetButtonLabel }}
+              </button>
+              <button type="submit" class="compose-primary-button compose-mobile-submit">
+                {{ submitButtonLabel }}
+              </button>
             </div>
           </div>
+        </form>
 
-          <div v-else-if="draft.progressMode === 'steps' && !editingWish" class="compose-detail-card compose-step-card">
-            <div class="compose-hint-head">
-              <strong>先给这条愿望拆几步</strong>
-              <span>现在已经写了 {{ initialStepCount }} 个初始步骤</span>
+        <aside class="compose-preview-summary-stage">
+          <p class="compose-preview-summary-kicker">实时预览</p>
+          <h2>{{ draftTitlePreview }}</h2>
+          <p class="compose-preview-summary-note">{{ draftNotePreview }}</p>
+
+          <dl class="compose-preview-meta-list">
+            <div>
+              <dt>归属</dt>
+              <dd>{{ selectedOwnerLabel }}</dd>
             </div>
-            <p>先预填第一批步骤，写下后再去详情页补和勾选。</p>
-
-            <div class="compose-step-list">
-              <label v-for="(_, index) in initialStepDrafts" :key="`preview-initial-step-${index}`" class="compose-step-row">
-                <span class="compose-label">初始步骤 {{ index + 1 }}</span>
-                <div class="compose-step-input-row">
-                  <input v-model="initialStepDrafts[index]" type="text" maxlength="60" :placeholder="`例如：第 ${index + 1} 步要先做什么`" />
-                  <button class="compose-inline-button" type="button" @click="removeInitialStepField(index)">删掉</button>
-                </div>
-              </label>
+            <div>
+              <dt>范围</dt>
+              <dd>{{ selectedScopeLabel }}</dd>
             </div>
-
-            <button class="compose-inline-button is-soft" type="button" @click="addInitialStepField">再加一步</button>
-          </div>
-
-          <div v-else-if="draft.progressMode === 'steps' && editingWish" class="compose-detail-card compose-step-card">
-            <div class="compose-hint-head">
-              <strong>这条愿望已经有步骤管理区了</strong>
-              <span>后续新增、勾选和删除都继续放在详情页</span>
+            <div>
+              <dt>优先级</dt>
+              <dd>{{ selectedPriorityLabel }}</dd>
             </div>
-            <p>写下页只改基本信息；要继续拆步骤，回详情页会更顺。</p>
-            <RouterLink class="compose-inline-button is-soft" :to="{ name: 'wish-detail', params: { id: editingWish.id } }">
-              去详情页管理步骤
-            </RouterLink>
-          </div>
-        </section>
+            <div>
+              <dt>进度</dt>
+              <dd>{{ progressSummary }}</dd>
+            </div>
+            <div>
+              <dt>日期</dt>
+              <dd>{{ dueDateLabel }}</dd>
+            </div>
+          </dl>
 
-        <section class="compose-atelier-block is-memory">
-          <div class="compose-atelier-block-head">
-            <h3>最后留下此刻为什么想实现</h3>
-            <p>留一句原因，让这一页更像现在的心情。</p>
-          </div>
+          <section class="compose-preview-scene">
+            <p class="compose-preview-scene-label">收进首页时会更像这样</p>
+            <div class="compose-preview-mini-card">
+              <span>{{ draft.category || '生活' }}</span>
+              <strong>{{ draftTitlePreview }}</strong>
+              <p>{{ progressSummary }}</p>
+            </div>
+          </section>
 
-          <label class="compose-field is-wide">
-            <span class="compose-label">为什么想实现？</span>
-            <textarea v-model="draft.note" rows="6" maxlength="180" placeholder="写下完成那天，你希望记住的画面。"></textarea>
-          </label>
-        </section>
+          <section v-if="stepPreview.length" class="compose-preview-step-preview">
+            <p class="compose-preview-scene-label">起步步骤</p>
+            <ol>
+              <li v-for="step in stepPreview" :key="step">{{ step }}</li>
+            </ol>
+          </section>
 
-        <div class="compose-atelier-submit-row">
-          <div class="compose-atelier-submit-copy">
-            <span>{{ editingWish ? '把这次修改认真写回清单' : '把这条愿望放进共同生活' }}</span>
-            <p>
-              {{
-                editingWish
-                  ? '保存后，它会带着新的基本信息继续留在原来的详情页里。'
-                  : '写下后它会先出现在清单里，步骤和留言后面再补。'
-              }}
-            </p>
-          </div>
+          <p v-if="feedbackMessage" class="compose-preview-feedback" :class="feedbackToneClass" role="status" aria-live="polite">{{ feedbackMessage }}</p>
 
-          <div class="compose-atelier-actions">
-            <button class="compose-submit-button" type="submit">{{ editingWish ? '保存修改' : '放进清单' }}</button>
-            <button v-if="editingWish" class="compose-reset-button" type="button" @click="cancelEditing">先不改了</button>
-            <button v-else class="compose-reset-button" type="button" @click="resetDraft">重新写</button>
-          </div>
-        </div>
-
-        <p v-if="feedbackMessage" :class="['compose-feedback', feedbackTone]">{{ feedbackMessage }}</p>
-      </form>
+          <button type="submit" form="compose-atelier-form" class="compose-primary-button compose-preview-submit">
+            {{ submitButtonLabel }}
+          </button>
+        </aside>
+      </div>
     </article>
   </section>
 </template>
 
 <style scoped>
-.compose-atelier-page {
-  font-family: var(--font-body);
-}
-
-.compose-atelier-page,
-.compose-atelier-form,
-.compose-atelier-form-grid,
-.compose-atelier-block,
-.compose-atelier-intro-copy,
-.compose-atelier-preview-copy,
-.compose-atelier-preview-meta,
-.compose-atelier-overview-grid,
-.compose-atelier-sequence,
-.compose-choice-stack,
-.compose-choice-copy,
-.compose-detail-grid,
-.compose-step-list,
-.compose-atelier-section-copy,
-.compose-atelier-section-aside,
-.compose-atelier-submit-row,
-.compose-atelier-submit-copy {
+.compose-live-page {
   display: grid;
-  gap: 1rem;
+  gap: 0.85rem;
+  font-family: var(--font-body);
 }
 
-.compose-atelier-hero-actions,
-.compose-atelier-chip-row,
-.compose-category-row,
-.compose-atelier-actions,
- .compose-step-input-row {
-  display: flex;
-  gap: 0.72rem;
-  flex-wrap: wrap;
-}
-
-.compose-atelier-hero {
+.compose-preview-shell {
   display: grid;
-  gap: 1rem;
-}
-
-.compose-atelier-kicker,
-.compose-hint-head span {
-  margin: 0;
-  font-family: var(--font-body);
-  color: rgba(70, 53, 45, 0.66);
-  font-size: var(--type-eyebrow-size);
-  font-weight: 600;
-  letter-spacing: var(--type-eyebrow-spacing);
-  line-height: 1.4;
-  text-transform: uppercase;
-}
-
-.compose-atelier-overview-card span,
-.compose-atelier-preview-meta span {
-  margin: 0;
-  font-family: var(--font-body);
-  color: rgba(70, 53, 45, 0.68);
-  font-size: var(--type-meta-size);
-  font-weight: 600;
-  line-height: var(--type-meta-line);
-  letter-spacing: var(--type-meta-spacing);
-}
-
-.compose-atelier-preview-card > .compose-atelier-kicker {
-  font-size: calc(var(--type-eyebrow-size) - 1px);
-  letter-spacing: 0.14em;
-}
-
-.compose-label {
-  margin: 0;
-  font-family: var(--font-body);
-  color: rgba(70, 53, 45, 0.74);
-  font-size: var(--type-meta-size);
-  font-weight: 600;
-  line-height: var(--type-meta-line);
-  letter-spacing: var(--type-meta-spacing);
-}
-
-.compose-atelier-button,
-.compose-category-chip,
-.compose-inline-button,
-.compose-submit-button,
-.compose-reset-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 42px;
-  border-radius: 999px;
-  font-family: var(--font-body);
-  font-size: var(--type-body-size);
-  font-weight: 500;
-  line-height: 1.15;
-  letter-spacing: var(--type-button-tracking);
-  text-decoration: none;
-  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
-}
-
-.compose-atelier-button.is-ghost,
-.compose-atelier-button.is-soft,
-.compose-category-chip,
-.compose-inline-button,
-.compose-reset-button {
-  padding: 0.55rem 0.9rem;
-  border: 1px solid rgba(126, 96, 76, 0.14);
-  background: rgba(255, 255, 255, 0.74);
-  color: #362720;
-}
-
-.compose-atelier-button.is-soft {
-  background: rgba(243, 222, 210, 0.56);
-  border-color: rgba(201, 111, 74, 0.16);
-}
-
-.compose-atelier-button,
-.compose-submit-button {
-  padding: 0.7rem 1.18rem;
-}
-
-.compose-atelier-button.is-solid,
-.compose-submit-button {
-  border: 0;
-  background: linear-gradient(135deg, #c97c61, #9f5d50);
-  color: #fffaf5;
-  box-shadow: 0 16px 30px rgba(163, 91, 73, 0.24);
-}
-
-.compose-atelier-button:hover,
-.compose-category-chip:hover,
-.compose-inline-button:hover,
-.compose-submit-button:hover,
-.compose-reset-button:hover {
-  transform: translateY(-1px);
-}
-
-.compose-inline-button.is-soft {
-  background: rgba(210, 121, 87, 0.12);
-  border-color: rgba(210, 121, 87, 0.2);
-}
-
-.compose-atelier-hero {
-  grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr);
-  align-items: stretch;
-}
-
-.compose-atelier-intro,
-.compose-atelier-preview-card,
-.compose-atelier-form-shell {
-  display: grid;
-  gap: 1.05rem;
-  padding: 1.18rem;
-}
-
-.compose-atelier-intro {
+  gap: 0.82rem;
+  padding: clamp(0.88rem, 1.8vw, 1.08rem);
   background:
-    radial-gradient(circle at top right, rgba(226, 193, 206, 0.18), transparent 24%),
-    linear-gradient(180deg, rgba(255, 248, 243, 0.94), rgba(255, 255, 255, 0.68));
+    radial-gradient(circle at 100% 0%, rgba(216, 231, 220, 0.56), transparent 28%),
+    linear-gradient(160deg, rgba(255, 252, 247, 0.96), rgba(247, 242, 233, 0.94));
 }
 
-.compose-atelier-intro h1,
-.compose-atelier-preview-card h2,
-.compose-atelier-section-head h2,
-.compose-atelier-block-head h3 {
+.compose-preview-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.34fr) minmax(16rem, 0.66fr);
+  gap: 0.82rem;
+  align-items: end;
+}
+
+.compose-preview-hero-copy {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.compose-preview-hero h1 {
+  display: grid;
+  gap: 0.28rem;
   margin: 0;
-}
-
-.compose-atelier-intro h1 {
+  max-width: 20ch;
   font-family: var(--font-display);
+  font-size: var(--type-page-title-size);
+  line-height: var(--type-page-title-line);
+  letter-spacing: var(--type-page-title-tracking);
   font-weight: 400;
-  letter-spacing: -0.032em;
 }
 
 .compose-atelier-hero-name,
@@ -566,428 +354,503 @@ const previewChips = computed(() => {
   font-family: var(--font-display);
 }
 
-.compose-atelier-preview-card h2,
-.compose-atelier-section-head h2,
-.compose-atelier-block-head h3 {
-  font-family: var(--font-heading);
-  font-weight: 600;
-  letter-spacing: -0.024em;
+.compose-preview-hero-copy-note {
+  margin: 0;
+  max-width: 33ch;
+  color: rgba(61, 46, 40, 0.82);
+  font-size: var(--type-lead-size);
+  line-height: var(--type-lead-line);
 }
 
-.compose-atelier-preview-card h2,
-.compose-atelier-block-head h3 {
+.compose-preview-lead {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: var(--type-l6-size);
+  line-height: var(--type-l6-line);
+  letter-spacing: var(--type-l6-spacing);
+}
+
+.compose-preview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.34fr) minmax(18rem, 0.66fr);
+  gap: 0.85rem;
+}
+
+.compose-preview-form-stage,
+.compose-preview-summary-stage {
+  display: grid;
+  gap: 0.82rem;
+}
+
+.compose-preview-form-stage {
+  padding: 0.88rem;
+  border: 1px solid rgba(95, 74, 55, 0.08);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.compose-field {
+  display: grid;
+  gap: 0.34rem;
+}
+
+.compose-field span,
+.compose-preview-step-head,
+.compose-preview-summary-kicker,
+.compose-preview-scene-label,
+.compose-preview-feedback,
+.compose-preview-meta-list dt {
+  color: var(--text-soft);
+  font-size: var(--type-l7-size);
+  letter-spacing: var(--type-l7-spacing);
+}
+
+.compose-field input,
+.compose-field textarea {
+  width: 100%;
+  border: 1px solid rgba(95, 74, 55, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 251, 246, 0.94);
+  color: var(--text-main);
+  font: inherit;
+  font-size: var(--type-l5-size);
+  padding: 0.72rem 0.84rem;
+  transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+}
+
+.compose-field textarea {
+  min-height: 5.6rem;
+  line-height: 1.6;
+}
+
+.compose-field input:focus,
+.compose-field textarea:focus {
+  outline: none;
+  border-color: rgba(201, 111, 74, 0.26);
+  box-shadow: 0 0 0 4px rgba(201, 111, 74, 0.08);
+  background: #fffdf9;
+}
+
+.compose-field-title input {
+  font-family: var(--font-heading);
   font-size: var(--type-card-title-size);
   line-height: var(--type-card-title-line);
   letter-spacing: var(--type-card-title-tracking);
 }
 
-.compose-atelier-section-head h2 {
-  font-size: var(--type-section-title-size);
-  line-height: var(--type-section-title-line);
-  letter-spacing: var(--type-section-title-tracking);
+.compose-preview-chip-row,
+.compose-preview-member-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.46rem;
 }
 
-.compose-atelier-intro h1 {
-  display: grid;
-  gap: 0.28rem;
-  font-size: var(--type-page-title-size);
-  line-height: var(--type-page-title-line);
-  letter-spacing: var(--type-page-title-tracking);
-}
-
-.compose-atelier-lead,
-.compose-atelier-sublead,
-.compose-atelier-overview-card p,
-.compose-atelier-preview-card p,
-.compose-atelier-form-note,
-.compose-atelier-block-head p,
-.compose-inline-note,
-.compose-detail-card p,
-.compose-select-hint {
-  margin: 0;
-  font-family: var(--font-body);
-  color: rgba(61, 46, 40, 0.74);
-  font-size: var(--type-body-size);
-  line-height: var(--type-body-line);
-}
-
-.compose-atelier-intro-copy,
-.compose-atelier-preview-copy {
-  gap: 0.75rem;
-}
-
-.compose-atelier-lead {
-  max-width: 33ch;
-  font-size: var(--type-lead-size);
-  line-height: var(--type-lead-line);
-}
-
-.compose-atelier-sublead,
-.compose-atelier-preview-note {
-  max-width: 42ch;
-  color: rgba(76, 59, 50, 0.7);
-}
-
-.compose-atelier-sequence-card {
-  display: grid;
-  gap: 0.32rem;
-  padding: 0.92rem 0.96rem;
-  border-radius: 22px;
-  border: 1px solid rgba(126, 96, 76, 0.1);
-  background: rgba(255, 255, 255, 0.54);
-}
-
-.compose-atelier-sequence-card span {
-  margin: 0;
-  color: rgba(70, 53, 45, 0.62);
-  font-family: var(--font-body);
-  font-size: var(--type-eyebrow-size);
-  font-weight: 600;
-  line-height: 1.4;
-  letter-spacing: var(--type-eyebrow-spacing);
-}
-
-.compose-atelier-sequence-card strong {
-  color: #2e1f19;
-  font-family: var(--font-heading);
-  font-size: 1rem;
-  font-weight: 600;
-  line-height: 1.3;
-  letter-spacing: -0.02em;
-}
-
-.compose-atelier-sequence-card p {
-  margin: 0;
-  color: rgba(76, 59, 50, 0.68);
-  font-family: var(--font-body);
-  font-size: var(--type-meta-size);
-  line-height: 1.55;
-}
-
-.compose-atelier-overview-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.78rem;
-}
-
-.compose-atelier-overview-card,
-.compose-atelier-preview-meta article,
-.compose-owner-card,
-.compose-choice-card,
-.compose-detail-card {
-  border: 1px solid rgba(126, 96, 76, 0.12);
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.68);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52);
-}
-
-.compose-atelier-overview-card,
-.compose-atelier-preview-meta article,
-.compose-owner-card,
-.compose-choice-card,
-.compose-detail-card {
-  display: grid;
-  gap: 0.38rem;
-  padding: 0.95rem 1rem;
-}
-
-.compose-atelier-overview-card.is-wide {
-  grid-column: 1 / -1;
-}
-
-.compose-atelier-overview-card strong,
-.compose-atelier-preview-meta strong,
-.compose-owner-card strong,
-.compose-hint-head strong {
-  color: #2e1f19;
-  font-family: var(--font-heading);
-  font-size: 1.1rem;
-  font-weight: 600;
-  line-height: 1.24;
-  letter-spacing: -0.02em;
-}
-
-.compose-atelier-preview-card {
-  background:
-    radial-gradient(circle at top right, rgba(234, 211, 151, 0.22), transparent 24%),
-    linear-gradient(180deg, rgba(255, 251, 246, 0.98), rgba(249, 241, 232, 0.76));
-}
-
-.compose-atelier-chip {
-  display: inline-flex;
-  align-items: center;
-  min-height: 34px;
-  padding: 0.42rem 0.76rem;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.74);
-  border: 1px solid rgba(126, 96, 76, 0.12);
-  color: #3d2c25;
-  font-family: var(--font-body);
-  font-size: var(--type-meta-size);
-  line-height: var(--type-meta-line);
-}
-
-.compose-atelier-preview-meta {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
-}
-
-.compose-atelier-preview-panel {
-  gap: 0.38rem;
-}
-
-.compose-atelier-preview-panel.is-wide {
-  grid-column: 1 / -1;
-}
-
-.compose-atelier-form-shell {
-  background: rgba(255, 252, 246, 0.84);
-}
-
-.compose-atelier-section-head,
-.compose-atelier-block-head,
-.compose-hint-head {
-  display: grid;
-  gap: 0.3rem;
-}
-
-.compose-atelier-section-head {
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.78fr);
-  align-items: start;
-  gap: 0.9rem 1.2rem;
-}
-
-.compose-atelier-section-copy {
-  gap: 0.35rem;
-  max-width: 36rem;
-}
-
-.compose-atelier-sequence {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.78rem;
-}
-
-.compose-atelier-section-aside {
-  gap: 0.55rem;
-  justify-items: start;
-}
-
-.compose-atelier-state-pill {
-  display: inline-flex;
-  align-items: center;
-  min-height: 34px;
-  padding: 0.42rem 0.78rem;
-  border-radius: 999px;
-  border: 1px solid rgba(126, 96, 76, 0.12);
-  background: rgba(255, 255, 255, 0.74);
-  color: rgba(70, 53, 45, 0.78);
-  font-family: var(--font-body);
-  font-size: var(--type-meta-size);
-  line-height: var(--type-meta-line);
-  letter-spacing: var(--type-meta-spacing);
-}
-
-.compose-atelier-block {
-  gap: 0.92rem;
-  padding: 1.08rem;
-  border: 1px solid rgba(126, 96, 76, 0.1);
-  border-radius: 26px;
-  background: rgba(255, 255, 255, 0.56);
-}
-
-.compose-atelier-block.is-foundation {
-  background: linear-gradient(180deg, rgba(255, 252, 247, 0.9), rgba(255, 255, 255, 0.56));
-}
-
-.compose-atelier-block.is-direction {
-  background: linear-gradient(180deg, rgba(251, 246, 240, 0.92), rgba(255, 255, 255, 0.54));
-}
-
-.compose-atelier-block.is-memory {
-  background: linear-gradient(180deg, rgba(249, 242, 236, 0.9), rgba(255, 255, 255, 0.52));
-}
-
-.compose-atelier-form-grid,
-.compose-detail-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.compose-field {
-  display: grid;
-  gap: 0.58rem;
-}
-
-.compose-field.is-wide {
-  grid-column: span 2;
-}
-
-.compose-category-row {
-  margin-top: 0.05rem;
-}
-
-.compose-category-chip {
-  padding: 0.48rem 0.82rem;
-}
-
-.compose-choice-stack {
-  gap: 0.72rem;
-}
-
-.compose-choice-card {
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.84fr);
-  align-items: start;
-  gap: 0.9rem 1rem;
-}
-
-.compose-choice-copy {
-  gap: 0.34rem;
-}
-
-.compose-choice-copy strong {
-  color: #2e1f19;
-  font-family: var(--font-heading);
-  font-size: 1.02rem;
-  font-weight: 600;
-  line-height: 1.36;
-  letter-spacing: -0.02em;
-}
-
-.compose-select-shell {
-  position: relative;
-}
-
-.compose-select-shell select {
-  appearance: none;
-  padding-right: 2.8rem;
-}
-
-.compose-select-caret {
-  position: absolute;
-  top: 50%;
-  right: 1rem;
-  width: 10px;
-  height: 10px;
-  border-right: 2px solid rgba(102, 78, 63, 0.52);
-  border-bottom: 2px solid rgba(102, 78, 63, 0.52);
-  transform: translateY(-70%) rotate(45deg);
-  pointer-events: none;
-}
-
-.compose-inline-note {
-  padding: 0 0.12rem;
-  max-width: 58ch;
-}
-
-.compose-step-row {
-  display: grid;
-  gap: 0.45rem;
-}
-
-.compose-step-input-row {
-  align-items: center;
-}
-
-.compose-atelier-submit-row {
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.9rem 1rem;
-  align-items: end;
-  padding-top: 0.18rem;
-}
-
-.compose-atelier-submit-copy {
+.compose-preview-member-row.priority-row {
+  flex-wrap: nowrap;
   gap: 0.4rem;
-  max-width: 34rem;
 }
 
-.compose-atelier-submit-copy span {
-  margin: 0;
-  font-family: var(--font-body);
-  color: rgba(70, 53, 45, 0.68);
-  font-size: var(--type-eyebrow-size);
+.compose-chip,
+.compose-member-chip,
+.compose-inline-action,
+.compose-secondary-button,
+.compose-primary-button,
+.compose-option-card {
+  border: 1px solid rgba(95, 74, 55, 0.1);
+  font: inherit;
+}
+
+.compose-chip,
+.compose-member-chip,
+.compose-inline-action,
+.compose-secondary-button,
+.compose-primary-button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 34px;
+  padding: 0.42rem 0.68rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.76);
+  color: var(--text-main);
+  font-size: var(--type-l7-size);
+  text-decoration: none;
+}
+
+.compose-chip.active,
+.compose-member-chip.active {
+  border-color: rgba(201, 111, 74, 0.24);
+  background: rgba(255, 241, 232, 0.94);
+  color: var(--accent-dark);
+}
+
+.compose-preview-section {
+  display: grid;
+  gap: 0.7rem;
+  padding-top: 0.72rem;
+  border-top: 1px solid rgba(95, 74, 55, 0.08);
+}
+
+.compose-preview-section.compact {
+  padding-top: 0;
+  border-top: none;
+}
+
+.compose-preview-section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  align-items: end;
+}
+
+.compose-preview-section-head h2,
+.compose-preview-summary-stage h2 {
+  margin: 0.12rem 0 0;
+  font-family: var(--font-heading);
+  font-size: var(--type-card-title-size);
+  line-height: var(--type-card-title-line);
+  letter-spacing: var(--type-card-title-tracking);
+}
+
+.compose-preview-section-head span {
+  color: var(--text-soft);
+  font-size: var(--type-l7-size);
+}
+
+.compose-preview-option-grid {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.42rem;
+}
+
+.compose-preview-option-grid > * {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.compose-option-card {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 34px;
+  padding: 0.48rem 0.3rem;
+  border-radius: 999px;
+  background: rgba(255, 251, 246, 0.92);
+  text-align: center;
+}
+
+.compose-option-card strong {
+  min-width: 0;
+  font-size: var(--type-l7-size);
   font-weight: 600;
-  letter-spacing: var(--type-eyebrow-spacing);
-  line-height: 1.4;
+  line-height: var(--type-l7-line);
+}
+
+.compose-option-card.active {
+  border-color: rgba(201, 111, 74, 0.24);
+  background: linear-gradient(155deg, rgba(255, 245, 237, 0.98), rgba(253, 237, 223, 0.95));
+}
+
+.compose-preview-count-grid,
+.compose-preview-bottom-row {
+  display: grid;
+  gap: 0.78rem;
+}
+
+.compose-preview-count-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.compose-preview-bottom-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.compose-field.compact input {
+  padding: 0.64rem 0.78rem;
+}
+
+.compose-preview-steps-stage,
+.compose-preview-step-notice {
+  display: grid;
+  gap: 0.62rem;
+}
+
+.compose-preview-step-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.compose-preview-step-list {
+  display: grid;
+  gap: 0.62rem;
+}
+
+.compose-preview-step-field {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.compose-preview-step-notice {
+  padding: 0.8rem;
+  border-radius: 18px;
+  border: 1px solid rgba(95, 74, 55, 0.08);
+  background: rgba(255, 251, 246, 0.76);
+}
+
+.compose-preview-step-notice strong {
+  color: var(--text-main);
+  font-family: var(--font-heading);
+  font-size: var(--type-l5-size);
+  line-height: var(--type-l5-line);
+}
+
+.compose-preview-step-notice p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: var(--type-l6-size);
+  line-height: var(--type-l6-line);
+}
+
+.compose-inline-action {
+  font-size: var(--type-l7-size);
+}
+
+.compose-inline-action.subtle {
+  color: var(--text-soft);
+}
+
+.compose-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 0.55rem;
+  align-items: end;
+}
+
+.compose-preview-submit {
+  width: 100%;
+}
+
+.compose-mobile-submit {
+  display: none;
+}
+
+.compose-primary-button {
+  background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+  color: #fffaf2;
+  box-shadow: 0 14px 28px rgba(191, 101, 66, 0.18);
+}
+
+.compose-preview-summary-stage {
+  align-content: start;
+  padding: 0.88rem;
+  border: 1px solid rgba(95, 74, 55, 0.08);
+  border-radius: 22px;
+  background: linear-gradient(160deg, rgba(255, 249, 242, 0.98), rgba(246, 240, 231, 0.96));
+}
+
+@media (min-width: 961px) {
+  .compose-preview-summary-stage {
+    position: sticky;
+    top: 0.85rem;
+  }
+}
+
+.compose-preview-summary-stage h2,
+.compose-preview-summary-note {
+  margin: 0;
+}
+
+.compose-preview-summary-note {
+  color: var(--text-soft);
+  font-size: var(--type-l6-size);
+  line-height: var(--type-l6-line);
+}
+
+.compose-preview-meta-list {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+}
+
+.compose-preview-meta-list div {
+  display: grid;
+  grid-template-columns: 4rem 1fr;
+  gap: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid rgba(95, 74, 55, 0.08);
+}
+
+.compose-preview-meta-list dd {
+  margin: 0;
+  font-size: var(--type-l6-size);
+}
+
+.compose-preview-scene,
+.compose-preview-step-preview {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.compose-preview-mini-card {
+  display: grid;
+  gap: 0.36rem;
+  padding: 0.8rem;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(95, 74, 55, 0.08);
+}
+
+.compose-preview-mini-card span {
+  color: var(--text-soft);
+  font-size: var(--type-l7-size);
+  letter-spacing: var(--type-l7-spacing);
   text-transform: uppercase;
 }
 
-.compose-atelier-submit-copy p {
+.compose-preview-mini-card strong {
+  font-family: var(--font-heading);
+  font-size: var(--type-card-title-size);
+  line-height: var(--type-card-title-line);
+}
+
+.compose-preview-mini-card p {
   margin: 0;
-  font-family: var(--font-body);
-  color: rgba(76, 59, 50, 0.74);
-  font-size: var(--type-body-size);
-  line-height: var(--type-body-line);
+  font-size: var(--type-l6-size);
+  color: var(--text-soft);
 }
 
-.compose-atelier-actions {
-  justify-content: flex-start;
-}
-
-.compose-feedback {
+.compose-preview-step-preview ol {
+  display: grid;
+  gap: 0.46rem;
   margin: 0;
-  font-family: var(--font-body);
-  font-size: var(--type-body-size);
-  line-height: var(--type-body-line);
+  padding-left: 1.1rem;
+  color: var(--text-soft);
+  font-size: var(--type-l6-size);
 }
 
-.compose-feedback.success {
+.compose-preview-feedback {
+  margin: 0;
+  padding: 0.62rem 0.76rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(95, 74, 55, 0.08);
+  background: rgba(255, 255, 255, 0.64);
+  color: var(--text-soft);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
+}
+
+.compose-preview-feedback-success {
   color: var(--success);
+  border-color: rgba(75, 129, 96, 0.16);
+  background: rgba(216, 231, 220, 0.44);
 }
 
-.compose-feedback.danger {
+.compose-preview-feedback-danger {
   color: var(--danger);
+  border-color: rgba(142, 91, 73, 0.16);
+  background: rgba(241, 214, 202, 0.44);
 }
 
-@media (max-width: 1100px) {
-  .compose-atelier-hero,
-  .compose-atelier-section-head,
-  .compose-atelier-sequence,
-  .compose-choice-card,
-  .compose-atelier-submit-row {
+.compose-preview-feedback-info {
+  color: rgba(76, 59, 50, 0.76);
+  border-color: rgba(126, 96, 76, 0.14);
+  background: rgba(255, 250, 244, 0.7);
+}
+
+.compose-preview-feedback-warning {
+  color: var(--warning);
+  border-color: rgba(185, 126, 65, 0.18);
+  background: rgba(252, 238, 214, 0.54);
+}
+
+.priority-row .compose-member-chip {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0.38rem 0.46rem;
+  font-size: var(--type-l7-size);
+  line-height: var(--type-l7-line);
+  text-align: center;
+}
+
+@media (max-width: 960px) {
+  .compose-preview-hero,
+  .compose-preview-grid {
     grid-template-columns: 1fr;
+  }
+
+  .compose-preview-hero h1 {
+    max-width: none;
   }
 }
 
-@media (max-width: 820px) {
-  .compose-atelier-overview-grid,
-  .compose-atelier-preview-meta,
-  .compose-atelier-form-grid,
-  .compose-detail-grid,
-  .compose-step-input-row {
+@media (max-width: 720px) {
+  .compose-preview-count-grid,
+  .compose-preview-bottom-row {
     grid-template-columns: 1fr;
   }
 
-  .compose-atelier-overview-card.is-wide,
-  .compose-atelier-preview-panel.is-wide {
-    grid-column: auto;
+  .compose-preview-step-field {
+    flex-direction: column;
+    align-items: stretch;
   }
 
-  .compose-field.is-wide {
-    grid-column: auto;
+  .compose-preview-actions {
+    justify-content: stretch;
+  }
+
+  .compose-mobile-submit {
+    display: inline-flex;
+  }
+
+  .compose-preview-submit {
+    display: none;
+  }
+
+  .compose-primary-button,
+  .compose-secondary-button {
+    width: 100%;
+    justify-content: center;
   }
 }
 
 @media (max-width: 640px) {
-  .compose-atelier-intro h1 {
+  .compose-preview-hero h1 {
     font-size: var(--type-page-title-size);
   }
 
-  .compose-atelier-intro,
-  .compose-atelier-preview-card,
-  .compose-atelier-form-shell,
-  .compose-atelier-block,
-  .compose-atelier-overview-card,
-  .compose-atelier-preview-meta article,
-  .compose-owner-card,
-  .compose-choice-card,
-  .compose-detail-card {
+  .compose-preview-form-stage,
+  .compose-preview-summary-stage {
     padding: 0.9rem;
   }
 
-  .compose-atelier-button,
-  .compose-submit-button,
-  .compose-reset-button,
-  .compose-inline-button,
-  .compose-category-chip {
-    min-height: 40px;
+  .compose-preview-option-grid,
+  .compose-preview-member-row.priority-row {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+    grid-template-columns: none;
+    overflow-x: auto;
+    padding-bottom: 0.1rem;
+    scrollbar-width: none;
+  }
+
+  .compose-preview-option-grid::-webkit-scrollbar,
+  .compose-preview-member-row.priority-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  .compose-preview-option-grid > *,
+  .priority-row .compose-member-chip {
+    width: auto;
+    min-width: 4.8rem;
+    flex: 0 0 auto;
+    padding-inline: 0.7rem;
   }
 }
 </style>

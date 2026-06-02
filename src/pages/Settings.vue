@@ -1,740 +1,668 @@
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useSpacePageState } from '../composables/useSpacePageState'
 
 const space = reactive(useSpacePageState())
+
+type RewardHubTab = 'claim' | 'editor'
+
+const rewardHubTab = ref<RewardHubTab>('claim')
+
+const rewardHubTabs = [
+  {
+    label: '领奖',
+    note: '待领 / 兑换 / 记录',
+    value: 'claim' as const,
+  },
+  {
+    label: '编辑',
+    note: '写入 / 整理 / 奖池',
+    value: 'editor' as const,
+  },
+]
+
+const activeRewardHubTitle = computed(() => {
+  return rewardHubTab.value === 'claim' ? '领奖与兑换' : '编辑奖励池'
+})
+
+const activeRewardHubLead = computed(() => {
+  if (rewardHubTab.value === 'claim') {
+    if (space.pendingSmallRewardUnits) {
+      return `待领 ${space.pendingSmallRewardUnits} 份，兑换和最近记录也都收在这里。`
+    }
+
+    return '待领、兑换和最近记录都收在这里。'
+  }
+
+  if (space.currentMemberRewardCount) {
+    return '写新奖励、改旧奖励、整理奖池，都在这里。'
+  }
+
+  return '先写下一条会让自己开心的奖励。'
+})
+
+const activeRewardHubPills = computed(() => {
+  if (rewardHubTab.value === 'claim') {
+    return [
+      `待领 ${space.pendingSmallRewardUnits}`,
+      `可换 ${space.currentMemberPremiumExchangeRewards.length}`,
+      `记录 ${space.recentRewardClaims.length}`,
+    ]
+  }
+
+  return [
+    `日常 ${space.currentMemberDailyRewards.length}`,
+    `高档 ${space.currentMemberPremiumRewards.length}`,
+    `星币 ${space.currentMemberStarCoins}`,
+  ]
+})
+
+function openRewardEditor(itemId: string, tier: 'daily' | 'premium') {
+  rewardHubTab.value = 'editor'
+  space.startEditingReward(itemId, tier)
+}
+
+function formatRewardTitlePreview(rewards: Array<{ title: string }>, limit = 2) {
+  return rewards.slice(0, limit).map((reward) => reward.title).join('、')
+}
 </script>
 
 <template>
   <section class="page-stack space-page">
     <div class="space-main-stack">
-      <details class="page-card space-shell-card space-main-card space-united-card space-fold-card">
-        <summary class="space-fold-summary space-main-summary">
-          <div class="space-main-summary-shell">
-            <div class="space-main-summary-topline">
-              <div class="space-main-summary-topcopy">
-                <p class="eyebrow space-main-kicker">共同空间 Space</p>
-                <p class="space-main-summary-lead">邀请、奖励和照片备份都收在这里，先认人，再看这间空间的节奏。</p>
+      <article class="page-card space-shell-card space-main-card space-united-card">
+        <div class="space-main-summary-shell">
+          <div class="space-main-summary-intro">
+            <div class="space-hero-copy-block">
+              <p class="eyebrow space-main-kicker">共同空间 Space</p>
+              <h1 class="section-title space-hero-title">把两个人的日常收在同一页</h1>
+              <p class="section-copy space-main-summary-lead">成员、邀请、奖励和照片，都从这里往后翻。</p>
+            </div>
+
+            <aside class="space-main-summary-side space-main-summary-side-compact" aria-label="空间摘要">
+              <div class="pill-row space-hero-pill-row">
+                <span v-for="badge in space.heroBadges" :key="badge" class="pill">{{ badge }}</span>
               </div>
 
-              <div class="space-main-summary-controls">
-                <div class="space-main-summary-stamp">这间空间还在慢慢往前走</div>
+              <div class="space-main-summary-digest">
+                <strong>{{ space.memberNamesLabel }}</strong>
+                <p>{{ space.currentRoleLabel }} · 本周 {{ space.wishStore.currentMemberRemainingCoins }} 枚愿望币 · 奖励 {{ space.currentMemberRewardCount }} 条 · 星币 {{ space.currentMemberStarCoins }} 枚</p>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </article>
 
-                <div class="space-fold-toggle space-fold-toggle-strong" aria-hidden="true">
+      <article class="page-card space-shell-card space-main-card space-reward-hub">
+        <div class="space-reward-hub-head">
+          <div class="space-reward-hub-copy">
+            <p class="eyebrow">奖励中心</p>
+            <h2 class="space-panel-title space-reward-hub-title">{{ activeRewardHubTitle }}</h2>
+            <p class="space-reward-hub-lead">{{ activeRewardHubLead }}</p>
+          </div>
+
+          <div class="space-reward-hub-pills">
+            <span v-for="pill in activeRewardHubPills" :key="pill" class="badge">{{ pill }}</span>
+          </div>
+        </div>
+
+        <div class="space-reward-hub-tabs" role="tablist" aria-label="奖励中心切换">
+          <button
+            v-for="tab in rewardHubTabs"
+            :key="tab.value"
+            type="button"
+            class="space-reward-hub-tab"
+            :class="{ active: rewardHubTab === tab.value }"
+            @click="rewardHubTab = tab.value"
+          >
+            <span class="space-reward-hub-tab-copy">
+              <span class="space-reward-hub-tab-label">{{ tab.label }}</span>
+              <span class="space-reward-hub-tab-note">{{ tab.note }}</span>
+            </span>
+          </button>
+        </div>
+
+        <p v-if="space.rewardMessage" :class="['feedback-message', 'space-reward-feedback', space.rewardTone]">{{ space.rewardMessage }}</p>
+
+        <template v-if="rewardHubTab === 'claim'">
+          <details class="space-inline-panel space-fold-card space-claim-fold space-claim-fold-top space-pending-stage">
+            <summary class="space-fold-summary space-claim-summary">
+              <div class="space-fold-copy-block">
+                <p class="eyebrow">待领奖励</p>
+                <h3 class="space-fold-title">先接住这些小奖励</h3>
+                <p class="space-fold-copy">步骤和数字进度累下来的小奖励，都会先收在这里。</p>
+              </div>
+
+              <div class="space-fold-meta">
+                <div class="badge-row">
+                  <span class="badge">待领 {{ space.pendingSmallRewardUnits }} 份</span>
+                  <span class="badge">步骤 {{ space.pendingStepRewards.length }} 条</span>
+                  <span class="badge">数字 {{ space.pendingCountRewardUnits }} 点</span>
+                </div>
+                <div class="space-fold-toggle" aria-hidden="true">
                   <span class="space-fold-toggle-state">
-                    <span class="space-fold-when-closed">展开看看</span>
-                    <span class="space-fold-when-open">先收起来</span>
+                    <span class="space-fold-when-closed">展开</span>
+                    <span class="space-fold-when-open">收起</span>
                   </span>
                   <span class="space-fold-arrow"></span>
                 </div>
               </div>
-            </div>
+            </summary>
 
-            <div class="space-main-summary-intro">
-              <div class="space-hero-copy-block">
-                <h1 class="section-title space-hero-title">把两个人的日常收在同一页</h1>
-                <p class="section-copy space-hero-copy">{{ space.heroCopy }}</p>
-              </div>
-
-              <div class="space-main-summary-side">
-                <p class="space-main-summary-helper">展开后会看到成员近况、邀请入口、照片余量和奖励账页。</p>
-
-                <div class="pill-row space-hero-pill-row">
-                  <span v-for="badge in space.heroBadges" :key="badge" class="pill">{{ badge }}</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="space-main-status-strip">
-              <article class="space-main-status-card space-main-status-card-identity">
-                <div class="space-main-status-copy">
-                  <span class="space-main-status-label">这页现在有谁</span>
-                  <strong>{{ space.memberNamesLabel }}</strong>
-                </div>
-                <p class="space-main-status-note">{{ space.identitySummary }}</p>
-              </article>
-
-              <article class="space-main-status-card">
-                <div class="space-main-status-copy">
-                  <span class="space-main-status-label">本周愿望币</span>
-                  <strong>{{ space.wishStore.currentMemberRemainingCoins }} 枚</strong>
-                </div>
-                <p class="space-main-status-note">{{ space.currentRoleLabel }}</p>
-              </article>
-
-              <article class="space-main-status-card">
-                <div class="space-main-status-copy">
-                  <span class="space-main-status-label">手边的奖励</span>
-                  <strong>{{ space.currentMemberRewardCount }} 条</strong>
-                </div>
-                <p class="space-main-status-note">{{ space.currentMemberStarCoins }} 枚星星币在手里</p>
-              </article>
-            </div>
-
-            <div class="space-main-summary-bottom">
-              <p class="space-main-summary-caption">{{ space.summaryGuide }}</p>
-            </div>
-          </div>
-        </summary>
-
-        <div class="space-fold-body space-main-fold-body">
-          <div class="summary-grid space-summary-grid">
-            <article v-for="card in space.summaryCards" :key="card.label" :class="['summary-card', 'space-summary-card', card.accent]">
-              <div class="space-summary-card-top">
-                <p>{{ card.label }}</p>
-                <span class="space-summary-card-note">{{ card.note }}</span>
-              </div>
-              <strong>{{ card.value }}</strong>
-              <span class="space-summary-caption">{{ card.caption }}</span>
-            </article>
-          </div>
-
-          <div class="space-united-divider"></div>
-
-          <div class="space-united-rhythm-head">
-            <div>
-              <p class="eyebrow">一起往前</p>
-              <h2 class="space-panel-title">我们现在的节奏</h2>
-            </div>
-            <span class="badge">成员维度</span>
-          </div>
-
-          <p class="section-copy">{{ space.relationshipLead }}</p>
-
-          <div class="space-member-grid">
-            <article v-for="item in space.memberStoryCards" :key="item.member.id" class="space-member-card">
-              <div class="member-head">
-                <div>
-                  <h3>{{ item.member.displayName }}</h3>
-                  <p class="space-member-summary">{{ item.summary }}</p>
-                </div>
-                <div class="badge-row">
-                  <span class="badge">{{ item.roleLabel }}</span>
-                  <span class="badge">{{ item.total }} 个愿望</span>
-                </div>
-              </div>
-
-              <div class="space-member-stat-grid">
-                <span v-for="pill in item.statPills" :key="pill" class="space-member-stat-pill">{{ pill }}</span>
-              </div>
-
-              <div class="space-member-meta">
-                <p class="space-member-supporting">{{ item.supportingLine }}</p>
-                <p class="muted">{{ item.footnote }}</p>
-              </div>
-            </article>
-          </div>
-        </div>
-      </details>
-
-      <article class="page-card space-shell-card space-main-card space-reward-editor">
-        <div class="space-reward-editor-head">
-          <div class="section-heading space-section-heading space-reward-section-heading">
-            <div class="space-reward-heading-copy">
-              <p class="eyebrow">奖池编辑台</p>
-              <h2 class="section-title">先把会开心的事写进奖池</h2>
-              <p class="section-copy">{{ space.rewardLead }}</p>
-            </div>
-
-            <p class="space-reward-heading-note">{{ space.rewardHeadingNote }}</p>
-          </div>
-
-          <aside class="space-reward-editor-note">
-            <p class="eyebrow">我的奖励案头</p>
-            <strong>{{ space.currentMemberRewardCount }} 条奖励，{{ space.currentMemberStarCoins }} 枚星星币</strong>
-            <p>{{ space.rewardDeskSummary }}</p>
-            <p class="space-reward-editor-note-support">{{ space.rewardDeskSupport }}</p>
-            <div class="space-reward-editor-stats">
-              <span class="badge">日常 {{ space.currentMemberDailyRewards.length }} 条</span>
-              <span class="badge">高档 {{ space.currentMemberPremiumRewards.length }} 条</span>
-            </div>
-          </aside>
-        </div>
-
-        <div class="space-reward-workbench">
-          <div class="space-reward-stage-head">
-            <div class="space-reward-stage-copy">
-              <p class="eyebrow">整理自己的奖池</p>
-              <h3 class="space-fold-title">先写下想保留的日常奖励和高档奖励</h3>
-              <p class="space-stage-support">这一栏只负责准备和整理奖池；小奖励领取和星星币兑换都在下一张，整条愿望完成时的高档奖励仍留在详情页。</p>
-            </div>
-            <span class="badge">这里只写和整理</span>
-          </div>
-
-          <div class="reward-form-grid space-reward-form-grid">
-            <form class="space-form reward-form-card" @submit.prevent="space.submitDailyReward">
-              <div class="space-subsection-heading">
-                <div>
-                  <p class="eyebrow">日常这一层</p>
-                  <h3>日常奖励</h3>
-                </div>
-                <span class="badge">给小步骤</span>
-              </div>
-
-              <div class="reward-form-copy">
-                <p class="reward-form-support">先写一个轻一点的小奖励。</p>
-                <p class="reward-form-meta">适合一次推进、完成一个小步骤，或想表扬自己的时候。</p>
-              </div>
-
-              <div class="reward-form-fields">
-                <label class="space-field-block">
-                  <span class="muted">奖励名称</span>
-                  <input v-model="space.dailyRewardTitleDraft" type="text" maxlength="120" placeholder="例如：一杯喜欢的奶茶 / 一顿轻松晚餐" />
-                </label>
-                <label class="space-field-block">
-                  <span class="muted">说明（可选）</span>
-                  <textarea v-model="space.dailyRewardNoteDraft" rows="3" maxlength="240" placeholder="写下这个小奖励为什么值得期待"></textarea>
-                </label>
-              </div>
-
-              <div class="reward-form-submit-row">
-                <p class="reward-form-submit-copy">{{ space.editingDailyRewardId ? '现在是在修改已有的日常奖励。' : '保存后，这条奖励会立刻出现在你的日常奖励货架里。' }}</p>
-
-                <div class="button-row reward-form-actions">
-                  <button class="button-solid" type="submit" :disabled="space.isSubmittingReward">
-                    {{ space.isSubmittingReward ? '保存中...' : space.editingDailyRewardId ? '更新日常奖励' : '加入日常奖励' }}
-                  </button>
-                  <button v-if="space.editingDailyRewardId" class="button-subtle" type="button" @click="space.resetRewardDraft('daily')">取消编辑</button>
-                </div>
-              </div>
-            </form>
-
-            <form class="space-form reward-form-card" @submit.prevent="space.submitPremiumReward">
-              <div class="space-subsection-heading">
-                <div>
-                  <p class="eyebrow">留给大日子</p>
-                  <h3>高档奖励</h3>
-                </div>
-                <span class="badge">给大日子</span>
-              </div>
-
-              <div class="reward-form-copy">
-                <p class="reward-form-support">留给完成大事，或想认真奖励自己的时候。</p>
-                <p class="reward-form-meta">想让它靠星星币慢慢换到，就把价格也一起写下来。</p>
-              </div>
-
-              <div class="reward-form-fields reward-form-fields-premium">
-                <label class="space-field-block">
-                  <span class="muted">奖励名称</span>
-                  <input v-model="space.premiumRewardTitleDraft" type="text" maxlength="120" placeholder="例如：心仪很久的大件 / 一次认真放松的体验" />
-                </label>
-                <label class="space-field-block">
-                  <span class="muted">说明（可选）</span>
-                  <textarea v-model="space.premiumRewardNoteDraft" rows="3" maxlength="240" placeholder="写下这个高档奖励真正吸引你的地方"></textarea>
-                </label>
-                <label class="space-field-block reward-form-cost-field">
-                  <span class="muted">星星币兑换价</span>
-                  <input v-model.number="space.premiumRewardCostDraft" type="number" min="0" max="999" />
-                </label>
-              </div>
-
-              <div class="reward-form-submit-row">
-                <p class="reward-form-submit-copy">{{ space.editingPremiumRewardId ? '现在是在修改已有的高档奖励。' : '保存后，它会出现在高档奖励货架里，并可按星星币价格兑换。' }}</p>
-
-                <div class="button-row reward-form-actions">
-                  <button class="button-solid" type="submit" :disabled="space.isSubmittingReward">
-                    {{ space.isSubmittingReward ? '保存中...' : space.editingPremiumRewardId ? '更新高档奖励' : '加入高档奖励' }}
-                  </button>
-                  <button v-if="space.editingPremiumRewardId" class="button-subtle" type="button" @click="space.resetRewardDraft('premium')">取消编辑</button>
-                </div>
-              </div>
-            </form>
-          </div>
-
-          <p v-if="space.rewardMessage" :class="['feedback-message', 'space-reward-feedback', space.rewardTone]">{{ space.rewardMessage }}</p>
-        </div>
-
-        <div class="space-reward-stage">
-          <div class="space-reward-stage-head">
-            <div>
-              <p class="eyebrow">我的奖励货架</p>
-              <h3 class="space-fold-title">已经写好的奖励</h3>
-            </div>
-            <span class="badge">这里只做整理</span>
-          </div>
-
-          <div class="reward-shelf-grid space-reward-shelf-grid">
-            <article class="reward-shelf-card">
-              <div class="space-subsection-heading">
-                <div>
-                  <p class="eyebrow">日常这一格</p>
-                  <h3>随手就能领的小奖励</h3>
-                </div>
-                <span class="badge">{{ space.currentMemberDailyRewards.length }} 条</span>
-              </div>
-
-              <div v-if="space.currentMemberDailyRewards.length" class="reward-card-grid">
-                <article v-for="item in space.currentMemberDailyRewards" :key="item.id" class="reward-card">
-                  <div class="reward-card-head">
-                    <div class="reward-card-copy">
-                      <span class="reward-card-kicker">日常奖励</span>
-                      <strong>{{ item.title }}</strong>
+            <div class="space-fold-body space-claim-fold-body">
+              <div class="space-pending-grid">
+                <details class="space-pending-card space-fold-card space-pending-fold">
+                  <summary class="space-fold-summary space-pending-summary">
+                    <div class="space-fold-copy-block">
+                      <p class="eyebrow">步骤奖励</p>
+                      <h3>完成了，还没领的步骤</h3>
+                      <p class="space-fold-copy">完成的小步骤会先排在这里，想领奖励或先存星星币，都从这里开始。</p>
                     </div>
-                    <span class="badge">日常奖励</span>
+
+                    <div class="space-fold-meta">
+                      <div class="badge-row">
+                        <span class="badge">{{ space.pendingStepRewards.length }} 条</span>
+                      </div>
+                      <div class="space-fold-toggle" aria-hidden="true">
+                        <span class="space-fold-toggle-state">
+                          <span class="space-fold-when-closed">展开</span>
+                          <span class="space-fold-when-open">收起</span>
+                        </span>
+                        <span class="space-fold-arrow"></span>
+                      </div>
+                    </div>
+                  </summary>
+
+                  <div class="space-fold-body space-pending-fold-body">
+                    <div v-if="space.pendingStepRewards.length" class="space-pending-list">
+                      <article v-for="item in space.pendingStepRewards" :key="item.stepId" class="space-pending-item">
+                        <div class="space-pending-copy">
+                          <span class="reward-card-kicker">来自「{{ item.wishTitle }}」</span>
+                          <strong>{{ item.stepTitle }}</strong>
+                          <p>这一步已经完成，小奖励现在先在空间页等你慢慢接住。</p>
+                        </div>
+
+                        <div class="space-meta-line reward-claim-meta">
+                          <span>{{ space.formatBeijingDateTime(item.completedAt) }}</span>
+                          <RouterLink class="button-subtle" :to="{ name: 'wish-detail', params: { id: item.wishId } }">回详情看这一步</RouterLink>
+                        </div>
+
+                        <div class="space-pending-controls">
+                          <label v-if="space.currentMemberDailyRewards.length" class="space-pending-select">
+                            <span class="muted">领哪条日常奖励</span>
+                            <select :value="space.getPendingRewardSelection(`step:${item.stepId}`)" @change="space.handlePendingRewardSelectionChange(`step:${item.stepId}`, $event)">
+                              <option v-for="reward in space.currentMemberDailyRewards" :key="reward.id" :value="reward.id">{{ reward.title }}</option>
+                            </select>
+                          </label>
+                          <p v-else class="muted">还没准备日常奖励，也可以先把这一笔存成星星币。</p>
+
+                          <div class="button-row space-pending-action-grid">
+                            <button
+                              class="button-subtle"
+                              type="button"
+                              :disabled="space.isProcessingPendingReward(`step:${item.stepId}:daily`) || !space.currentMemberDailyRewards.length"
+                              @click="void space.claimPendingStepReward(item.wishId, item.stepId)"
+                            >
+                              {{ space.isProcessingPendingReward(`step:${item.stepId}:daily`) ? '领取中...' : '领日常奖励' }}
+                            </button>
+                            <button
+                              class="button-subtle"
+                              type="button"
+                              :disabled="space.isProcessingPendingReward(`step:${item.stepId}:star`)"
+                              @click="void space.claimPendingStepReward(item.wishId, item.stepId, true)"
+                            >
+                              {{ space.isProcessingPendingReward(`step:${item.stepId}:star`) ? '存币中...' : '存成星星币' }}
+                            </button>
+                          </div>
+                        </div>
+                      </article>
+                    </div>
+
+                    <div v-else class="space-empty-card">
+                      <strong>现在没有待领取的步骤奖励</strong>
+                      <p>下一次把小步骤走完，它就会先落到这里。</p>
+                    </div>
                   </div>
-                  <p>{{ item.note || '这条日常奖励还没有补充说明。' }}</p>
-                  <p class="space-meta-line reward-card-meta">
-                    <span>已领 {{ space.wishStore.getRewardItemClaimCount(item) }} 份</span>
-                    <span>适合推进一点就顺手接住</span>
-                  </p>
-                  <div class="button-row reward-card-actions">
-                    <button class="button-subtle" type="button" @click="space.startEditingReward(item.id, 'daily')">编辑</button>
-                    <button
-                      class="button-subtle danger-button"
-                      type="button"
-                      :disabled="space.processingRewardItemId === item.id"
-                      @click="void space.archiveReward(item.id)"
-                    >
-                      {{ space.processingRewardItemId === item.id ? '处理中...' : '收起' }}
-                    </button>
+                </details>
+
+                <details class="space-pending-card space-pending-card-count space-fold-card space-pending-fold">
+                  <summary class="space-fold-summary space-pending-summary">
+                    <div class="space-fold-copy-block">
+                      <p class="eyebrow">数字奖励</p>
+                      <h3>积下来的进度也在这里</h3>
+                      <p class="space-fold-copy">数字推进累下来的小奖励，可以按 1 点或整批处理。</p>
+                    </div>
+
+                    <div class="space-fold-meta">
+                      <div class="badge-row">
+                        <span class="badge">{{ space.pendingCountRewardUnits }} 点</span>
+                      </div>
+                      <div class="space-fold-toggle" aria-hidden="true">
+                        <span class="space-fold-toggle-state">
+                          <span class="space-fold-when-closed">展开</span>
+                          <span class="space-fold-when-open">收起</span>
+                        </span>
+                        <span class="space-fold-arrow"></span>
+                      </div>
+                    </div>
+                  </summary>
+
+                  <div class="space-fold-body space-pending-fold-body">
+                    <div v-if="space.pendingCountRewardSummaries.length" class="space-pending-list">
+                      <article v-for="item in space.pendingCountRewardSummaries" :key="item.wishId" class="space-pending-item space-pending-item-count">
+                        <div class="space-pending-copy">
+                          <span class="reward-card-kicker">来自「{{ item.wishTitle }}」</span>
+                          <strong>还有 {{ space.getPendingCountUnitLabel(item.pendingUnits, item.progressUnit) }} 小奖励没去领</strong>
+                          <p>当前已经到 {{ item.progressCurrent }} / {{ item.progressTarget }}{{ item.progressUnit ? ` ${item.progressUnit}` : '' }}，可以一次领 1 点，也可以整批接住。</p>
+                        </div>
+
+                        <div class="space-meta-line reward-claim-meta">
+                          <span>这页最近更新于 {{ space.formatBeijingDateTime(item.updatedAt) }}</span>
+                          <RouterLink class="button-subtle" :to="{ name: 'wish-detail', params: { id: item.wishId } }">回详情看进度</RouterLink>
+                        </div>
+
+                        <div class="space-pending-controls">
+                          <label v-if="space.currentMemberDailyRewards.length" class="space-pending-select">
+                            <span class="muted">整批领日常奖励时，先选这一条</span>
+                            <select :value="space.getPendingRewardSelection(`count:${item.wishId}`)" @change="space.handlePendingRewardSelectionChange(`count:${item.wishId}`, $event)">
+                              <option v-for="reward in space.currentMemberDailyRewards" :key="reward.id" :value="reward.id">{{ reward.title }}</option>
+                            </select>
+                          </label>
+                          <p v-else class="muted">还没准备日常奖励时，也可以先按 1 点或整批存成星星币。</p>
+
+                          <div class="button-row space-pending-action-grid">
+                            <button
+                              class="button-subtle"
+                              type="button"
+                              :disabled="space.isProcessingPendingReward(`count:${item.wishId}:1:daily`) || !space.currentMemberDailyRewards.length"
+                              @click="void space.claimPendingCountReward(item.wishId, 1)"
+                            >
+                              {{ space.isProcessingPendingReward(`count:${item.wishId}:1:daily`) ? '领取中...' : '领 1 点日常奖励' }}
+                            </button>
+                            <button
+                              v-if="item.pendingUnits > 1"
+                              class="button-subtle"
+                              type="button"
+                              :disabled="space.isProcessingPendingReward(`count:${item.wishId}:${item.pendingUnits}:daily`) || !space.currentMemberDailyRewards.length"
+                              @click="void space.claimPendingCountReward(item.wishId, item.pendingUnits)"
+                            >
+                              {{ space.isProcessingPendingReward(`count:${item.wishId}:${item.pendingUnits}:daily`) ? '领取中...' : '整批领日常奖励' }}
+                            </button>
+                            <button
+                              class="button-subtle"
+                              type="button"
+                              :disabled="space.isProcessingPendingReward(`count:${item.wishId}:1:star`)"
+                              @click="void space.claimPendingCountReward(item.wishId, 1, true)"
+                            >
+                              {{ space.isProcessingPendingReward(`count:${item.wishId}:1:star`) ? '存币中...' : '存 1 点星星币' }}
+                            </button>
+                            <button
+                              v-if="item.pendingUnits > 1"
+                              class="button-subtle"
+                              type="button"
+                              :disabled="space.isProcessingPendingReward(`count:${item.wishId}:${item.pendingUnits}:star`)"
+                              @click="void space.claimPendingCountReward(item.wishId, item.pendingUnits, true)"
+                            >
+                              {{ space.isProcessingPendingReward(`count:${item.wishId}:${item.pendingUnits}:star`) ? '存币中...' : '整批存成星星币' }}
+                            </button>
+                          </div>
+                        </div>
+                      </article>
+                    </div>
+
+                    <div v-else class="space-empty-card">
+                      <strong>现在没有待领取的数字进度奖励</strong>
+                      <p>下次把数字往前推一点，这里就会先替你记住。</p>
+                    </div>
                   </div>
-                </article>
+                </details>
+              </div>
+            </div>
+          </details>
+
+          <details class="space-inline-panel space-fold-card space-claim-fold space-claim-fold-top">
+            <summary class="space-fold-summary space-claim-summary">
+              <div class="space-fold-copy-block">
+                <p class="eyebrow">星币兑换</p>
+                <h3 class="space-fold-title">把星星币换成奖励</h3>
+                <p class="space-fold-copy">这里只放写了星星币价格的高档奖励。</p>
               </div>
 
-              <div v-else class="space-empty-card">
-                <strong>还没有日常奖励</strong>
-                <p>先准备几条会让你开心的小奖励。</p>
-              </div>
-            </article>
-
-            <article class="reward-shelf-card reward-shelf-card-premium">
-              <div class="space-subsection-heading">
-                <div>
-                  <p class="eyebrow">大日子这一格</p>
-                  <h3>留给大日子的奖励</h3>
+              <div class="space-fold-meta">
+                <div class="badge-row">
+                  <span class="badge">可换 {{ space.currentMemberPremiumExchangeRewards.length }} 条</span>
+                  <span class="badge">手里 {{ space.currentMemberStarCoins }} 星币</span>
+                  <span class="badge">现在可换 {{ space.premiumRedeemableNowCount }} 条</span>
                 </div>
-                <span class="badge">{{ space.currentMemberPremiumRewards.length }} 条</span>
+                <div class="space-fold-toggle" aria-hidden="true">
+                  <span class="space-fold-toggle-state">
+                    <span class="space-fold-when-closed">展开</span>
+                    <span class="space-fold-when-open">收起</span>
+                  </span>
+                  <span class="space-fold-arrow"></span>
+                </div>
               </div>
+            </summary>
 
-              <div v-if="space.currentMemberPremiumRewards.length" class="reward-card-grid">
-                <article v-for="item in space.currentMemberPremiumRewards" :key="item.id" class="reward-card premium-card">
+            <div class="space-fold-body space-claim-fold-body">
+              <div v-if="space.currentMemberPremiumExchangeRewards.length" class="reward-card-grid">
+                <article v-for="item in space.currentMemberPremiumExchangeRewards" :key="item.id" class="reward-card premium-card">
                   <div class="reward-card-head">
                     <div class="reward-card-copy">
                       <span class="reward-card-kicker">高档奖励</span>
                       <strong>{{ item.title }}</strong>
                     </div>
-                    <span class="badge">高档奖励</span>
+                    <span class="badge">{{ item.starCoinCost }} 星币</span>
                   </div>
                   <p>{{ item.note || '这条高档奖励还没有补充说明。' }}</p>
                   <p class="space-meta-line reward-card-meta">
+                    <span>兑换价 {{ item.starCoinCost }} 星星币</span>
                     <span>已领 {{ space.wishStore.getRewardItemClaimCount(item) }} 份</span>
-                    <span v-if="item.starCoinCost > 0">兑换价 {{ item.starCoinCost }} 星星币</span>
-                    <span v-else>完成愿望时在详情页领取</span>
                   </p>
                   <div class="button-row reward-card-actions">
-                    <button class="button-subtle" type="button" @click="space.startEditingReward(item.id, 'premium')">编辑</button>
                     <button
-                      class="button-subtle danger-button"
+                      class="button-subtle"
                       type="button"
-                      :disabled="space.processingRewardItemId === item.id"
-                      @click="void space.archiveReward(item.id)"
+                      :disabled="space.processingRewardItemId === item.id || !space.canRedeemPremiumReward(item.starCoinCost)"
+                      @click="void space.redeemPremiumReward(item.id)"
                     >
-                      {{ space.processingRewardItemId === item.id ? '处理中...' : '收起' }}
+                      {{ space.processingRewardItemId === item.id
+                        ? '兑换中...'
+                        : space.canRedeemPremiumReward(item.starCoinCost)
+                          ? '兑换这份奖励'
+                          : `还差 ${item.starCoinCost - space.currentMemberStarCoins} 枚` }}
                     </button>
+                    <button class="button-subtle" type="button" @click="openRewardEditor(item.id, 'premium')">切到编辑</button>
                   </div>
                 </article>
               </div>
 
               <div v-else class="space-empty-card">
-                <strong>还没有高档奖励</strong>
-                <p>先留给大日子一两条真正想认真奖励自己的事。</p>
+                <strong>现在没有可兑换的高档奖励</strong>
+                <p>切到编辑给高档奖励写上星星币价格，它们就会出现在这里。</p>
               </div>
-            </article>
-          </div>
-        </div>
+            </div>
+          </details>
 
-        <div class="space-reward-stage">
-          <div class="space-reward-stage-head">
-            <div class="space-reward-stage-copy">
-              <p class="eyebrow">合写奖池</p>
-              <h3 class="space-fold-title">两个人现在都写了什么奖励</h3>
-              <p class="section-copy">这里看的是奖池本身，不处理领取；最近谁接住了什么，会在下一张卡往下记。</p>
+          <details class="space-inline-panel space-fold-card space-claim-fold space-claim-fold-top">
+            <summary class="space-fold-summary space-claim-summary">
+              <div class="space-fold-copy-block">
+                <p class="eyebrow">最近记录</p>
+                <h3 class="space-fold-title">最近的领取和兑换</h3>
+                <p class="space-fold-copy">最近发生过的奖励动作，都会从这里往下记。</p>
+              </div>
+
+              <div class="space-fold-meta">
+                <div class="badge-row">
+                  <span class="badge">最近 {{ space.recentRewardClaims.length }} 笔</span>
+                </div>
+                <div class="space-fold-toggle" aria-hidden="true">
+                  <span class="space-fold-toggle-state">
+                    <span class="space-fold-when-closed">展开</span>
+                    <span class="space-fold-when-open">收起</span>
+                  </span>
+                  <span class="space-fold-arrow"></span>
+                </div>
+              </div>
+            </summary>
+
+            <div class="space-fold-body space-claim-fold-body">
+              <div v-if="space.recentRewardClaims.length" class="reward-claim-list">
+                <article v-for="item in space.recentRewardClaims" :key="item.claim.id" class="reward-claim-card">
+                  <span class="reward-claim-marker" aria-hidden="true"></span>
+                  <div class="reward-claim-body">
+                    <div class="reward-card-head">
+                      <div class="reward-card-copy">
+                        <span class="reward-card-kicker">{{ item.memberName }}</span>
+                        <strong>{{ item.claim.titleSnapshot }}</strong>
+                      </div>
+                      <span class="badge">{{ space.getRewardClaimLabel(item.claim.claimKind) }}</span>
+                    </div>
+                    <p class="reward-claim-copy">这一次已经记下了。</p>
+                    <p class="space-meta-line reward-claim-meta">
+                      <span>{{ item.claim.quantity > 1 ? `这一笔领了 ${item.claim.quantity} 份` : '这一笔已记下' }}</span>
+                      <span>{{ space.formatBeijingDateTime(item.claim.createdAt) }}</span>
+                    </p>
+                  </div>
+                </article>
+              </div>
+
+              <div v-else class="space-empty-card">
+                <strong>还没有领取记录</strong>
+                <p>第一次领取或兑换后会显示在这里。</p>
+              </div>
+            </div>
+          </details>
+        </template>
+
+        <template v-else>
+          <div class="space-reward-workbench">
+            <div class="space-reward-stage-head">
+              <div class="space-reward-stage-copy">
+                <p class="eyebrow">编辑区</p>
+                <h3 class="space-fold-title">写下和整理奖励</h3>
+                <p class="space-stage-support">领奖和兑换切到“领奖”，这里专心写、改和整理。</p>
+              </div>
+              <span class="badge">这里只写和整理</span>
             </div>
 
-            <div class="space-reward-story-meta">
-              <span class="badge">共 {{ space.totalRewardCount }} 条</span>
-              <span class="badge">双方可见</span>
+            <div class="reward-form-grid space-reward-form-grid">
+              <form class="space-form reward-form-card" @submit.prevent="space.submitDailyReward">
+                <div class="space-subsection-heading">
+                  <div>
+                    <p class="eyebrow">日常这一层</p>
+                    <h3>日常奖励</h3>
+                  </div>
+                  <span class="badge">给小步骤</span>
+                </div>
+
+                <div class="reward-form-copy">
+                  <p class="reward-form-support">写一个适合小推进的轻奖励。</p>
+                </div>
+
+                <div class="reward-form-fields">
+                  <label class="space-field-block">
+                    <span class="muted">奖励名称</span>
+                    <input v-model="space.dailyRewardTitleDraft" type="text" maxlength="120" placeholder="例如：一杯喜欢的奶茶 / 一顿轻松晚餐" />
+                  </label>
+                  <label class="space-field-block">
+                    <span class="muted">说明（可选）</span>
+                    <textarea v-model="space.dailyRewardNoteDraft" rows="2" maxlength="240" placeholder="写下这个小奖励为什么值得期待"></textarea>
+                  </label>
+                </div>
+
+                <div class="reward-form-submit-row">
+                  <p class="reward-form-submit-copy">{{ space.editingDailyRewardId ? '正在修改日常奖励。' : '保存后会进入日常奖池。' }}</p>
+
+                  <div class="button-row reward-form-actions">
+                    <button class="button-solid" type="submit" :disabled="space.isSubmittingReward">
+                      {{ space.isSubmittingReward ? '保存中...' : space.editingDailyRewardId ? '更新日常奖励' : '加入日常奖励' }}
+                    </button>
+                    <button v-if="space.editingDailyRewardId" class="button-subtle" type="button" @click="space.resetRewardDraft('daily')">取消编辑</button>
+                  </div>
+                </div>
+              </form>
+
+              <form class="space-form reward-form-card" @submit.prevent="space.submitPremiumReward">
+                <div class="space-subsection-heading">
+                  <div>
+                    <p class="eyebrow">留给大日子</p>
+                    <h3>高档奖励</h3>
+                  </div>
+                  <span class="badge">给大日子</span>
+                </div>
+
+                <div class="reward-form-copy">
+                  <p class="reward-form-support">留给大事，也可以写上星星币价格慢慢换。</p>
+                </div>
+
+                <div class="reward-form-fields reward-form-fields-premium">
+                  <label class="space-field-block">
+                    <span class="muted">奖励名称</span>
+                    <input v-model="space.premiumRewardTitleDraft" type="text" maxlength="120" placeholder="例如：心仪很久的大件 / 一次认真放松的体验" />
+                  </label>
+                  <label class="space-field-block">
+                    <span class="muted">说明（可选）</span>
+                    <textarea v-model="space.premiumRewardNoteDraft" rows="2" maxlength="240" placeholder="写下这个高档奖励真正吸引你的地方"></textarea>
+                  </label>
+                  <label class="space-field-block reward-form-cost-field">
+                    <span class="muted">星星币兑换价</span>
+                    <input v-model.number="space.premiumRewardCostDraft" type="number" min="0" max="999" />
+                  </label>
+                </div>
+
+                <div class="reward-form-submit-row">
+                  <p class="reward-form-submit-copy">{{ space.editingPremiumRewardId ? '正在修改高档奖励。' : '保存后会进入高档奖池。' }}</p>
+
+                  <div class="button-row reward-form-actions">
+                    <button class="button-solid" type="submit" :disabled="space.isSubmittingReward">
+                      {{ space.isSubmittingReward ? '保存中...' : space.editingPremiumRewardId ? '更新高档奖励' : '加入高档奖励' }}
+                    </button>
+                    <button v-if="space.editingPremiumRewardId" class="button-subtle" type="button" @click="space.resetRewardDraft('premium')">取消编辑</button>
+                  </div>
+                </div>
+              </form>
             </div>
           </div>
 
-          <div class="reward-member-grid space-reward-member-grid">
-            <article v-for="item in space.rewardPoolByMember" :key="item.member.id" class="space-reward-member-card">
-              <div class="space-reward-member-top">
-                <div class="member-head">
+          <div class="space-reward-stage">
+            <div class="space-reward-stage-head">
+              <div>
+                <p class="eyebrow">我的奖池</p>
+                <h3 class="space-fold-title">已经写好的奖励</h3>
+              </div>
+              <span class="badge">这里只做整理</span>
+            </div>
+
+            <div class="reward-shelf-grid space-reward-shelf-grid">
+              <article class="reward-shelf-card">
+                <div class="space-subsection-heading">
+                  <div>
+                    <p class="eyebrow">日常这一格</p>
+                    <h3>随手就能领的小奖励</h3>
+                  </div>
+                  <span class="badge">{{ space.currentMemberDailyRewards.length }} 条</span>
+                </div>
+
+                <div v-if="space.currentMemberDailyRewards.length" class="reward-compact-list">
+                  <article v-for="item in space.currentMemberDailyRewards" :key="item.id" class="reward-compact-row">
+                    <div class="reward-compact-main">
+                      <span class="reward-card-kicker">日常奖励</span>
+                      <strong>{{ item.title }}</strong>
+                      <p>{{ item.note || '这条日常奖励还没有补充说明。' }}</p>
+                    </div>
+
+                    <div class="reward-compact-meta">
+                      <span>已领 {{ space.wishStore.getRewardItemClaimCount(item) }} 份</span>
+                      <span>小推进可领</span>
+                    </div>
+
+                    <div class="button-row reward-compact-actions">
+                      <button class="button-subtle" type="button" @click="space.startEditingReward(item.id, 'daily')">编辑</button>
+                      <button
+                        class="button-subtle danger-button"
+                        type="button"
+                        :disabled="space.processingRewardItemId === item.id"
+                        @click="void space.archiveReward(item.id)"
+                      >
+                        {{ space.processingRewardItemId === item.id ? '处理中...' : '收起' }}
+                      </button>
+                    </div>
+                  </article>
+                </div>
+
+                <div v-else class="space-empty-card">
+                  <strong>还没有日常奖励</strong>
+                  <p>先准备几条会让你开心的小奖励。</p>
+                </div>
+              </article>
+
+              <article class="reward-shelf-card reward-shelf-card-premium">
+                <div class="space-subsection-heading">
+                  <div>
+                    <p class="eyebrow">大日子这一格</p>
+                    <h3>留给大日子的奖励</h3>
+                  </div>
+                  <span class="badge">{{ space.currentMemberPremiumRewards.length }} 条</span>
+                </div>
+
+                <div v-if="space.currentMemberPremiumRewards.length" class="reward-compact-list">
+                  <article v-for="item in space.currentMemberPremiumRewards" :key="item.id" class="reward-compact-row reward-compact-row-premium">
+                    <div class="reward-compact-main">
+                      <span class="reward-card-kicker">高档奖励</span>
+                      <strong>{{ item.title }}</strong>
+                      <p>{{ item.note || '这条高档奖励还没有补充说明。' }}</p>
+                    </div>
+
+                    <div class="reward-compact-meta">
+                      <span>已领 {{ space.wishStore.getRewardItemClaimCount(item) }} 份</span>
+                      <span v-if="item.starCoinCost > 0">{{ item.starCoinCost }} 星星币兑换</span>
+                      <span v-else>详情页领取</span>
+                    </div>
+
+                    <div class="button-row reward-compact-actions">
+                      <button class="button-subtle" type="button" @click="space.startEditingReward(item.id, 'premium')">编辑</button>
+                      <button
+                        class="button-subtle danger-button"
+                        type="button"
+                        :disabled="space.processingRewardItemId === item.id"
+                        @click="void space.archiveReward(item.id)"
+                      >
+                        {{ space.processingRewardItemId === item.id ? '处理中...' : '收起' }}
+                      </button>
+                    </div>
+                  </article>
+                </div>
+
+                <div v-else class="space-empty-card">
+                  <strong>还没有高档奖励</strong>
+                  <p>先留给大日子一两条真正想认真奖励自己的事。</p>
+                </div>
+              </article>
+            </div>
+          </div>
+
+          <div class="space-reward-stage">
+            <div class="space-reward-stage-head">
+              <div class="space-reward-stage-copy">
+                <p class="eyebrow">一起的奖池</p>
+                <h3 class="space-fold-title">两个人的奖励</h3>
+                <p class="section-copy">这里只看奖池本身，领取记录切到“领奖”。</p>
+              </div>
+
+              <div class="space-reward-hub-pills">
+                <span class="badge">共 {{ space.totalRewardCount }} 条</span>
+                <span class="badge">双方可见</span>
+              </div>
+            </div>
+
+            <div class="reward-member-strip-list">
+              <article v-for="item in space.rewardPoolByMember" :key="item.member.id" class="reward-member-strip">
+                <div class="reward-member-strip-person">
+                  <span class="reward-member-strip-mark">{{ item.member.displayName.slice(0, 1) }}</span>
                   <div>
                     <h3>{{ item.member.displayName }}</h3>
-                    <p class="space-member-summary">手里有 {{ item.starCoins }} 枚星星币，已经写下 {{ item.dailyRewards.length + item.premiumRewards.length }} 条奖励。</p>
-                  </div>
-                  <div class="badge-row">
-                    <span class="badge">{{ item.starCoins }} 枚星星币</span>
-                    <span class="badge">{{ item.dailyRewards.length + item.premiumRewards.length }} 条奖励</span>
+                    <p class="space-member-summary">{{ item.starCoins }} 枚星星币 · {{ item.dailyRewards.length + item.premiumRewards.length }} 条奖励</p>
                   </div>
                 </div>
-              </div>
 
-              <div class="reward-tier-block">
-                <div class="space-reward-tier-head">
-                  <span class="muted">日常奖励</span>
-                  <span class="badge">{{ item.dailyRewards.length }} 条</span>
+                <div class="reward-member-strip-stats" aria-label="成员奖励摘要">
+                  <span><strong>{{ item.dailyRewards.length }}</strong>日常</span>
+                  <span><strong>{{ item.premiumRewards.length }}</strong>高档</span>
+                  <span><strong>{{ item.starCoins }}</strong>星币</span>
                 </div>
-                <div v-if="item.dailyRewards.length" class="reward-chip-list">
-                  <span v-for="reward in item.dailyRewards" :key="reward.id" class="reward-chip">
-                    <strong>{{ reward.title }}</strong>
-                    <span>已领 {{ space.wishStore.getRewardItemClaimCount(reward) }} 份</span>
-                  </span>
+
+                <div class="reward-member-strip-preview">
+                  <span v-if="item.dailyRewards.length">日常：{{ formatRewardTitlePreview(item.dailyRewards) }}{{ item.dailyRewards.length > 2 ? ' 等' : '' }}</span>
+                  <span v-else>日常：还没准备</span>
+                  <span v-if="item.premiumRewards.length">高档：{{ formatRewardTitlePreview(item.premiumRewards) }}{{ item.premiumRewards.length > 2 ? ' 等' : '' }}</span>
+                  <span v-else>高档：还没准备</span>
                 </div>
-                <p v-else class="muted">还没准备。</p>
-              </div>
-
-              <div class="reward-tier-block">
-                <div class="space-reward-tier-head">
-                  <span class="muted">高档奖励</span>
-                  <span class="badge">{{ item.premiumRewards.length }} 条</span>
-                </div>
-                <div v-if="item.premiumRewards.length" class="reward-chip-list">
-                  <span v-for="reward in item.premiumRewards" :key="reward.id" class="reward-chip premium-chip">
-                    <strong>{{ reward.title }}</strong>
-                    <span>{{ reward.starCoinCost }} 星币 · 已领 {{ space.wishStore.getRewardItemClaimCount(reward) }} 份</span>
-                  </span>
-                </div>
-                <p v-else class="muted">还没准备。</p>
-              </div>
-            </article>
-          </div>
-        </div>
-      </article>
-
-      <article class="page-card space-shell-card space-main-card space-reward-story">
-        <div class="space-reward-story-head">
-          <div class="section-heading space-section-heading space-reward-section-heading">
-            <div>
-              <p class="eyebrow">领取台</p>
-              <h2 class="section-title">领取、兑换与记录</h2>
-              <p class="section-copy">待领取、待兑换和最近记录都收在这里。</p>
-            </div>
-            <span class="badge">只处理动作</span>
-          </div>
-
-          <aside class="space-reward-story-note">
-            <p class="eyebrow">现在这边有什么</p>
-            <strong>待领 {{ space.pendingSmallRewardUnits }} 份，待换 {{ space.currentMemberPremiumExchangeRewards.length }} 条</strong>
-            <div class="space-reward-story-meta">
-              <span class="badge">最近 {{ space.recentRewardClaims.length }} 笔</span>
-              <span class="badge">手里 {{ space.currentMemberStarCoins }} 星币</span>
-              <span class="badge">现在可换 {{ space.premiumRedeemableNowCount }} 条</span>
-            </div>
-          </aside>
-        </div>
-
-        <details class="space-inline-panel space-fold-card space-claim-fold space-pending-stage" open>
-          <summary class="space-fold-summary space-claim-summary">
-            <div class="space-fold-copy-block">
-              <p class="eyebrow">待领取工作台</p>
-              <h3 class="space-fold-title">先把这些小奖励接住</h3>
-              <p class="space-fold-copy">步骤完成和数字进度的小奖励都会先放这里；详情页只负责报喜和提醒。</p>
-            </div>
-
-            <div class="space-fold-meta">
-              <div class="badge-row">
-                <span class="badge">待领 {{ space.pendingSmallRewardUnits }} 份</span>
-                <span class="badge">步骤 {{ space.pendingStepRewards.length }} 条</span>
-                <span class="badge">数字 {{ space.pendingCountRewardUnits }} 点</span>
-              </div>
-              <div class="space-fold-toggle" aria-hidden="true">
-                <span class="space-fold-toggle-state">
-                  <span class="space-fold-when-closed">展开</span>
-                  <span class="space-fold-when-open">收起</span>
-                </span>
-                <span class="space-fold-arrow"></span>
-              </div>
-            </div>
-          </summary>
-
-          <div class="space-fold-body space-claim-fold-body">
-            <div class="space-pending-grid">
-              <details class="space-pending-card space-fold-card space-pending-fold">
-                <summary class="space-fold-summary space-pending-summary">
-                  <div class="space-fold-copy-block">
-                    <p class="eyebrow">步骤奖励</p>
-                    <h3>已经完成，还没去领的</h3>
-                    <p class="space-fold-copy">完成的小步骤会先在这里排队，想领日常奖励或先存星星币，都从这里开始。</p>
-                  </div>
-
-                  <div class="space-fold-meta">
-                    <div class="badge-row">
-                      <span class="badge">{{ space.pendingStepRewards.length }} 条</span>
-                    </div>
-                    <div class="space-fold-toggle" aria-hidden="true">
-                      <span class="space-fold-toggle-state">
-                        <span class="space-fold-when-closed">展开</span>
-                        <span class="space-fold-when-open">收起</span>
-                      </span>
-                      <span class="space-fold-arrow"></span>
-                    </div>
-                  </div>
-                </summary>
-
-                <div class="space-fold-body space-pending-fold-body">
-                  <div v-if="space.pendingStepRewards.length" class="space-pending-list">
-                    <article v-for="item in space.pendingStepRewards" :key="item.stepId" class="space-pending-item">
-                      <div class="space-pending-copy">
-                        <span class="reward-card-kicker">来自「{{ item.wishTitle }}」</span>
-                        <strong>{{ item.stepTitle }}</strong>
-                        <p>这一步已经完成，小奖励现在先在空间页等你慢慢接住。</p>
-                      </div>
-
-                      <div class="space-meta-line reward-claim-meta">
-                        <span>{{ space.formatBeijingDateTime(item.completedAt) }}</span>
-                        <RouterLink class="button-subtle" :to="{ name: 'wish-detail', params: { id: item.wishId } }">回详情看这一步</RouterLink>
-                      </div>
-
-                      <div class="space-pending-controls">
-                        <label v-if="space.currentMemberDailyRewards.length" class="space-pending-select">
-                          <span class="muted">领哪条日常奖励</span>
-                          <select :value="space.getPendingRewardSelection(`step:${item.stepId}`)" @change="space.handlePendingRewardSelectionChange(`step:${item.stepId}`, $event)">
-                            <option v-for="reward in space.currentMemberDailyRewards" :key="reward.id" :value="reward.id">{{ reward.title }}</option>
-                          </select>
-                        </label>
-                        <p v-else class="muted">还没准备日常奖励，也可以先把这一笔存成星星币。</p>
-
-                        <div class="button-row space-pending-action-grid">
-                          <button
-                            class="button-subtle"
-                            type="button"
-                            :disabled="space.isProcessingPendingReward(`step:${item.stepId}:daily`) || !space.currentMemberDailyRewards.length"
-                            @click="void space.claimPendingStepReward(item.wishId, item.stepId)"
-                          >
-                            {{ space.isProcessingPendingReward(`step:${item.stepId}:daily`) ? '领取中...' : '领日常奖励' }}
-                          </button>
-                          <button
-                            class="button-subtle"
-                            type="button"
-                            :disabled="space.isProcessingPendingReward(`step:${item.stepId}:star`)"
-                            @click="void space.claimPendingStepReward(item.wishId, item.stepId, true)"
-                          >
-                            {{ space.isProcessingPendingReward(`step:${item.stepId}:star`) ? '存币中...' : '存成星星币' }}
-                          </button>
-                        </div>
-                      </div>
-                    </article>
-                  </div>
-
-                  <div v-else class="space-empty-card">
-                    <strong>现在没有待领取的步骤奖励</strong>
-                    <p>下一次把小步骤走完，它就会先落到这里。</p>
-                  </div>
-                </div>
-              </details>
-
-              <details class="space-pending-card space-pending-card-count space-fold-card space-pending-fold">
-                <summary class="space-fold-summary space-pending-summary">
-                  <div class="space-fold-copy-block">
-                    <p class="eyebrow">数字进度奖励</p>
-                    <h3>积下来的进度，也在这里一起接</h3>
-                    <p class="space-fold-copy">数字推进积下来的小奖励，会按 1 点或整批在这里统一处理。</p>
-                  </div>
-
-                  <div class="space-fold-meta">
-                    <div class="badge-row">
-                      <span class="badge">{{ space.pendingCountRewardUnits }} 点</span>
-                    </div>
-                    <div class="space-fold-toggle" aria-hidden="true">
-                      <span class="space-fold-toggle-state">
-                        <span class="space-fold-when-closed">展开</span>
-                        <span class="space-fold-when-open">收起</span>
-                      </span>
-                      <span class="space-fold-arrow"></span>
-                    </div>
-                  </div>
-                </summary>
-
-                <div class="space-fold-body space-pending-fold-body">
-                  <div v-if="space.pendingCountRewardSummaries.length" class="space-pending-list">
-                    <article v-for="item in space.pendingCountRewardSummaries" :key="item.wishId" class="space-pending-item space-pending-item-count">
-                      <div class="space-pending-copy">
-                        <span class="reward-card-kicker">来自「{{ item.wishTitle }}」</span>
-                        <strong>还有 {{ space.getPendingCountUnitLabel(item.pendingUnits, item.progressUnit) }} 小奖励没去领</strong>
-                        <p>当前已经到 {{ item.progressCurrent }} / {{ item.progressTarget }}{{ item.progressUnit ? ` ${item.progressUnit}` : '' }}，可以一次领 1 点，也可以整批接住。</p>
-                      </div>
-
-                      <div class="space-meta-line reward-claim-meta">
-                        <span>这页最近更新于 {{ space.formatBeijingDateTime(item.updatedAt) }}</span>
-                        <RouterLink class="button-subtle" :to="{ name: 'wish-detail', params: { id: item.wishId } }">回详情看进度</RouterLink>
-                      </div>
-
-                      <div class="space-pending-controls">
-                        <label v-if="space.currentMemberDailyRewards.length" class="space-pending-select">
-                          <span class="muted">整批领日常奖励时，先选这一条</span>
-                          <select :value="space.getPendingRewardSelection(`count:${item.wishId}`)" @change="space.handlePendingRewardSelectionChange(`count:${item.wishId}`, $event)">
-                            <option v-for="reward in space.currentMemberDailyRewards" :key="reward.id" :value="reward.id">{{ reward.title }}</option>
-                          </select>
-                        </label>
-                        <p v-else class="muted">还没准备日常奖励时，也可以先按 1 点或整批存成星星币。</p>
-
-                        <div class="button-row space-pending-action-grid">
-                          <button
-                            class="button-subtle"
-                            type="button"
-                            :disabled="space.isProcessingPendingReward(`count:${item.wishId}:1:daily`) || !space.currentMemberDailyRewards.length"
-                            @click="void space.claimPendingCountReward(item.wishId, 1)"
-                          >
-                            {{ space.isProcessingPendingReward(`count:${item.wishId}:1:daily`) ? '领取中...' : '领 1 点日常奖励' }}
-                          </button>
-                          <button
-                            v-if="item.pendingUnits > 1"
-                            class="button-subtle"
-                            type="button"
-                            :disabled="space.isProcessingPendingReward(`count:${item.wishId}:${item.pendingUnits}:daily`) || !space.currentMemberDailyRewards.length"
-                            @click="void space.claimPendingCountReward(item.wishId, item.pendingUnits)"
-                          >
-                            {{ space.isProcessingPendingReward(`count:${item.wishId}:${item.pendingUnits}:daily`) ? '领取中...' : '整批领日常奖励' }}
-                          </button>
-                          <button
-                            class="button-subtle"
-                            type="button"
-                            :disabled="space.isProcessingPendingReward(`count:${item.wishId}:1:star`)"
-                            @click="void space.claimPendingCountReward(item.wishId, 1, true)"
-                          >
-                            {{ space.isProcessingPendingReward(`count:${item.wishId}:1:star`) ? '存币中...' : '存 1 点星星币' }}
-                          </button>
-                          <button
-                            v-if="item.pendingUnits > 1"
-                            class="button-subtle"
-                            type="button"
-                            :disabled="space.isProcessingPendingReward(`count:${item.wishId}:${item.pendingUnits}:star`)"
-                            @click="void space.claimPendingCountReward(item.wishId, item.pendingUnits, true)"
-                          >
-                            {{ space.isProcessingPendingReward(`count:${item.wishId}:${item.pendingUnits}:star`) ? '存币中...' : '整批存成星星币' }}
-                          </button>
-                        </div>
-                      </div>
-                    </article>
-                  </div>
-
-                  <div v-else class="space-empty-card">
-                    <strong>现在没有待领取的数字进度奖励</strong>
-                    <p>下次把数字往前推一点，这里就会先替你记住。</p>
-                  </div>
-                </div>
-              </details>
+              </article>
             </div>
           </div>
-        </details>
-
-        <details class="space-inline-panel space-fold-card space-claim-fold">
-          <summary class="space-fold-summary space-claim-summary">
-            <div class="space-fold-copy-block">
-              <p class="eyebrow">星星币兑换台</p>
-              <h3 class="space-fold-title">把攒下的星星币换成大一点的奖励</h3>
-              <p class="space-fold-copy">这里只放设置了星星币价格的高档奖励；零星币的完成奖励仍然在愿望详情页领取。</p>
-            </div>
-
-            <div class="space-fold-meta">
-              <div class="badge-row">
-                <span class="badge">可换 {{ space.currentMemberPremiumExchangeRewards.length }} 条</span>
-                <span class="badge">手里 {{ space.currentMemberStarCoins }} 星币</span>
-                <span class="badge">现在可换 {{ space.premiumRedeemableNowCount }} 条</span>
-              </div>
-              <div class="space-fold-toggle" aria-hidden="true">
-                <span class="space-fold-toggle-state">
-                  <span class="space-fold-when-closed">展开</span>
-                  <span class="space-fold-when-open">收起</span>
-                </span>
-                <span class="space-fold-arrow"></span>
-              </div>
-            </div>
-          </summary>
-
-          <div class="space-fold-body space-claim-fold-body">
-            <div v-if="space.currentMemberPremiumExchangeRewards.length" class="reward-card-grid">
-            <article v-for="item in space.currentMemberPremiumExchangeRewards" :key="item.id" class="reward-card premium-card">
-              <div class="reward-card-head">
-                <div class="reward-card-copy">
-                  <span class="reward-card-kicker">高档奖励</span>
-                  <strong>{{ item.title }}</strong>
-                </div>
-                <span class="badge">{{ item.starCoinCost }} 星币</span>
-              </div>
-              <p>{{ item.note || '这条高档奖励还没有补充说明。' }}</p>
-              <p class="space-meta-line reward-card-meta">
-                <span>兑换价 {{ item.starCoinCost }} 星星币</span>
-                <span>已领 {{ space.wishStore.getRewardItemClaimCount(item) }} 份</span>
-              </p>
-              <div class="button-row reward-card-actions">
-                <button
-                  class="button-subtle"
-                  type="button"
-                  :disabled="space.processingRewardItemId === item.id || !space.canRedeemPremiumReward(item.starCoinCost)"
-                  @click="void space.redeemPremiumReward(item.id)"
-                >
-                  {{ space.processingRewardItemId === item.id
-                    ? '兑换中...'
-                    : space.canRedeemPremiumReward(item.starCoinCost)
-                      ? '兑换这份奖励'
-                      : `还差 ${item.starCoinCost - space.currentMemberStarCoins} 枚` }}
-                </button>
-                <button class="button-subtle" type="button" @click="space.startEditingReward(item.id, 'premium')">回奖池编辑</button>
-              </div>
-            </article>
-            </div>
-
-            <div v-else class="space-empty-card">
-              <strong>现在没有可兑换的高档奖励</strong>
-              <p>去上一张卡给高档奖励写上星星币价格，它们就会出现在这里。</p>
-            </div>
-          </div>
-        </details>
-
-        <details class="space-inline-panel space-fold-card space-claim-fold">
-          <summary class="space-fold-summary space-claim-summary">
-            <div class="space-fold-copy-block">
-              <p class="eyebrow">最近记下的</p>
-              <h3 class="space-fold-title">最近领取与兑换记录</h3>
-              <p class="space-fold-copy">最近发生过的领取和兑换动作，都会从这里往下记。</p>
-            </div>
-
-            <div class="space-fold-meta">
-              <div class="badge-row">
-                <span class="badge">最近 {{ space.recentRewardClaims.length }} 笔</span>
-              </div>
-              <div class="space-fold-toggle" aria-hidden="true">
-                <span class="space-fold-toggle-state">
-                  <span class="space-fold-when-closed">展开</span>
-                  <span class="space-fold-when-open">收起</span>
-                </span>
-                <span class="space-fold-arrow"></span>
-              </div>
-            </div>
-          </summary>
-
-          <div class="space-fold-body space-claim-fold-body">
-            <div v-if="space.recentRewardClaims.length" class="reward-claim-list">
-            <article v-for="item in space.recentRewardClaims" :key="item.claim.id" class="reward-claim-card">
-              <span class="reward-claim-marker" aria-hidden="true"></span>
-              <div class="reward-claim-body">
-                <div class="reward-card-head">
-                  <div class="reward-card-copy">
-                    <span class="reward-card-kicker">{{ item.memberName }}</span>
-                    <strong>{{ item.claim.titleSnapshot }}</strong>
-                  </div>
-                  <span class="badge">{{ space.getRewardClaimLabel(item.claim.claimKind) }}</span>
-                </div>
-                <p class="reward-claim-copy">这一次已经记下了。</p>
-                <p class="space-meta-line reward-claim-meta">
-                  <span>{{ item.claim.quantity > 1 ? `这一笔领了 ${item.claim.quantity} 份` : '这一笔已记下' }}</span>
-                  <span>{{ space.formatBeijingDateTime(item.claim.createdAt) }}</span>
-                </p>
-              </div>
-            </article>
-            </div>
-
-            <div v-else class="space-empty-card">
-              <strong>还没有领取记录</strong>
-              <p>第一次领取或兑换后会显示在这里。</p>
-            </div>
-          </div>
-        </details>
+        </template>
       </article>
     </div>
 
@@ -1068,8 +996,6 @@ const space = reactive(useSpacePageState())
 .space-member-grid,
 .space-member-card,
 .space-main-summary-shell,
-.space-main-summary-topcopy,
-.space-main-summary-controls,
 .space-main-summary-side,
 .space-reward-editor-head,
 .space-reward-story-head,
@@ -1082,7 +1008,6 @@ const space = reactive(useSpacePageState())
 .space-reward-stage,
 .space-reward-stage-copy,
 .space-utility-band-head,
-.space-summary-card-top,
 .space-member-stat-grid,
 .space-member-meta,
 .space-access-grid,
@@ -1110,8 +1035,7 @@ const space = reactive(useSpacePageState())
 .reward-chip-list,
 .info-list,
 .space-reward-member-card,
-.reward-form-submit-row,
-.space-main-status-copy {
+.reward-form-submit-row {
   display: grid;
   gap: 1rem;
 }
@@ -1125,84 +1049,99 @@ const space = reactive(useSpacePageState())
   box-shadow: 0 24px 48px rgba(104, 73, 52, 0.08);
 }
 
-.space-reward-editor {
+.space-reward-hub {
   background:
-    radial-gradient(circle at top right, rgba(241, 214, 202, 0.28), transparent 24%),
-    linear-gradient(180deg, rgba(255, 251, 246, 0.96), rgba(250, 242, 233, 0.88));
+    radial-gradient(circle at top right, rgba(241, 214, 202, 0.22), transparent 22%),
+    radial-gradient(circle at top left, rgba(216, 231, 220, 0.24), transparent 24%),
+    linear-gradient(180deg, rgba(255, 251, 246, 0.97), rgba(247, 240, 231, 0.92));
+  gap: 0.95rem;
 }
 
-.space-reward-story {
-  background:
-    radial-gradient(circle at top left, rgba(216, 231, 220, 0.26), transparent 24%),
-    linear-gradient(180deg, rgba(252, 248, 242, 0.96), rgba(246, 239, 229, 0.9));
+.space-reward-hub-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.7rem;
+  align-items: end;
 }
 
-.space-reward-editor-head,
-.space-reward-story-head {
-  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
-  align-items: start;
-  gap: 0.85rem;
+.space-reward-hub-copy {
+  display: grid;
+  gap: 0.24rem;
 }
 
-.space-reward-section-heading {
-  gap: 0.75rem;
-}
-
-.space-reward-heading-note {
-  max-width: 28rem;
-  margin: 0;
-  font-family: var(--font-body);
-  font-size: var(--type-body-size);
-  color: var(--text-soft);
-  line-height: var(--type-body-line);
-}
-
-.space-reward-editor-note,
-.space-reward-story-note {
-  padding: 1rem 1.02rem;
-  border-radius: 24px;
-  border: 1px solid rgba(201, 111, 74, 0.14);
-  background: linear-gradient(180deg, rgba(255, 253, 249, 0.82), rgba(250, 242, 234, 0.88));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.56);
-}
-
-.space-reward-story-note {
-  border-color: rgba(159, 190, 174, 0.18);
-  background: linear-gradient(180deg, rgba(251, 253, 250, 0.82), rgba(242, 239, 232, 0.88));
-  gap: 0.72rem;
-  padding: 0.88rem 0.96rem;
-}
-
-.space-reward-editor-note strong,
-.space-reward-story-note strong {
-  margin: 0;
-  font-family: var(--font-heading);
+.space-reward-hub-title {
   font-size: var(--type-card-title-size);
-  font-weight: 600;
-  line-height: var(--type-card-title-line);
-  letter-spacing: var(--type-card-title-tracking);
 }
 
-.space-reward-editor-note p,
-.space-reward-story-note p {
+.space-reward-hub-lead {
   margin: 0;
-  font-family: var(--font-body);
-  font-size: var(--type-body-size);
+  max-width: 34rem;
   color: var(--text-soft);
-  line-height: var(--type-body-line);
-}
-
-.space-reward-editor-note-support {
+  font-family: var(--font-body);
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
   letter-spacing: var(--type-supporting-spacing);
 }
 
-.space-reward-editor-stats,
-.space-reward-story-meta {
+.space-reward-hub-pills {
   display: flex;
+  gap: 0.38rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.space-reward-hub-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.56rem;
+}
+
+.space-reward-hub-tab {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.72rem 0.88rem;
+  border: 1px solid rgba(95, 74, 55, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.66);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.space-reward-hub-tab-copy {
+  display: flex;
+  align-items: baseline;
   gap: 0.45rem;
   flex-wrap: wrap;
+}
+
+.space-reward-hub-tab:hover {
+  transform: translateY(-1px);
+  border-color: rgba(201, 111, 74, 0.2);
+}
+
+.space-reward-hub-tab.active {
+  border-color: rgba(201, 111, 74, 0.2);
+  box-shadow: 0 14px 28px rgba(88, 66, 45, 0.06);
+}
+
+.space-reward-hub-tab-label {
+  font-family: var(--font-heading);
+  font-size: var(--type-l5-size);
+  font-weight: 600;
+  line-height: var(--type-l5-line);
+  letter-spacing: 0.01em;
+}
+
+.space-reward-hub-tab-note {
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: var(--type-l7-size);
+  line-height: var(--type-l7-line);
+  letter-spacing: 0.01em;
 }
 
 .space-reward-workbench,
@@ -1340,7 +1279,7 @@ const space = reactive(useSpacePageState())
 }
 
 .space-hero-title {
-  max-width: 11ch;
+  max-width: 20ch;
 }
 
 .space-page {
@@ -1376,108 +1315,75 @@ const space = reactive(useSpacePageState())
 }
 
 .space-main-summary-shell {
-  gap: 1.18rem;
+  gap: 0.78rem;
 }
 
 .space-main-summary-intro {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(240px, 0.75fr);
+  grid-template-columns: minmax(0, 1.32fr) minmax(260px, 0.78fr);
   gap: 1rem;
-  align-items: start;
-}
-
-.space-main-summary-topline {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: start;
+  align-items: center;
 }
 
 .space-main-kicker {
   margin-bottom: 0;
 }
 
-.space-main-summary-lead,
-.space-main-summary-helper,
-.space-main-summary-caption {
+.space-main-summary-lead {
   margin: 0;
   font-family: var(--font-body);
   color: var(--text-soft);
 }
 
 .space-main-summary-lead {
-  max-width: 30rem;
-  font-size: var(--type-lead-size);
-  line-height: var(--type-lead-line);
+  max-width: 28rem;
+  font-size: var(--type-body-size);
+  line-height: 1.6;
 }
 
-.space-main-summary-helper,
-.space-main-summary-caption {
-  font-size: var(--type-supporting-size);
-  line-height: var(--type-supporting-line);
-  letter-spacing: var(--type-supporting-spacing);
-}
-
-.space-main-summary-controls,
 .space-main-summary-side {
   justify-items: start;
   align-content: start;
 }
 
-.space-main-summary {
-  display: block;
-}
-
-.space-main-status-strip {
-  display: grid;
-  grid-template-columns: minmax(0, 1.25fr) repeat(2, minmax(0, 0.9fr));
-  gap: 0.75rem;
-}
-
-.space-main-summary-bottom {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.space-main-summary-stamp {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  min-height: 2rem;
-  padding: 0.42rem 0.82rem;
-  border-radius: var(--radius-pill);
-  border: 1px solid rgba(201, 111, 74, 0.18);
-  background: rgba(255, 247, 239, 0.82);
-  color: rgba(122, 78, 57, 0.88);
-  font-family: var(--font-body);
-  font-size: var(--type-meta-size);
-  letter-spacing: var(--type-meta-spacing);
-  line-height: var(--type-meta-line);
-}
-
-.space-main-status-card {
-  display: grid;
-  gap: 0.58rem;
-  padding: 0.95rem 0.98rem;
-  border-radius: 20px;
+.space-main-summary-side-compact {
+  gap: 0.62rem;
+  padding: 0.88rem 0.94rem;
+  border-radius: 22px;
   border: 1px solid rgba(95, 74, 55, 0.08);
-  background: rgba(255, 255, 255, 0.5);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.54);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.58);
 }
 
-.space-main-status-card-identity {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.64), rgba(250, 243, 234, 0.68));
-  border-color: rgba(201, 111, 74, 0.12);
+.space-main-summary-digest {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.space-main-summary-digest strong {
+  color: var(--text-main);
+  font-family: var(--font-heading);
+  font-size: var(--type-l5-size);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+}
+
+.space-main-summary-digest p {
+  margin: 0;
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
 }
 
 .space-hero-copy,
 .space-fold-copy,
-.space-summary-caption,
 .space-member-summary,
 .space-member-supporting,
 .space-fact-card p,
 .space-inline-panel p,
-.space-main-status-card p,
 .space-empty-card p,
 .reward-card p,
 .reward-claim-card p,
@@ -1485,7 +1391,27 @@ const space = reactive(useSpacePageState())
 .feedback-message,
 .space-access-card p {
   margin: 0;
-  line-height: 1.8;
+  line-height: var(--type-supporting-line);
+}
+
+.space-hero-copy,
+.space-member-summary {
+  line-height: var(--type-body-line);
+}
+
+.space-fold-copy,
+.space-member-supporting,
+.space-fact-card p,
+.space-inline-panel p,
+.space-empty-card p,
+.reward-card p,
+.reward-claim-card p,
+.reward-shelf-card p,
+.feedback-message,
+.space-access-card p {
+  color: var(--text-soft);
+  font-size: var(--type-supporting-size);
+  letter-spacing: var(--type-supporting-spacing);
 }
 
 .space-card-intro,
@@ -1498,8 +1424,9 @@ const space = reactive(useSpacePageState())
 
 .space-card-intro,
 .space-access-form-note {
-  font-size: var(--type-body-size);
-  line-height: var(--type-body-line);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
 }
 
 .space-meta-line {
@@ -1527,7 +1454,6 @@ const space = reactive(useSpacePageState())
   padding: 1rem;
 }
 
-.space-main-status-card strong,
 .space-fact-card strong,
 .space-fold-title,
 .space-subsection-heading h3,
@@ -1539,107 +1465,6 @@ const space = reactive(useSpacePageState())
   letter-spacing: -0.024em;
 }
 
-.space-main-status-card strong {
-  font-size: var(--type-card-title-size);
-  line-height: var(--type-card-title-line);
-  letter-spacing: var(--type-card-title-tracking);
-}
-
-.space-main-status-label {
-  color: rgba(90, 69, 58, 0.72);
-  font-family: var(--font-body);
-  font-size: var(--type-meta-size);
-  font-weight: 600;
-  letter-spacing: var(--type-meta-spacing);
-  line-height: var(--type-meta-line);
-}
-
-.space-main-status-note,
-.space-main-status-card p {
-  color: var(--text-soft);
-  font-family: var(--font-body);
-  font-size: var(--type-body-size);
-  line-height: var(--type-body-line);
-}
-
-.space-main-status-note {
-  font-size: var(--type-body-size);
-}
-
-.space-summary-grid {
-  grid-template-columns: minmax(0, 1.18fr) repeat(2, minmax(0, 1fr));
-  grid-auto-rows: minmax(0, 1fr);
-}
-
-.space-summary-card {
-  display: grid;
-  gap: 0.5rem;
-  min-height: 100%;
-  align-content: start;
-}
-
-.space-summary-card-top {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.75rem;
-  align-items: flex-start;
-}
-
-.space-summary-card-note {
-  display: inline-flex;
-  align-items: center;
-  min-height: 1.75rem;
-  padding: 0.22rem 0.56rem;
-  border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.56);
-  border: 1px solid rgba(95, 74, 55, 0.08);
-  color: rgba(108, 84, 72, 0.88);
-  font-family: var(--font-body);
-  font-size: var(--type-meta-size);
-  line-height: var(--type-meta-line);
-  letter-spacing: var(--type-meta-spacing);
-}
-
-.space-summary-card strong {
-  margin: 0;
-  font-family: var(--font-heading);
-  font-weight: 600;
-  line-height: 1.08;
-  letter-spacing: -0.03em;
-}
-
-.space-summary-grid > .space-summary-card:first-child {
-  grid-row: span 2;
-  background: linear-gradient(180deg, rgba(255, 251, 246, 0.98), rgba(247, 239, 229, 0.88));
-}
-
-.space-summary-grid > .space-summary-card:first-child strong {
-  font-size: clamp(2.35rem, 4.4vw, 3.1rem);
-}
-
-.space-summary-grid > .space-summary-card:nth-child(2),
-.space-summary-grid > .space-summary-card:nth-child(3) {
-  background: rgba(255, 252, 247, 0.84);
-}
-
-.space-summary-grid > .space-summary-card:last-child {
-  grid-column: span 2;
-  background: linear-gradient(135deg, rgba(255, 249, 242, 0.92), rgba(245, 239, 229, 0.84));
-}
-
-.space-summary-grid > .space-summary-card:not(:first-child) strong {
-  font-size: clamp(1.7rem, 3vw, 2.1rem);
-}
-
-.space-summary-card .space-summary-caption {
-  max-width: 18ch;
-  line-height: 1.55;
-}
-
-.space-summary-grid > .space-summary-card:last-child .space-summary-caption {
-  max-width: 24ch;
-}
-
 .space-main-stack {
   align-items: start;
 }
@@ -1648,16 +1473,6 @@ const space = reactive(useSpacePageState())
   grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: start;
   gap: 0.78rem;
-}
-
-.space-summary-caption {
-  display: block;
-  margin-top: 0.32rem;
-  color: var(--text-faint);
-  font-family: var(--font-body);
-  font-size: var(--type-supporting-size);
-  line-height: var(--type-supporting-line);
-  letter-spacing: var(--type-supporting-spacing);
 }
 
 .space-shell-card {
@@ -1671,24 +1486,8 @@ const space = reactive(useSpacePageState())
   padding: 1.35rem;
 }
 
-.space-main-fold-body {
-  gap: clamp(1rem, 1.6vw, 1.3rem);
-}
-
 .space-fold-copy {
   max-width: 34ch;
-}
-
-.space-united-divider {
-  height: 1px;
-  background: rgba(95, 74, 55, 0.12);
-}
-
-.space-united-rhythm-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: flex-start;
 }
 
 .space-panel-title {
@@ -1700,7 +1499,6 @@ const space = reactive(useSpacePageState())
   letter-spacing: var(--type-section-title-tracking);
 }
 
-.space-united-rhythm-head + .section-copy,
 .space-reward-section-heading .section-copy,
 .space-utility-band-head .section-copy {
   max-width: 36ch;
@@ -1872,18 +1670,20 @@ const space = reactive(useSpacePageState())
 
 .space-utility-summary .space-fold-copy {
   max-width: 22ch;
-  color: rgba(93, 76, 66, 0.84);
+  color: rgba(93, 76, 66, 0.62);
   font-family: var(--font-body);
-  font-size: var(--type-body-size);
-  line-height: var(--type-body-line);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
 }
 
 .space-claim-summary .space-fold-copy {
   max-width: 34rem;
-  color: rgba(93, 76, 66, 0.84);
+  color: rgba(93, 76, 66, 0.62);
   font-family: var(--font-body);
-  font-size: var(--type-body-size);
-  line-height: var(--type-body-line);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
 }
 
 .space-utility-summary .badge {
@@ -1915,6 +1715,47 @@ const space = reactive(useSpacePageState())
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.44);
   border-color: rgba(95, 74, 55, 0.1);
+}
+
+.space-claim-fold-top {
+  gap: 0.7rem;
+  padding: 0.82rem 0.88rem;
+  border-radius: 20px;
+}
+
+.space-claim-fold-top .space-fold-summary {
+  gap: 0.72rem;
+}
+
+.space-claim-fold-top .space-fold-copy-block {
+  gap: 0.42rem;
+}
+
+.space-claim-fold-top .space-fold-title {
+  font-size: var(--type-l5-size);
+  line-height: var(--type-l5-line);
+}
+
+.space-claim-fold-top .space-fold-copy {
+  font-size: var(--type-supporting-size);
+  line-height: 1.5;
+}
+
+.space-claim-fold-top .badge {
+  padding: 0.28rem 0.6rem;
+}
+
+.space-claim-fold-top .space-fold-toggle {
+  min-height: 2rem;
+  padding: 0.3rem 0.7rem;
+}
+
+.space-claim-fold-top:not([open]) .space-fold-copy {
+  display: none;
+}
+
+.space-claim-fold-top:not([open]) .space-fold-copy-block {
+  gap: 0.18rem;
 }
 
 .space-claim-fold .space-fold-meta {
@@ -1959,9 +1800,10 @@ const space = reactive(useSpacePageState())
 .space-empty-card p,
 .space-member-supporting {
   font-family: var(--font-body);
-  font-size: var(--type-body-size);
+  font-size: var(--type-supporting-size);
   color: var(--text-soft);
-  line-height: var(--type-body-line);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
 }
 
 .member-switch-grid {
@@ -2093,7 +1935,7 @@ const space = reactive(useSpacePageState())
 
 .space-utility-card .space-subsection-heading h3,
 .space-utility-card .space-fold-title {
-  font-size: 1.08rem;
+  font-size: var(--type-l5-size);
 }
 
 .space-utility-card .info-row {
@@ -2135,23 +1977,24 @@ const space = reactive(useSpacePageState())
 
 .reward-form-card {
   display: grid;
-  gap: 1rem;
+  gap: 0.78rem;
   align-content: start;
-  padding: 1.2rem;
+  padding: 0.98rem;
   background: linear-gradient(180deg, rgba(255, 253, 249, 0.86), rgba(249, 241, 232, 0.82));
 }
 
 .space-reward-form-grid {
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 1.05rem;
+  gap: 0.85rem;
 }
 
 .reward-form-support {
   margin: 0;
   font-family: var(--font-body);
-  font-size: var(--type-body-size);
+  font-size: var(--type-supporting-size);
   color: var(--text-soft);
-  line-height: var(--type-body-line);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
 }
 
 .reward-form-meta,
@@ -2166,11 +2009,11 @@ const space = reactive(useSpacePageState())
 
 .reward-form-fields {
   display: grid;
-  gap: 0.9rem;
+  gap: 0.72rem;
 }
 
 .reward-form-fields-premium {
-  gap: 0.82rem;
+  gap: 0.68rem;
 }
 
 .reward-form-cost-field {
@@ -2178,8 +2021,8 @@ const space = reactive(useSpacePageState())
 }
 
 .reward-form-submit-row {
-  gap: 0.82rem;
-  padding-top: 0.9rem;
+  gap: 0.62rem;
+  padding-top: 0.68rem;
   border-top: 1px dashed rgba(95, 74, 55, 0.12);
 }
 
@@ -2190,7 +2033,7 @@ const space = reactive(useSpacePageState())
 
 .reward-form-card .button-solid,
 .reward-form-card .button-subtle {
-  min-height: 2.9rem;
+  min-height: 2.52rem;
 }
 
 .space-reward-feedback {
@@ -2218,6 +2061,155 @@ const space = reactive(useSpacePageState())
   padding-top: 0.1rem;
 }
 
+.reward-compact-list,
+.reward-member-strip-list,
+.reward-member-strip-preview {
+  display: grid;
+}
+
+.reward-compact-list,
+.reward-member-strip-list {
+  gap: 0.68rem;
+}
+
+.reward-member-strip-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.reward-compact-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(8.2rem, auto) auto;
+  gap: 0.82rem;
+  align-items: center;
+  padding: 0.76rem 0.86rem;
+  border-radius: 20px;
+  border: 1px solid rgba(95, 74, 55, 0.1);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.reward-compact-row-premium {
+  background: linear-gradient(135deg, rgba(255, 252, 246, 0.9), rgba(246, 239, 229, 0.76));
+}
+
+.reward-compact-main {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.reward-compact-main strong {
+  overflow-wrap: anywhere;
+  font-family: var(--font-heading);
+  font-size: var(--type-l5-size);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+
+.reward-compact-main p,
+.reward-compact-meta {
+  margin: 0;
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line);
+}
+
+.reward-compact-main p {
+  overflow-wrap: anywhere;
+}
+
+.reward-compact-meta {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.reward-compact-actions {
+  gap: 0.42rem;
+  justify-content: flex-end;
+  padding-top: 0;
+  border-top: none;
+}
+
+.reward-member-strip {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.64rem;
+  align-items: start;
+  padding: 0.78rem 0.84rem;
+  border-radius: 18px;
+  border: 1px solid rgba(95, 74, 55, 0.1);
+  background: linear-gradient(135deg, rgba(255, 253, 249, 0.84), rgba(248, 241, 233, 0.76));
+  box-shadow: var(--shadow-card);
+}
+
+.reward-member-strip-person {
+  display: flex;
+  align-items: center;
+  gap: 0.58rem;
+  min-width: 0;
+}
+
+.reward-member-strip-person h3 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: var(--type-l5-size);
+  font-weight: 600;
+  line-height: 1.28;
+  letter-spacing: -0.02em;
+}
+
+.reward-member-strip-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 2.12rem;
+  width: 2.12rem;
+  height: 2.12rem;
+  border-radius: 999px;
+  background: rgba(216, 231, 220, 0.76);
+  color: rgba(83, 71, 57, 0.88);
+  font-family: var(--font-heading);
+  font-weight: 700;
+}
+
+.reward-member-strip-stats {
+  display: flex;
+  gap: 0.36rem;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.reward-member-strip-stats span {
+  display: grid;
+  min-width: 3.45rem;
+  padding: 0.34rem 0.48rem;
+  border-radius: 14px;
+  border: 1px solid rgba(95, 74, 55, 0.08);
+  background: rgba(255, 255, 255, 0.58);
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line);
+  text-align: center;
+}
+
+.reward-member-strip-stats strong {
+  color: var(--text-main);
+  font-family: var(--font-heading);
+  font-size: var(--type-l5-size);
+  line-height: var(--type-l5-line);
+}
+
+.reward-member-strip-preview {
+  gap: 0.18rem;
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line);
+}
+
 .reward-chip-list {
   display: flex;
   justify-content: space-between;
@@ -2239,9 +2231,9 @@ const space = reactive(useSpacePageState())
 
 .reward-chip strong {
   font-family: var(--font-heading);
-  font-size: 0.96rem;
+  font-size: var(--type-l5-size);
   font-weight: 600;
-  line-height: 1.28;
+  line-height: var(--type-l5-line);
   letter-spacing: -0.02em;
 }
 
@@ -2269,7 +2261,7 @@ const space = reactive(useSpacePageState())
 }
 
 .space-inline-code strong {
-  font-size: 1.32rem;
+  font-size: var(--type-card-title-size);
   letter-spacing: 0.04em;
 }
 
@@ -2314,11 +2306,12 @@ const space = reactive(useSpacePageState())
 .reward-claim-copy,
 .reward-claim-meta {
   font-family: var(--font-body);
-  line-height: var(--type-body-line);
+  line-height: var(--type-supporting-line);
 }
 
 .reward-claim-copy {
-  font-size: var(--type-body-size);
+  font-size: var(--type-supporting-size);
+  letter-spacing: var(--type-supporting-spacing);
 }
 
 .reward-claim-meta {
@@ -2382,8 +2375,7 @@ const space = reactive(useSpacePageState())
 }
 
 @media (max-width: 1080px) {
-  .space-reward-editor-head,
-  .space-reward-story-head,
+  .space-reward-hub-head,
   .space-advanced-grid {
     grid-template-columns: 1fr;
   }
@@ -2392,30 +2384,11 @@ const space = reactive(useSpacePageState())
     grid-template-columns: 1fr;
   }
 
-  .space-summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .space-summary-grid > .space-summary-card:first-child,
-  .space-summary-grid > .space-summary-card:last-child {
-    grid-column: auto;
-    grid-row: auto;
-  }
-
-  .space-main-status-strip {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .space-main-status-card-identity {
-    grid-column: 1 / -1;
-  }
-
   .space-utility-band-head {
     align-items: start;
     flex-direction: column;
   }
 
-  .space-summary-grid,
   .space-utility-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2436,12 +2409,10 @@ const space = reactive(useSpacePageState())
     padding: 1rem;
   }
 
-  .space-main-summary-topline,
   .space-main-summary-intro,
-  .space-main-summary-bottom,
+  .space-reward-hub-head,
   .space-section-heading,
   .space-fold-summary,
-  .space-united-rhythm-head,
   .space-subsection-heading,
   .member-head,
   .space-reward-stage-head,
@@ -2458,12 +2429,6 @@ const space = reactive(useSpacePageState())
     max-width: none;
   }
 
-  .space-main-summary-controls {
-    width: auto;
-    gap: 0.58rem;
-  }
-
-  .space-main-summary-topline,
   .space-fold-meta {
     width: 100%;
     justify-items: start;
@@ -2478,15 +2443,6 @@ const space = reactive(useSpacePageState())
     gap: 0.16rem;
   }
 
-  .space-main-status-strip {
-    grid-template-columns: 1fr;
-  }
-
-  .space-summary-card .space-summary-caption,
-  .space-summary-grid > .space-summary-card:last-child .space-summary-caption {
-    max-width: none;
-  }
-
   .space-utility-summary .space-fold-copy {
     max-width: none;
   }
@@ -2495,7 +2451,6 @@ const space = reactive(useSpacePageState())
     max-width: none;
   }
 
-  .space-summary-grid,
   .space-utility-grid {
     grid-template-columns: 1fr;
   }
@@ -2506,6 +2461,7 @@ const space = reactive(useSpacePageState())
 
   .space-reward-form-grid,
   .space-reward-shelf-grid,
+  .space-reward-hub-tabs,
   .space-access-grid,
   .space-member-grid,
   .space-reward-member-grid,
@@ -2539,6 +2495,47 @@ const space = reactive(useSpacePageState())
     width: 100%;
   }
 
+  .space-claim-fold-top .space-fold-summary {
+    gap: 0.6rem;
+  }
+
+  .space-reward-hub-pills {
+    justify-content: flex-start;
+  }
+
+  .space-reward-hub-tab {
+    align-items: flex-start;
+  }
+
+  .space-reward-hub-tab-copy {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.12rem;
+  }
+
+  .reward-compact-row {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .reward-member-strip-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.58rem;
+  }
+
+  .reward-compact-actions,
+  .reward-member-strip-preview {
+    width: 100%;
+  }
+
+  .reward-compact-actions {
+    justify-content: stretch;
+  }
+
+  .reward-member-strip-stats {
+    justify-content: flex-start;
+  }
+
   .space-hero-pill-row,
   .space-page .badge-row {
     gap: 0.5rem;
@@ -2550,6 +2547,8 @@ const space = reactive(useSpacePageState())
   .space-access-card,
   .reward-form-card,
   .reward-shelf-card,
+  .reward-compact-row,
+  .reward-member-strip,
   .reward-card,
   .reward-claim-card,
   .space-reward-member-card,
@@ -2561,11 +2560,6 @@ const space = reactive(useSpacePageState())
     padding: 0.9rem;
   }
 
-  .space-reward-story {
-    gap: 0.9rem;
-  }
-
-  .space-reward-story-note,
   .space-claim-fold,
   .space-claim-fold-body,
   .space-pending-list,
@@ -2586,17 +2580,13 @@ const space = reactive(useSpacePageState())
     max-width: none;
   }
 
-  .space-main-summary-stamp {
-    font-size: 0.74rem;
-  }
-
   .space-fold-toggle {
     min-height: 2.2rem;
     padding-inline: 0.74rem;
   }
 
   .space-inline-code strong {
-    font-size: 1.15rem;
+    font-size: var(--type-card-title-size);
     word-break: break-all;
   }
 }

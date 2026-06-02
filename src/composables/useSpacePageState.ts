@@ -181,58 +181,6 @@ export function useSpacePageState() {
     }))
   })
 
-  const rewardLead = computed(() => {
-    if (currentMemberRewardCount.value) {
-      return '先把奖池整理好，下一栏再单独处理领取、兑换和记录。'
-    }
-
-    return '先从这里写下会让自己开心的事，后面领取时就不用临时想。'
-  })
-
-  const rewardHeadingNote = computed(() => {
-    if (currentMemberRewardCount.value) {
-      return '这一栏只负责写、改和整理奖池。'
-    }
-
-    return '先把能鼓励自己的事写下来，领取会放到下一栏。'
-  })
-
-  const rewardDeskSummary = computed(() => {
-    if (currentMemberRewardCount.value) {
-      return `奖池里已经写下 ${currentMemberRewardCount.value} 条奖励，还可以继续补齐。`
-    }
-
-    return '奖池还是空的，先从一条轻的和一条重的开始。'
-  })
-
-  const rewardDeskSupport = computed(() => {
-    if (space.currentMemberDailyRewards.value.length && space.currentMemberPremiumRewards.value.length) {
-      return '日常奖励留给小推进，高档奖励留给认真完成；领取和兑换放下一栏。'
-    }
-
-    if (space.currentMemberDailyRewards.value.length) {
-      return '日常奖励已经有了，可以再补几条高档奖励；领取放下一栏。'
-    }
-
-    if (space.currentMemberPremiumRewards.value.length) {
-      return '高档奖励已经有了，也可以补几条日常奖励；兑换和记录放下一栏。'
-    }
-
-    return '先各写一两条轻的和重的，后面领取会清楚很多。'
-  })
-
-  const rewardStoryCopy = computed(() => {
-    if (space.pendingSmallRewardUnits.value || space.currentMemberPremiumExchangeRewards.value.length) {
-      return '待领取、待兑换和最近记录都收在这里。'
-    }
-
-    if (space.recentRewardClaims.value.length) {
-      return '领取、兑换和最近记录都收在这里。'
-    }
-
-    return '小奖励领取、兑换和记录都从这里开始。'
-  })
-
   const accountBadges = computed(() => {
     if (space.authStore.isAuthenticated) {
       return space.canBindFixedEmail.value ? ['已进入', '可记住邮箱'] : ['已进入', '可邀请对方']
@@ -352,11 +300,6 @@ export function useSpacePageState() {
     memberStoryCards,
     overviewSummary,
     relationshipLead,
-    rewardDeskSummary,
-    rewardDeskSupport,
-    rewardHeadingNote,
-    rewardLead,
-    rewardStoryCopy,
     spaceFacts,
     storageFacts,
     storageLead,

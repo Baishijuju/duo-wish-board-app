@@ -15,6 +15,10 @@
 2. 启动开发服务器：`npm run dev`
 3. 类型检查：`npm run typecheck`
 4. 构建：`npm run build`
+5. 安装截图浏览器：`npm run playwright:install`
+6. 生成正式页面截图：`npm run test:screenshots`
+
+截图会输出到 `playwright-screenshots/`，默认覆盖桌面 `1440×900` 和 iPhone `390×844` 两个视口下的首页、清单页、写下页、回顾页和空间页。
 
 ## 环境变量
 

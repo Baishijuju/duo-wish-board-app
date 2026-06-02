@@ -393,7 +393,7 @@ const {
 }
 
 .review-story-card .section-title {
-  max-width: 11ch;
+  max-width: 20ch;
   margin-bottom: 0.7rem;
   font-family: var(--font-display);
   font-size: var(--type-page-title-size);
@@ -417,6 +417,18 @@ const {
   line-height: var(--type-body-line);
 }
 
+.review-story-subnote,
+.monthly-note-card p,
+.snapshot-card p,
+.empty-card p,
+.journal-preview-item p,
+.snapshot-preview-item p {
+  color: rgba(76, 59, 50, 0.64);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
+}
+
 .review-copy {
   max-width: 40rem;
   font-size: var(--type-lead-size);
@@ -425,7 +437,7 @@ const {
 
 .review-story-subnote {
   max-width: 38rem;
-  color: rgba(76, 59, 50, 0.7);
+  color: rgba(76, 59, 50, 0.64);
 }
 
 .review-story-head {
@@ -496,7 +508,7 @@ const {
 
 .review-note-head .eyebrow {
   margin-bottom: 0.45rem;
-  font-size: calc(var(--type-eyebrow-size) - 1px);
+  font-size: var(--type-l7-size);
   letter-spacing: 0.14em;
 }
 
@@ -557,7 +569,7 @@ const {
   margin: 0 0 0.2rem;
   color: rgba(70, 53, 45, 0.64);
   font-family: var(--font-body);
-  font-size: calc(var(--type-eyebrow-size) - 1px);
+  font-size: var(--type-l7-size);
   font-weight: 600;
   letter-spacing: 0.14em;
   line-height: 1.4;
@@ -651,7 +663,7 @@ const {
 .review-tab-button span {
   color: #2d201a;
   font-family: var(--font-heading);
-  font-size: 1rem;
+  font-size: var(--type-l5-size);
   font-weight: 600;
   line-height: 1.26;
   letter-spacing: -0.02em;
@@ -709,10 +721,11 @@ const {
 .snapshot-card-note,
 .review-empty-step p {
   margin: 0;
-  color: rgba(76, 59, 50, 0.72);
+  color: rgba(76, 59, 50, 0.62);
   font-family: var(--font-body);
-  font-size: var(--type-body-size);
-  line-height: var(--type-body-line);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
 }
 
 .review-card-meter {
@@ -957,7 +970,7 @@ const {
 .review-empty-step strong {
   color: #2f211a;
   font-family: var(--font-heading);
-  font-size: 1rem;
+  font-size: var(--type-l5-size);
   font-weight: 600;
   line-height: 1.26;
   letter-spacing: -0.02em;

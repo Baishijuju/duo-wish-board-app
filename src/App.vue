@@ -27,6 +27,8 @@ const navItems: NavItem[] = [
 
 const mobileNavItems = navItems.filter((item) => !item.desktopOnly)
 
+const isPreviewRoute = computed(() => route.path === '/preview' || route.path.startsWith('/preview/'))
+
 const syncLabel = computed(() => {
   if (!authStore.usesSupabaseSpace) {
     return '暂未同步'
@@ -68,7 +70,16 @@ function isActivePath(targetPath: string) {
       <article class="shell-topbar page-card">
         <div class="shell-brand">
           <p class="eyebrow">Two Hearts, One Horizon</p>
-          <h1>人生愿望清单</h1>
+          <div class="shell-brand-row">
+            <h1>人生愿望清单</h1>
+            <RouterLink
+              class="shell-preview-link subtle-link"
+              :class="{ active: isPreviewRoute }"
+              :to="{ name: 'preview-lab' }"
+            >
+              Preview Lab
+            </RouterLink>
+          </div>
           <p class="shell-status">{{ spaceSummaryLabel }}</p>
         </div>
 
@@ -120,7 +131,7 @@ function isActivePath(targetPath: string) {
   justify-content: space-between;
   gap: 1.35rem;
   align-items: center;
-  padding: 0.95rem 1.05rem;
+  padding: 0.9rem 1rem;
 }
 
 .shell-brand {
@@ -129,12 +140,45 @@ function isActivePath(targetPath: string) {
   max-width: 19rem;
 }
 
+.shell-brand-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
 .shell-brand h1 {
   margin: 0;
   font-family: var(--font-heading);
   font-size: var(--type-section-title-size);
   line-height: var(--type-section-title-line);
   letter-spacing: var(--type-section-title-tracking);
+}
+
+.shell-preview-link {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 34px;
+  padding: 0.45rem 0.78rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: var(--type-l7-size);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  text-transform: uppercase;
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, color 180ms ease;
+}
+
+.shell-preview-link:hover,
+.shell-preview-link.active {
+  transform: translateY(-1px);
+  border-color: rgba(201, 111, 74, 0.28);
+  background: var(--surface-raised);
+  color: var(--accent-dark);
 }
 
 .shell-status {
@@ -155,9 +199,9 @@ function isActivePath(targetPath: string) {
 
 .nav-link,
 .bottom-nav-link {
-  border: 1px solid rgba(95, 74, 55, 0.09);
+  border: 1px solid var(--line);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.68);
+  background: var(--surface-card);
   color: var(--text-main);
   font-family: var(--font-body);
   font-size: var(--type-nav-size);
@@ -178,8 +222,10 @@ function isActivePath(targetPath: string) {
 .bottom-nav-link:hover,
 .bottom-nav-link.active {
   transform: translateY(-1px);
-  border-color: rgba(201, 111, 74, 0.18);
-  background: rgba(255, 247, 240, 0.84);
+  border-color: rgba(201, 111, 74, 0.3);
+  background: #fff2e9;
+  color: var(--accent-dark);
+  box-shadow: 0 6px 16px rgba(191, 101, 66, 0.1);
 }
 
 .nav-link.primary {
@@ -189,7 +235,7 @@ function isActivePath(targetPath: string) {
 }
 
 .subtle-link {
-  background: rgba(255, 255, 255, 0.54);
+  background: var(--surface-soft);
 }
 
 .app-main {
@@ -209,11 +255,9 @@ function isActivePath(targetPath: string) {
   gap: 6px;
   padding: 8px;
   border-radius: 999px;
-  background: rgba(255, 250, 242, 0.86);
-  border: 1px solid rgba(80, 55, 40, 0.12);
-  box-shadow: 0 18px 50px rgba(92, 62, 39, 0.16);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  background: var(--surface-popover);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-raised);
 }
 
 .bottom-nav-link {
@@ -246,6 +290,11 @@ function isActivePath(targetPath: string) {
 
   .shell-brand h1 {
     font-size: var(--type-section-title-size);
+  }
+
+  .shell-preview-link {
+    min-height: 32px;
+    padding: 0.4rem 0.72rem;
   }
 
   .top-nav {

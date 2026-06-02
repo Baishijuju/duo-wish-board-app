@@ -9,22 +9,155 @@ const authStore = useAuthStore()
 const wishStore = useWishStore()
 
 const WISH_BOTTLE_STAR_PATH = 'M0,-10 L2.9,-3.2 L10,-3.1 L4.2,1.4 L6.1,8.8 L0,4.7 L-6.1,8.8 L-4.2,1.4 L-10,-3.1 L-2.9,-3.2 Z'
+const WISH_BOTTLE_MAX_DISPLAY_STARS = 30
+const WISH_BOTTLE_TEN_STAR_VALUE = 10
 
-const WISH_BOTTLE_STAR_LAYOUT = Array.from({ length: 20 }, (_, index) => {
-  const row = Math.floor(index / 5)
-  const column = index % 5
-  const x = 61 + column * 23 + (row % 2 ? 10 : 0) + Math.sin(index * 1.83) * 4
-  const y = 340 - row * 28 + Math.cos(index * 1.42) * 5
+type WishBottleDisplayStarKind = 'single' | 'tenfold'
+
+type WishBottleDisplayStar = {
+  delay: string
+  duration: string
+  kind: WishBottleDisplayStarKind
+  representedStars: number
+  rotate: number
+  scale: number
+  x: number
+  y: number
+}
+
+function buildWishBottleStarKinds(tenfoldCount: number, singleCount: number) {
+  const totalCount = tenfoldCount + singleCount
+
+  if (!totalCount) {
+    return [] as WishBottleDisplayStarKind[]
+  }
+
+  const kinds: WishBottleDisplayStarKind[] = []
+  let flowCarry = 0
+  let remainingSingleCount = singleCount
+  let remainingTenfoldCount = tenfoldCount
+
+  for (let index = 0; index < totalCount; index += 1) {
+    if (!remainingSingleCount) {
+      kinds.push('tenfold')
+      remainingTenfoldCount -= 1
+      continue
+    }
+
+    if (!remainingTenfoldCount) {
+      kinds.push('single')
+      remainingSingleCount -= 1
+      continue
+    }
+
+    flowCarry += tenfoldCount
+
+    if (flowCarry >= totalCount) {
+      kinds.push('tenfold')
+      flowCarry -= totalCount
+      remainingTenfoldCount -= 1
+      continue
+    }
+
+    kinds.push('single')
+    remainingSingleCount -= 1
+  }
+
+  return kinds
+}
+
+function compactWishBottleStarKinds(totalStars: number) {
+  if (totalStars <= 0) {
+    return {
+      hiddenStars: 0,
+      kinds: [] as WishBottleDisplayStarKind[],
+    }
+  }
+
+  if (totalStars <= WISH_BOTTLE_MAX_DISPLAY_STARS) {
+    return {
+      hiddenStars: 0,
+      kinds: Array.from({ length: totalStars }, () => 'single' as const),
+    }
+  }
+
+  const maxTenfoldCount = Math.min(Math.floor(totalStars / WISH_BOTTLE_TEN_STAR_VALUE), WISH_BOTTLE_MAX_DISPLAY_STARS)
+
+  for (let tenfoldCount = maxTenfoldCount; tenfoldCount >= 1; tenfoldCount -= 1) {
+    const singleCount = totalStars - tenfoldCount * WISH_BOTTLE_TEN_STAR_VALUE
+
+    if (singleCount >= 0 && tenfoldCount + singleCount <= WISH_BOTTLE_MAX_DISPLAY_STARS) {
+      return {
+        hiddenStars: 0,
+        kinds: buildWishBottleStarKinds(tenfoldCount, singleCount),
+      }
+    }
+  }
+
+  const representedTenfoldCount = Math.min(WISH_BOTTLE_MAX_DISPLAY_STARS, Math.floor(totalStars / WISH_BOTTLE_TEN_STAR_VALUE))
+  const representedStars = representedTenfoldCount * WISH_BOTTLE_TEN_STAR_VALUE
 
   return {
-    delay: `${index * 42}ms`,
-    duration: `${4.8 + (index % 5) * 0.36}s`,
-    rotate: (index * 43 + 12) % 360,
-    scale: Number((0.82 + ((index * 17) % 38) / 100).toFixed(2)),
-    x: Math.max(45, Math.min(171, x)),
-    y: Math.max(174, Math.min(350, y)),
+    hiddenStars: Math.max(0, totalStars - representedStars),
+    kinds: Array.from({ length: representedTenfoldCount }, () => 'tenfold' as const),
   }
-})
+}
+
+function buildWishBottleStarLayout(displayStarCount: number) {
+  if (displayStarCount <= 0) {
+    return []
+  }
+
+  const columns = displayStarCount > 20 ? 6 : 5
+  const rows = Math.ceil(displayStarCount / columns)
+  const minX = 45
+  const maxX = 171
+  const minY = 174
+  const maxY = 350
+  const columnGap = columns > 1 ? (maxX - minX) / (columns - 1) : 0
+  const rowGap = rows > 1 ? Math.min(28, (maxY - minY) / Math.max(1, rows - 1)) : 0
+  const densityScale = Math.max(0.46, Math.min(1, rows > 1 ? 7 / rows : 1))
+
+  return Array.from({ length: displayStarCount }, (_, index) => {
+    const row = Math.floor(index / columns)
+    const column = index % columns
+    const x = minX + column * columnGap + (row % 2 ? Math.min(10, columnGap * 0.42) : 0) + Math.sin(index * 1.83) * Math.min(4, columnGap * 0.16)
+    const y = maxY - row * rowGap + Math.cos(index * 1.42) * Math.min(5, rowGap ? rowGap * 0.24 : 4)
+
+    return {
+      delay: `${index * 42}ms`,
+      duration: `${4.8 + (index % 5) * 0.36}s`,
+      rotate: (index * 43 + 12) % 360,
+      scale: Number((densityScale * (0.82 + ((index * 17) % 38) / 100)).toFixed(2)),
+      x: Math.max(minX, Math.min(maxX, x)),
+      y: Math.max(minY, Math.min(maxY, y)),
+    }
+  })
+}
+
+function buildWishBottleDisplayedStars(totalStars: number) {
+  const compactedStars = compactWishBottleStarKinds(totalStars)
+  const positionedStars = buildWishBottleStarLayout(compactedStars.kinds.length)
+
+  const stars: WishBottleDisplayStar[] = positionedStars.map((star, index) => {
+    const kind = compactedStars.kinds[index]
+    const representedStars = kind === 'tenfold' ? WISH_BOTTLE_TEN_STAR_VALUE : 1
+    const scaleMultiplier = kind === 'tenfold' ? 1.22 : 1
+
+    return {
+      ...star,
+      kind,
+      representedStars,
+      scale: Number((star.scale * scaleMultiplier).toFixed(2)),
+    }
+  })
+
+  return {
+    hiddenStars: compactedStars.hiddenStars,
+    stars,
+    usesTenfoldStars: compactedStars.kinds.includes('tenfold'),
+  }
+}
 
 type HomeThreadSummary = {
   actorId: string | null
@@ -39,11 +172,23 @@ const viewerName = computed(() => authStore.currentMember?.displayName ?? '我�
 const nearestDueWishes = computed(() => wishStore.nearestDueWishes.slice(0, 3))
 const dragonBallWishes = computed(() => wishStore.dragonBallWishes.slice(0, 3))
 const wishBottleSnapshot = computed(() => wishStore.wishBottleSnapshot)
+const wishBottleCountStarCount = computed(() => {
+  return wishBottleSnapshot.value.completedCountUnits
+})
+const wishBottleDisplayStarCount = computed(() => {
+  return wishBottleSnapshot.value.completedStepStarCount + wishBottleCountStarCount.value
+})
+const wishBottleDisplayedStarsPlan = computed(() => {
+  return buildWishBottleDisplayedStars(wishBottleDisplayStarCount.value)
+})
 const visibleWishBottleStars = computed(() => {
-  return WISH_BOTTLE_STAR_LAYOUT.slice(
-    0,
-    Math.min(wishBottleSnapshot.value.completedStepStarCount, WISH_BOTTLE_STAR_LAYOUT.length),
-  )
+  return wishBottleDisplayedStarsPlan.value.stars
+})
+const wishBottleUsesTenfoldStars = computed(() => {
+  return wishBottleDisplayedStarsPlan.value.usesTenfoldStars
+})
+const wishBottleHiddenStarCount = computed(() => {
+  return wishBottleDisplayedStarsPlan.value.hiddenStars
 })
 const memberDisplayNameMap = computed(() => {
   return new Map(authStore.members.map((member) => [member.id, member.displayName]))
@@ -125,6 +270,12 @@ const heroPrimaryActionLabel = computed(() => {
 })
 const stageMetrics = computed(() => {
   const snapshot = wishBottleSnapshot.value
+  const displayStarCount = wishBottleDisplayStarCount.value
+  const starNote = wishBottleHiddenStarCount.value
+    ? `金描边大星按 10 颗计，另有 ${wishBottleHiddenStarCount.value} 颗收起`
+    : wishBottleUsesTenfoldStars.value
+      ? '金描边大星按 10 颗计'
+      : '数字推进和完成步骤都会落成星星'
 
   return [
     {
@@ -134,8 +285,8 @@ const stageMetrics = computed(() => {
     },
     {
       label: '已点亮',
-      note: '被完成的小步骤会落成星星',
-      value: snapshot.completedStepStarCount ? `${snapshot.completedStepStarCount} 颗` : '等待第一颗',
+      note: starNote,
+      value: displayStarCount ? `${displayStarCount} 颗` : '等待第一颗',
     },
     {
       label: '最近更新',
@@ -148,6 +299,7 @@ const stageMetrics = computed(() => {
 })
 const bottleMoodChips = computed(() => {
   const snapshot = wishBottleSnapshot.value
+  const displayStarCount = wishBottleDisplayStarCount.value
 
   if (!snapshot.activeWishCount) {
     return ['下一条愿望会住进来', '第一颗星星会在这里亮起', '先从一件小事开始']
@@ -156,11 +308,21 @@ const bottleMoodChips = computed(() => {
   const approachingWishCount =
     snapshot.progressedWishCount || snapshot.trackedWishCount || snapshot.activeWishCount
 
-  return [
+  const chips = [
     `${snapshot.activeWishCount} 个愿望在路上`,
-    `已点亮 ${snapshot.completedStepStarCount} 颗星星`,
+    displayStarCount ? `已点亮 ${displayStarCount} 颗星星` : '第一颗星星还在路上',
     `${approachingWishCount} 条愿望正在靠近`,
   ]
+
+  if (wishBottleUsesTenfoldStars.value) {
+    chips.push('金描边大星 = 10 颗')
+  }
+
+  if (wishBottleHiddenStarCount.value) {
+    chips.push(`另有 ${wishBottleHiddenStarCount.value} 颗星星收起`) 
+  }
+
+  return chips
 })
 
 function getLocalDateTimestamp(dateValue: string) {
@@ -245,16 +407,17 @@ function getWishBottleDreamfieldOpacity() {
 
 function getWishBottleHeroHeading() {
   const snapshot = wishBottleSnapshot.value
+  const displayStarCount = wishBottleDisplayStarCount.value
 
   if (!snapshot.activeWishCount) {
     return '愿望瓶正在等新的愿望住进来'
   }
 
-  if (!snapshot.completedStepStarCount) {
+  if (!displayStarCount) {
     return '愿望瓶正在等第一颗星星落下来'
   }
 
-  return `愿望瓶已经亮起 ${snapshot.completedStepStarCount} 颗星星`
+  return `愿望瓶已经亮起 ${displayStarCount} 颗星星`
 }
 
 function getWishBottleHeroSubcopy() {
@@ -596,12 +759,27 @@ function formatRecentThreadTime(timestamp: string) {
                     <stop offset=".44" stop-color="var(--wish-star-2)" />
                     <stop offset="1" stop-color="var(--wish-star-3)" />
                   </linearGradient>
+                  <linearGradient id="wish-bottle-ten-star-fill-duet" x1="-10" y1="-10" x2="12" y2="16" gradientUnits="userSpaceOnUse">
+                    <stop offset="0" stop-color="#fff9df" />
+                    <stop offset=".48" stop-color="#ffd36d" />
+                    <stop offset="1" stop-color="#d88a1f" />
+                  </linearGradient>
+                  <linearGradient id="wish-bottle-ten-star-outline-duet" x1="-12" y1="-12" x2="15" y2="17" gradientUnits="userSpaceOnUse">
+                    <stop offset="0" stop-color="#fff7d2" />
+                    <stop offset=".34" stop-color="#ffe17c" />
+                    <stop offset=".68" stop-color="#ffb83f" />
+                    <stop offset="1" stop-color="#fff2bf" />
+                  </linearGradient>
                   <filter id="wish-bottle-glass-blur-duet" x="-30%" y="-30%" width="160%" height="160%">
                     <feGaussianBlur stdDeviation="0.45" />
                   </filter>
                   <filter id="wish-bottle-star-glow-duet" x="-80%" y="-80%" width="260%" height="260%">
                     <feDropShadow dx="0" dy="0" stdDeviation="1.9" flood-color="var(--wish-star-glow)" flood-opacity=".62" />
                     <feDropShadow dx="0" dy="1" stdDeviation="3.6" flood-color="var(--wish-star-glow)" flood-opacity=".18" />
+                  </filter>
+                  <filter id="wish-bottle-ten-star-glow-duet" x="-110%" y="-110%" width="320%" height="320%">
+                    <feDropShadow dx="0" dy="0" stdDeviation="2.2" flood-color="#ffc94f" flood-opacity=".74" />
+                    <feDropShadow dx="0" dy="0" stdDeviation="4.4" flood-color="#ffd978" flood-opacity=".26" />
                   </filter>
                   <filter id="wish-bottle-cork-shadow-duet" x="-40%" y="-40%" width="180%" height="180%">
                     <feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="rgba(70,45,22,.26)" />
@@ -675,6 +853,7 @@ function formatRecentThreadTime(timestamp: string) {
                     >
                       <g
                         class="wish-bottle-svg-star"
+                        :class="{ 'is-tenfold-star': star.kind === 'tenfold' }"
                         :style="{
                           '--wish-star-delay': star.delay,
                           '--wish-star-duration': star.duration,
@@ -682,8 +861,14 @@ function formatRecentThreadTime(timestamp: string) {
                           '--wish-star-scale': star.scale,
                         }"
                       >
-                        <path :d="WISH_BOTTLE_STAR_PATH" fill="url(#wish-bottle-star-grad-duet)" filter="url(#wish-bottle-star-glow-duet)" />
-                        <path :d="WISH_BOTTLE_STAR_PATH" class="wish-bottle-star-highlight" />
+                        <template v-if="star.kind === 'tenfold'">
+                          <path :d="WISH_BOTTLE_STAR_PATH" fill="url(#wish-bottle-ten-star-fill-duet)" filter="url(#wish-bottle-ten-star-glow-duet)" />
+                          <path :d="WISH_BOTTLE_STAR_PATH" class="wish-bottle-ten-star-outline" />
+                        </template>
+                        <template v-else>
+                          <path :d="WISH_BOTTLE_STAR_PATH" fill="url(#wish-bottle-star-grad-duet)" filter="url(#wish-bottle-star-glow-duet)" />
+                          <path :d="WISH_BOTTLE_STAR_PATH" class="wish-bottle-star-highlight" />
+                        </template>
                       </g>
                     </g>
                   </g>
@@ -934,8 +1119,8 @@ function formatRecentThreadTime(timestamp: string) {
 .atelier-marquee p {
   margin: 0;
   color: var(--atelier-ink-soft);
-  font-size: 0.92rem;
-  line-height: 1.5;
+  font-size: var(--type-l6-size);
+  line-height: var(--type-l6-line);
 }
 
 .atelier-marquee-actions {
@@ -953,8 +1138,8 @@ function formatRecentThreadTime(timestamp: string) {
   border: 1px solid rgba(144, 117, 94, 0.14);
   background: rgba(255, 255, 255, 0.62);
   color: var(--atelier-ink-soft);
-  font-size: 0.84rem;
-  line-height: 1.1;
+  font-size: var(--type-l7-size);
+  line-height: var(--type-l7-line);
   text-decoration: none;
 }
 
@@ -964,10 +1149,10 @@ function formatRecentThreadTime(timestamp: string) {
 
 .atelier-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.14fr) minmax(300px, 0.86fr);
-  gap: 1rem;
+  grid-template-columns: minmax(0, 1.08fr) minmax(280px, 0.82fr);
+  gap: var(--space-5);
   padding: 1.24rem;
-  border-radius: 38px;
+  border-radius: var(--radius-xl);
   background:
     linear-gradient(180deg, rgba(255, 251, 247, 0.95), rgba(247, 237, 229, 0.9)),
     radial-gradient(circle at 10% 10%, rgba(255, 216, 213, 0.42), transparent 26%),
@@ -977,7 +1162,7 @@ function formatRecentThreadTime(timestamp: string) {
 
 .atelier-hero-copy {
   display: grid;
-  gap: 0.88rem;
+  gap: var(--space-4);
   align-content: start;
   padding: 0.28rem 0.22rem 0.2rem;
 }
@@ -1052,7 +1237,7 @@ function formatRecentThreadTime(timestamp: string) {
 .atelier-hero-copy h1 {
   display: grid;
   gap: 0.54rem;
-  max-width: 13.2ch;
+  max-width: 18ch;
   font-size: var(--type-page-title-size);
   line-height: var(--type-page-title-line);
   letter-spacing: var(--type-page-title-tracking);
@@ -1077,7 +1262,7 @@ function formatRecentThreadTime(timestamp: string) {
 .atelier-hero-promise {
   display: grid;
   gap: 0.18rem;
-  max-width: 12.2ch;
+  max-width: 17ch;
   line-height: 1.04;
 }
 
@@ -1086,11 +1271,11 @@ function formatRecentThreadTime(timestamp: string) {
 }
 
 .atelier-hero-line:first-child {
-  max-width: 11.8ch;
+  max-width: 17ch;
 }
 
 .atelier-hero-line.is-tight {
-  max-width: 5.2ch;
+  max-width: 8ch;
   padding-left: 0.28em;
 }
 
@@ -1108,6 +1293,20 @@ function formatRecentThreadTime(timestamp: string) {
   color: var(--atelier-ink-soft);
   font-size: var(--type-body-size);
   line-height: var(--type-body-line);
+}
+
+.atelier-stage-copy,
+.atelier-stage-hint,
+.lane-head p,
+.lane-row p,
+.lane-empty p,
+.journal-feature p,
+.journal-entry p,
+.section-head p {
+  color: rgba(57, 42, 36, 0.64);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
 }
 
 .atelier-lead {
@@ -1176,19 +1375,17 @@ function formatRecentThreadTime(timestamp: string) {
   display: grid;
   gap: 0.9rem;
   padding: 1rem 1rem 1.04rem;
-  border-radius: 30px;
+  border-radius: var(--radius-xl);
 }
 
 .priority-card.is-primary-focus {
   gap: 1rem;
-  padding: 1.08rem 1.08rem 1.12rem;
-  border-color: rgba(151, 113, 92, 0.18);
+  padding: 1.18rem;
+  border-color: rgba(201, 111, 74, 0.24);
   background:
-    linear-gradient(180deg, rgba(255, 252, 248, 0.92), rgba(255, 246, 238, 0.82)),
-    radial-gradient(circle at 100% 0%, rgba(238, 196, 188, 0.18), transparent 38%);
-  box-shadow:
-    0 18px 40px rgba(119, 91, 82, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.74);
+    linear-gradient(180deg, rgba(255, 253, 249, 0.98), rgba(255, 246, 238, 0.94)),
+    radial-gradient(circle at 100% 0%, rgba(238, 196, 188, 0.22), transparent 38%);
+  box-shadow: var(--shadow-raised);
 }
 
 .priority-head,
@@ -1228,9 +1425,10 @@ function formatRecentThreadTime(timestamp: string) {
 
 .priority-copy {
   max-width: 34ch;
-  color: rgba(57, 42, 36, 0.82);
-  font-size: 0.94rem;
-  line-height: 1.7;
+  color: rgba(57, 42, 36, 0.7);
+  font-size: var(--type-l6-size);
+  line-height: var(--type-l6-line);
+  letter-spacing: var(--type-l6-spacing);
 }
 
 .lane-row strong,
@@ -1260,13 +1458,21 @@ function formatRecentThreadTime(timestamp: string) {
 
 .priority-link {
   min-height: 40px;
-  padding: 0.58rem 0.9rem;
-  font-size: 0.9rem;
+  padding: 0.62rem 1rem;
+  background: linear-gradient(135deg, var(--atelier-rose), var(--atelier-rose-deep));
+  border-color: transparent;
+  color: #fffaf6;
+  font-size: var(--type-body-size);
+  box-shadow: 0 10px 22px rgba(166, 90, 96, 0.18);
 }
 
 .atelier-bottle-card {
   align-content: start;
   min-height: 100%;
+  background:
+    linear-gradient(180deg, rgba(255, 252, 248, 0.9), rgba(249, 241, 234, 0.72)),
+    radial-gradient(circle at 80% 10%, rgba(216, 229, 249, 0.18), transparent 26%);
+  box-shadow: var(--shadow-card);
 }
 
 .atelier-stage-note {
@@ -1292,17 +1498,17 @@ function formatRecentThreadTime(timestamp: string) {
   display: grid;
   gap: 0.42rem;
   padding: 0.88rem 0.94rem 0.96rem;
-  border-radius: 28px;
-  background: rgba(255, 255, 255, 0.54);
-  border: 1px solid rgba(144, 117, 94, 0.12);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
+  border-radius: var(--radius-xl);
+  background: var(--surface-soft);
+  border: 1px solid var(--atelier-line);
+  box-shadow: none;
 }
 
 .atelier-progress-value {
   color: var(--wish-star-2);
   font-family: var(--atelier-display-font);
-  font-size: clamp(2.86rem, 5vw, 4.08rem);
-  line-height: 0.92;
+  font-size: var(--type-d0-size);
+  line-height: var(--type-d0-line);
   letter-spacing: -0.07em;
   text-shadow: 0 6px 16px rgba(70, 165, 235, 0.22);
 }
@@ -1310,9 +1516,10 @@ function formatRecentThreadTime(timestamp: string) {
 .atelier-progress-caption {
   margin: 0;
   max-width: 27ch;
-  color: rgba(57, 42, 36, 0.74);
-  font-size: 0.92rem;
-  line-height: 1.7;
+  color: rgba(57, 42, 36, 0.62);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
 }
 
 .atelier-metric-grid {
@@ -1325,7 +1532,9 @@ function formatRecentThreadTime(timestamp: string) {
   display: grid;
   gap: 0.24rem;
   padding: 0.84rem 0.9rem 0.92rem;
-  border-radius: 24px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-card);
+  box-shadow: none;
 }
 
 .atelier-metric-card.is-wide {
@@ -1361,7 +1570,7 @@ function formatRecentThreadTime(timestamp: string) {
 }
 
 .atelier-stage-hint {
-  font-size: 0.94rem;
+  font-size: var(--type-supporting-size);
 }
 
 .atelier-chip-row {
@@ -1393,7 +1602,7 @@ function formatRecentThreadTime(timestamp: string) {
 .atelier-agenda,
 .atelier-journal {
   padding: 1.2rem;
-  border-radius: 34px;
+  border-radius: var(--radius-xl);
 }
 
 .atelier-agenda {
@@ -1423,7 +1632,7 @@ function formatRecentThreadTime(timestamp: string) {
 }
 
 .section-head .atelier-kicker {
-  font-size: calc(var(--type-eyebrow-size) - 1px);
+  font-size: var(--type-l7-size);
   letter-spacing: 0.14em;
 }
 
@@ -1445,7 +1654,7 @@ function formatRecentThreadTime(timestamp: string) {
   gap: 1rem;
   align-content: start;
   padding: 1.08rem;
-  border-radius: 28px;
+  border-radius: var(--radius-xl);
 }
 
 .atelier-lane-due {
@@ -1490,7 +1699,7 @@ function formatRecentThreadTime(timestamp: string) {
 
 .lane-row strong {
   display: block;
-  font-size: 1rem;
+  font-size: var(--type-l5-size);
   line-height: 1.48;
 }
 
@@ -1515,7 +1724,7 @@ function formatRecentThreadTime(timestamp: string) {
 .journal-entry strong {
   display: block;
   margin-bottom: 0;
-  font-size: 1rem;
+  font-size: var(--type-l5-size);
   line-height: 1.5;
 }
 
@@ -1534,7 +1743,7 @@ function formatRecentThreadTime(timestamp: string) {
   gap: 0.72rem;
   align-content: start;
   padding: 1rem;
-  border-radius: 30px;
+  border-radius: var(--radius-xl);
   background: linear-gradient(180deg, rgba(255, 244, 237, 0.82), rgba(255, 255, 255, 0.64));
   border: 1px solid rgba(146, 112, 88, 0.16);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
@@ -1562,7 +1771,7 @@ function formatRecentThreadTime(timestamp: string) {
   margin: 0;
   color: var(--atelier-ink-soft);
   font-family: var(--atelier-body-font);
-  font-size: calc(var(--type-eyebrow-size) - 1px);
+  font-size: var(--type-l7-size);
   font-weight: 600;
   line-height: 1.4;
   letter-spacing: 0.14em;
@@ -1597,7 +1806,7 @@ function formatRecentThreadTime(timestamp: string) {
   margin: 0;
   color: var(--atelier-ink);
   font-family: var(--atelier-heading-font);
-  font-size: 1rem;
+  font-size: var(--type-l5-size);
   line-height: 1.46;
   letter-spacing: -0.02em;
 }
@@ -1608,6 +1817,13 @@ function formatRecentThreadTime(timestamp: string) {
   margin: 0;
   font-size: var(--type-body-size);
   line-height: var(--type-body-line);
+}
+
+.journal-member-empty p {
+  color: rgba(57, 42, 36, 0.62);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
 }
 
 .journal-member-followup {
@@ -1652,7 +1868,7 @@ function formatRecentThreadTime(timestamp: string) {
   grid-column: 1 / -1;
   gap: 0.18rem;
   padding: 0.8rem 0.92rem;
-  border-radius: 24px;
+  border-radius: var(--radius-lg);
   border: 1px dashed rgba(144, 117, 94, 0.18);
   background: rgba(255, 255, 255, 0.48);
 }
@@ -1715,7 +1931,7 @@ function formatRecentThreadTime(timestamp: string) {
   display: grid;
   gap: 1rem;
   padding: 1.28rem 1.18rem 1.12rem;
-  border-radius: 32px;
+  border-radius: var(--radius-xl);
   border: 1px solid rgba(217, 203, 187, 0.6);
   overflow: hidden;
   background:
@@ -1948,6 +2164,18 @@ function formatRecentThreadTime(timestamp: string) {
   opacity: 0.6;
 }
 
+.wish-bottle-ten-star-outline {
+  fill: none;
+  stroke: url(#wish-bottle-ten-star-outline-duet);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 12 8;
+  opacity: 0.94;
+  filter: url(#wish-bottle-ten-star-glow-duet);
+  animation: bottle-ten-star-outline-flow 3.2s linear infinite;
+}
+
 .wish-bottle-progress-bar {
   position: relative;
   overflow: hidden;
@@ -2056,6 +2284,23 @@ function formatRecentThreadTime(timestamp: string) {
   }
 }
 
+@keyframes bottle-ten-star-outline-flow {
+  0% {
+    opacity: 0.78;
+    stroke-dashoffset: 0;
+  }
+
+  50% {
+    opacity: 1;
+    stroke-dashoffset: -20;
+  }
+
+  100% {
+    opacity: 0.82;
+    stroke-dashoffset: -40;
+  }
+}
+
 @keyframes bottle-sparkle-twinkle {
   0%,
   100% {
@@ -2093,7 +2338,7 @@ function formatRecentThreadTime(timestamp: string) {
   }
 
   .atelier-hero-copy h1 {
-    max-width: 15ch;
+    max-width: 18ch;
   }
 
   .atelier-hero-name,
@@ -2131,17 +2376,17 @@ function formatRecentThreadTime(timestamp: string) {
   .atelier-agenda,
   .atelier-journal {
     padding: 1rem;
-    border-radius: 28px;
+    border-radius: var(--radius-xl);
   }
 
   .wish-bottle-card {
     gap: 1rem;
     padding: 1.18rem 1rem 1.08rem;
-    border-radius: 30px;
+    border-radius: var(--radius-xl);
   }
 
   .wish-bottle-visual {
-    min-height: 248px;
+    min-height: clamp(260px, 72vw, 330px);
   }
 
   .priority-card,
@@ -2149,7 +2394,7 @@ function formatRecentThreadTime(timestamp: string) {
   .journal-member-card,
   .atelier-progress-hero {
     padding: 0.96rem;
-    border-radius: 24px;
+    border-radius: var(--radius-xl);
   }
 
   .journal-member-head {
@@ -2213,8 +2458,8 @@ function formatRecentThreadTime(timestamp: string) {
   }
 
   .atelier-lead {
-    font-size: 0.95rem;
-    line-height: 1.76;
+    font-size: var(--type-lead-size);
+    line-height: var(--type-lead-line);
   }
 
   .atelier-metric-grid {
@@ -2254,11 +2499,11 @@ function formatRecentThreadTime(timestamp: string) {
   }
 
   .atelier-progress-value {
-    font-size: clamp(2.7rem, 15vw, 3.75rem);
+    font-size: var(--type-d0-size);
   }
 
   .wish-bottle-visual {
-    min-height: 350px;
+    min-height: clamp(260px, 72vw, 330px);
   }
 
   .wish-bottle-shell {
