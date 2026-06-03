@@ -1,8 +1,8 @@
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useFilterStore } from '../stores/filters'
 import type { WishPriority, WishRecord, WishScope } from '../stores/wishes'
-import { DRAGON_BALL_COIN_TARGET, useWishStore } from '../stores/wishes'
+import { useWishStore } from '../stores/wishes'
 import { formatBeijingDate } from '../utils/datetime'
 
 const priorityLabels: Record<WishPriority, string> = {
@@ -21,12 +21,10 @@ export function useListWishBoardState() {
   const filterStore = useFilterStore()
   const wishStore = useWishStore()
 
-  const openMoreWishId = ref<string | null>(null)
-
   const filteredWishes = computed(() => {
     const currentMemberId = authStore.currentMember?.id
 
-    return wishStore.sortedWishes.filter((wish) => {
+    const visibleWishes = wishStore.sortedWishes.filter((wish) => {
       const matchStatus = filterStore.status === 'all' || wish.status === filterStore.status
       const matchVisibility =
         filterStore.visibility === 'all'
@@ -38,6 +36,22 @@ export function useListWishBoardState() {
 
       return matchStatus && matchVisibility && matchSearch
     })
+
+    if (filterStore.sortMode === 'progress') {
+      return [...visibleWishes].sort((leftWish, rightWish) => {
+        const leftProgress = wishStore.getWishProgressSnapshot(leftWish)
+        const rightProgress = wishStore.getWishProgressSnapshot(rightWish)
+        const progressDifference = rightProgress.percent - leftProgress.percent
+
+        if (progressDifference !== 0) {
+          return progressDifference
+        }
+
+        return new Date(rightWish.updatedAt).getTime() - new Date(leftWish.updatedAt).getTime()
+      })
+    }
+
+    return visibleWishes
   })
 
   function getMemberName(memberId: string) {
@@ -132,10 +146,6 @@ export function useListWishBoardState() {
     return '正在路上'
   }
 
-  function toggleMoreMenu(wishId: string) {
-    openMoreWishId.value = openMoreWishId.value === wishId ? null : wishId
-  }
-
   function getWishProgress(wish: WishRecord) {
     return wishStore.getWishProgressSnapshot(wish)
   }
@@ -166,24 +176,6 @@ export function useListWishBoardState() {
     return ''
   }
 
-  function getWishCoinSummary(wish: WishRecord) {
-    return wishStore.getWishCoinSummary(wish)
-  }
-
-  function getWishCoinHint(wish: WishRecord) {
-    const coinSnapshot = getWishCoinSummary(wish)
-
-    if (coinSnapshot.isDragonBallReady) {
-      return `已经集齐七龙珠，现在有 ${coinSnapshot.total} 枚愿望币。`
-    }
-
-    if (coinSnapshot.total > 0) {
-      return `现在有 ${coinSnapshot.total} 枚愿望币，还差 ${coinSnapshot.remainingToDragonBall} 枚召唤神龙。`
-    }
-
-    return `还差 ${DRAGON_BALL_COIN_TARGET} 枚愿望币，就能让它进入七龙珠提醒。`
-  }
-
   return {
     authStore,
     filterStore,
@@ -192,15 +184,11 @@ export function useListWishBoardState() {
     getCoverImageUrl,
     getMemberName,
     getRelativeDueLabel,
-    getWishCoinHint,
-    getWishCoinSummary,
     getWishMood,
     getWishProgress,
     getWishProgressHint,
-    openMoreWishId,
     priorityLabels,
     scopeLabels,
-    toggleMoreMenu,
     wishStore,
   }
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { WishRecord } from '../stores/wishes'
 import { useListWishBoardState } from '../composables/useListWishBoardState'
@@ -12,19 +12,15 @@ const {
   getCoverImageUrl,
   getMemberName,
   getRelativeDueLabel,
-  getWishCoinHint,
-  getWishCoinSummary,
   getWishMood,
   getWishProgress,
   getWishProgressHint,
-  openMoreWishId,
   priorityLabels,
   scopeLabels,
-  toggleMoreMenu,
   wishStore,
 } = useListWishBoardState()
 
-type ListActionKind = 'coin' | 'done' | 'delete'
+type ListActionKind = 'coin'
 type ListFeedbackTone = 'success' | 'danger' | 'info'
 
 const visibilityLabels = {
@@ -39,9 +35,15 @@ const statusLabels = {
   done: '已经实现',
 } as const
 
+const sortLabels = {
+  time: '按时间',
+  progress: '按进度',
+} as const
+
 const viewerName = computed(() => authStore.currentMember?.displayName ?? '我们')
 const selectedVisibilityLabel = computed(() => visibilityLabels[filterStore.visibility])
 const selectedStatusLabel = computed(() => statusLabels[filterStore.status])
+const selectedSortLabel = computed(() => sortLabels[filterStore.sortMode])
 const archiveSummary = computed(() => {
   if (filterStore.visibility === 'mine') {
     if (filterStore.status === 'done') {
@@ -122,7 +124,6 @@ const boardHeading = computed(() => {
   return '今天继续往前的愿望'
 })
 const pendingWishAction = ref<{ wishId: string; kind: ListActionKind } | null>(null)
-const pendingDeleteWishId = ref<string | null>(null)
 const pageFeedback = ref<{ tone: ListFeedbackTone; text: string } | null>(null)
 const isFilterPanelOpen = ref(false)
 
@@ -144,33 +145,12 @@ function getProgressCopy(wish: WishRecord) {
   return '先把愿望本身写清楚'
 }
 
-function closeMoreMenu() {
-  openMoreWishId.value = null
-  pendingDeleteWishId.value = null
-}
-
 function showPageFeedback(tone: ListFeedbackTone, text: string) {
   pageFeedback.value = { tone, text }
 }
 
 function isWishActionPending(wishId: string, kind?: ListActionKind) {
   return pendingWishAction.value?.wishId === wishId && (!kind || pendingWishAction.value.kind === kind)
-}
-
-function handleMoreMenuToggle(wishId: string) {
-  if (openMoreWishId.value !== wishId) {
-    pendingDeleteWishId.value = null
-  }
-
-  toggleMoreMenu(wishId)
-}
-
-function requestDeleteWish(wishId: string) {
-  pendingDeleteWishId.value = wishId
-}
-
-function cancelDeleteWish() {
-  pendingDeleteWishId.value = null
 }
 
 async function handleCastWishCoin(wish: WishRecord) {
@@ -188,58 +168,6 @@ async function handleCastWishCoin(wish: WishRecord) {
     pendingWishAction.value = null
   }
 }
-
-async function handleToggleDone(wish: WishRecord) {
-  const nextLabel = wish.status === 'done' ? '放回路上' : '收进已实现'
-  pendingWishAction.value = { wishId: wish.id, kind: 'done' }
-
-  try {
-    const isSuccess = await wishStore.toggleDone(wish.id)
-    showPageFeedback(
-      isSuccess ? 'success' : 'danger',
-      isSuccess
-        ? `「${wish.title}」已经被${nextLabel}。`
-        : wishStore.syncMessage || `这次没能更新「${wish.title}」的状态。`,
-    )
-  } finally {
-    pendingWishAction.value = null
-  }
-}
-
-async function handleDeleteWish(wish: WishRecord) {
-  pendingWishAction.value = { wishId: wish.id, kind: 'delete' }
-
-  try {
-    const isSuccess = await wishStore.deleteWish(wish.id)
-    if (isSuccess) {
-      closeMoreMenu()
-    }
-    showPageFeedback(
-      isSuccess ? 'success' : 'danger',
-      isSuccess
-        ? `「${wish.title}」已经从这张清单里移走了。`
-        : wishStore.syncMessage || `这次没能删除「${wish.title}」。`,
-    )
-  } finally {
-    pendingWishAction.value = null
-  }
-}
-
-function handleWindowClick(event: MouseEvent) {
-  const target = event.target instanceof Element ? event.target : null
-
-  if (!target?.closest('.list-board-card-tools') && !target?.closest('.list-board-more-panel')) {
-    closeMoreMenu()
-  }
-}
-
-onMounted(() => {
-  window.addEventListener('click', handleWindowClick)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('click', handleWindowClick)
-})
 </script>
 
 <template>
@@ -335,6 +263,28 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </div>
+
+          <div class="list-board-filter-group">
+            <span class="list-board-filter-label">排序方式</span>
+            <div class="list-board-filter-row is-sort-row">
+              <button
+                class="list-board-filter-pill"
+                type="button"
+                :class="{ 'is-active': filterStore.sortMode === 'time' }"
+                @click="filterStore.sortMode = 'time'"
+              >
+                按时间
+              </button>
+              <button
+                class="list-board-filter-pill"
+                type="button"
+                :class="{ 'is-active': filterStore.sortMode === 'progress' }"
+                @click="filterStore.sortMode = 'progress'"
+              >
+                按进度
+              </button>
+            </div>
+          </div>
         </div>
 
         <div class="list-board-toolbar-side">
@@ -366,6 +316,7 @@ onBeforeUnmount(() => {
         <div class="list-board-badge-row">
           <span class="list-board-badge">{{ selectedVisibilityLabel }}</span>
           <span class="list-board-badge">{{ selectedStatusLabel }} · {{ filteredWishes.length }} 条</span>
+          <span class="list-board-badge">{{ selectedSortLabel }}</span>
         </div>
       </div>
 
@@ -379,20 +330,6 @@ onBeforeUnmount(() => {
 
             <div class="list-board-card-tools">
               <span class="list-board-card-mood">{{ getWishMood(wish) }}</span>
-              <button
-                class="list-board-more-trigger"
-                type="button"
-                :aria-expanded="openMoreWishId === wish.id"
-                :aria-controls="`wish-more-${wish.id}`"
-                aria-label="打开更多操作"
-                @click.stop="handleMoreMenuToggle(wish.id)"
-              >
-                <span class="list-board-dot-column" aria-hidden="true">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </span>
-              </button>
             </div>
           </div>
 
@@ -406,77 +343,36 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="list-board-card-data">
-            <div class="list-board-data-block">
+            <RouterLink class="list-board-data-block list-board-progress-link" :to="{ name: 'wish-detail', params: { id: wish.id }, hash: '#progress' }" aria-label="打开详情页进度区域">
               <span>当前进度</span>
               <strong>{{ getProgressCopy(wish) }}</strong>
               <p>{{ getWishProgressHint(wish) || '还没补进度说明。' }}</p>
-            </div>
-
-            <div class="list-board-data-block is-coin">
-              <span>愿望币</span>
-              <strong>{{ getWishCoinSummary(wish).total }} 枚</strong>
-              <p>{{ getWishCoinHint(wish) }}</p>
-            </div>
+            </RouterLink>
           </div>
 
           <div class="list-board-card-meta">
             <span>{{ getRelativeDueLabel(wish.dueDate) }}</span>
             <span>{{ getMemberName(wish.ownerId) }} 写下于 {{ formatDateLabel(wish.createdAt) }}</span>
-            <span>{{ wish.comments.length }} 条留言</span>
           </div>
 
           <div class="list-board-card-actions">
-            <RouterLink class="list-board-action is-solid is-detail" :to="{ name: 'wish-detail', params: { id: wish.id } }">打开详情继续推进</RouterLink>
-
-            <div class="list-board-card-action-secondary">
-              <button
-                class="list-board-action is-soft"
-                type="button"
-                :disabled="wish.status === 'done' || wishStore.currentMemberRemainingCoins <= 0 || isWishActionPending(wish.id)"
-                @click="void handleCastWishCoin(wish)"
-              >
-                {{
-                  isWishActionPending(wish.id, 'coin')
-                    ? '正在投币...'
-                    : wish.status === 'done'
-                      ? '愿望已实现'
-                      : wishStore.currentMemberRemainingCoins > 0
-                        ? '投 1 币'
-                        : '本周已投完'
-                }}
-              </button>
-              <button
-                class="list-board-action is-ghost"
-                type="button"
-                :disabled="isWishActionPending(wish.id)"
-                @click="void handleToggleDone(wish)"
-              >
-                {{ isWishActionPending(wish.id, 'done') ? '正在更新...' : wish.status === 'done' ? '放回路上' : '已经实现' }}
-              </button>
-            </div>
-          </div>
-
-          <div v-if="openMoreWishId === wish.id" :id="`wish-more-${wish.id}`" class="list-board-more-panel" @click.stop>
-            <RouterLink class="list-board-side-button" :to="{ name: 'compose', query: { edit: wish.id } }" @click="closeMoreMenu">修改愿望</RouterLink>
-
-            <div class="list-board-delete-confirm">
-              <template v-if="pendingDeleteWishId === wish.id">
-                <p>删除后，这条愿望连同愿望币和相关记录都会一起离开这张清单。</p>
-                <div class="list-board-delete-actions">
-                  <button class="list-board-side-button" type="button" @click="cancelDeleteWish">先不删</button>
-                  <button
-                    class="list-board-side-button is-danger"
-                    type="button"
-                    :disabled="isWishActionPending(wish.id, 'delete')"
-                    @click="void handleDeleteWish(wish)"
-                  >
-                    {{ isWishActionPending(wish.id, 'delete') ? '正在删除...' : '确认删除' }}
-                  </button>
-                </div>
-              </template>
-
-              <button v-else class="list-board-side-button is-danger" type="button" @click="requestDeleteWish(wish.id)">删除愿望</button>
-            </div>
+            <RouterLink class="list-board-action is-solid is-detail" :to="{ name: 'wish-detail', params: { id: wish.id } }">详情</RouterLink>
+            <button
+              class="list-board-action is-soft"
+              type="button"
+              :disabled="wish.status === 'done' || wishStore.currentMemberRemainingCoins <= 0 || isWishActionPending(wish.id)"
+              @click="void handleCastWishCoin(wish)"
+            >
+              {{
+                isWishActionPending(wish.id, 'coin')
+                  ? '正在投币...'
+                  : wish.status === 'done'
+                    ? '愿望已实现'
+                    : wishStore.currentMemberRemainingCoins > 0
+                      ? '投 1 币'
+                      : '本周已投完'
+              }}
+            </button>
           </div>
         </article>
       </div>
@@ -546,6 +442,11 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   justify-content: space-between;
   align-items: flex-start;
+}
+
+.list-board-card-overline,
+.list-board-card-tools {
+  align-items: center;
 }
 
 .list-board-hero-card,
@@ -892,6 +793,8 @@ onBeforeUnmount(() => {
 }
 
 .list-board-card-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.48rem 0.56rem;
   color: var(--list-ink-faint);
 }
@@ -904,6 +807,8 @@ onBeforeUnmount(() => {
   border-radius: 999px;
   border: 1px solid rgba(126, 96, 76, 0.1);
   background: rgba(255, 255, 255, 0.7);
+  justify-content: center;
+  text-align: center;
 }
 
 .list-board-head {
@@ -958,7 +863,7 @@ onBeforeUnmount(() => {
 }
 
 .list-board-filter-stack {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.9rem;
 }
 
@@ -980,6 +885,10 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.58rem;
+}
+
+.list-board-filter-row.is-sort-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .list-board-filter-pill {
@@ -1143,7 +1052,7 @@ onBeforeUnmount(() => {
 }
 
 .list-board-card-data {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 0.58rem;
   margin-top: 0;
 }
@@ -1160,6 +1069,25 @@ onBeforeUnmount(() => {
   background: rgba(241, 232, 200, 0.26);
 }
 
+.list-board-progress-link {
+  color: inherit;
+  text-decoration: none;
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.list-board-progress-link:hover,
+.list-board-progress-link:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(201, 124, 97, 0.22);
+  background: rgba(255, 248, 240, 0.96);
+  box-shadow: 0 10px 20px rgba(163, 91, 73, 0.1);
+}
+
+.list-board-progress-link:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(201, 124, 97, 0.12), 0 10px 20px rgba(163, 91, 73, 0.1);
+}
+
 .list-board-card-action-primary {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1169,7 +1097,7 @@ onBeforeUnmount(() => {
 
 .list-board-card-actions {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.54rem;
   align-items: start;
   padding-top: 0.68rem;
@@ -1394,6 +1322,11 @@ onBeforeUnmount(() => {
   .list-board-delete-actions,
   .list-board-inline-actions {
     grid-template-columns: 1fr;
+  }
+
+  .list-board-card-actions,
+  .list-board-card-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .list-board-filter-row {

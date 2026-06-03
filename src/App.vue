@@ -27,8 +27,6 @@ const navItems: NavItem[] = [
 
 const mobileNavItems = navItems.filter((item) => !item.desktopOnly)
 
-const isPreviewRoute = computed(() => route.path === '/preview' || route.path.startsWith('/preview/'))
-
 const syncLabel = computed(() => {
   if (!authStore.usesSupabaseSpace) {
     return '暂未同步'
@@ -72,13 +70,6 @@ function isActivePath(targetPath: string) {
           <p class="eyebrow">Two Hearts, One Horizon</p>
           <div class="shell-brand-row">
             <h1>人生愿望清单</h1>
-            <RouterLink
-              class="shell-preview-link subtle-link"
-              :class="{ active: isPreviewRoute }"
-              :to="{ name: 'preview-lab' }"
-            >
-              Preview Lab
-            </RouterLink>
           </div>
           <p class="shell-status">{{ spaceSummaryLabel }}</p>
         </div>
@@ -153,32 +144,6 @@ function isActivePath(targetPath: string) {
   font-size: var(--type-section-title-size);
   line-height: var(--type-section-title-line);
   letter-spacing: var(--type-section-title-tracking);
-}
-
-.shell-preview-link {
-  display: inline-flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 34px;
-  padding: 0.45rem 0.78rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--text-muted);
-  font-family: var(--font-body);
-  font-size: var(--type-l7-size);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-decoration: none;
-  text-transform: uppercase;
-  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, color 180ms ease;
-}
-
-.shell-preview-link:hover,
-.shell-preview-link.active {
-  transform: translateY(-1px);
-  border-color: rgba(201, 111, 74, 0.28);
-  background: var(--surface-raised);
-  color: var(--accent-dark);
 }
 
 .shell-status {
@@ -290,11 +255,6 @@ function isActivePath(targetPath: string) {
 
   .shell-brand h1 {
     font-size: var(--type-section-title-size);
-  }
-
-  .shell-preview-link {
-    min-height: 32px;
-    padding: 0.4rem 0.72rem;
   }
 
   .top-nav {

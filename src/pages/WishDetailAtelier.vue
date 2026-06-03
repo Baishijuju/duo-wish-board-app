@@ -337,7 +337,7 @@ async function confirmDeleteWish() {
       </section>
 
       <section class="detail-atelier-overview-grid">
-        <article class="page-card detail-atelier-overview-card">
+        <article id="progress" class="page-card detail-atelier-overview-card detail-atelier-progress-anchor">
           <div class="detail-atelier-section-head">
             <div class="detail-atelier-section-copy">
               <p class="detail-atelier-kicker detail-atelier-kicker-bilingual">推进痕迹 <span>Progress</span></p>
@@ -986,6 +986,10 @@ async function confirmDeleteWish() {
 .detail-atelier-dialog,
 .detail-atelier-lightbox {
   gap: 1.05rem;
+}
+
+.detail-atelier-progress-anchor {
+  scroll-margin-top: 6rem;
 }
 
 .detail-atelier-story-copy {

@@ -79,7 +79,15 @@ test.describe('home and list visual acceptance', () => {
       }
 
       await expect(page.locator('.list-board-filter-row').first()).toBeVisible()
+      await expect(page.getByRole('button', { name: '按时间' })).toBeVisible()
+      await expect(page.getByRole('button', { name: '按进度' })).toBeVisible()
       await expect(page.locator('.list-board-item').first()).toBeVisible()
+      await expect(page.locator('.list-board-data-block.is-coin')).toHaveCount(0)
+      await expect(page.locator('.list-board-more-trigger')).toHaveCount(0)
+      await expect(page.locator('.list-board-progress-link').first()).toHaveAttribute('href', /#progress$/)
+
+      await page.getByRole('button', { name: '按进度' }).click()
+      await expect(page.getByRole('button', { name: '按进度' })).toHaveClass(/is-active/)
 
       if (viewport.width <= 430) {
         const metrics = await page.evaluate(() => {
@@ -88,8 +96,10 @@ test.describe('home and list visual acceptance', () => {
           )
           const firstCard = document.querySelector('.list-board-item')?.getBoundingClientRect()
           const firstAction = document.querySelector('.list-board-card-actions .list-board-action')?.getBoundingClientRect()
+          const actionCount = document.querySelectorAll('.list-board-item:first-child .list-board-card-actions .list-board-action').length
 
           return {
+            actionCount,
             minFilterWidth: Math.min(...filterWidths),
             firstCardWidth: firstCard?.width ?? 0,
             firstActionWidth: firstAction?.width ?? 0,
@@ -98,7 +108,8 @@ test.describe('home and list visual acceptance', () => {
 
         expect(metrics.minFilterWidth).toBeGreaterThanOrEqual(62)
         expect(metrics.firstCardWidth).toBeGreaterThanOrEqual(330)
-        expect(metrics.firstActionWidth).toBeGreaterThanOrEqual(150)
+        expect(metrics.actionCount).toBe(2)
+        expect(metrics.firstActionWidth).toBeGreaterThanOrEqual(140)
       }
     })
   }
