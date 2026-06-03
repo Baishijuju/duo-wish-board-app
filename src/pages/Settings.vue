@@ -8,6 +8,7 @@ const space = reactive(useSpacePageState())
 type RewardHubTab = 'claim' | 'editor'
 
 const rewardHubTab = ref<RewardHubTab>('claim')
+const collapsedRewardItemIds = ref<string[]>([])
 
 const rewardHubTabs = [
   {
@@ -66,6 +67,16 @@ function openRewardEditor(itemId: string, tier: 'daily' | 'premium') {
 function formatRewardTitlePreview(rewards: Array<{ title: string }>, limit = 2) {
   return rewards.slice(0, limit).map((reward) => reward.title).join('、')
 }
+
+function isRewardItemCollapsed(itemId: string) {
+  return collapsedRewardItemIds.value.includes(itemId)
+}
+
+function toggleRewardItemCollapse(itemId: string) {
+  collapsedRewardItemIds.value = isRewardItemCollapsed(itemId)
+    ? collapsedRewardItemIds.value.filter((id) => id !== itemId)
+    : [...collapsedRewardItemIds.value, itemId]
+}
 </script>
 
 <template>
@@ -123,7 +134,7 @@ function formatRewardTitlePreview(rewards: Array<{ title: string }>, limit = 2) 
           </button>
         </div>
 
-        <p v-if="space.rewardMessage" :class="['feedback-message', 'space-reward-feedback', space.rewardTone]">{{ space.rewardMessage }}</p>
+        <p v-if="space.rewardMessage && rewardHubTab === 'claim'" :class="['feedback-message', 'space-reward-feedback', space.rewardTone]">{{ space.rewardMessage }}</p>
 
         <template v-if="rewardHubTab === 'claim'">
           <details class="space-inline-panel space-fold-card space-claim-fold space-claim-fold-top space-pending-stage">
@@ -419,7 +430,7 @@ function formatRewardTitlePreview(rewards: Array<{ title: string }>, limit = 2) 
                       </div>
                       <span class="badge">{{ space.getRewardClaimLabel(item.claim.claimKind) }}</span>
                     </div>
-                    <p class="reward-claim-copy">这一次已经记下了。</p>
+                    <p class="reward-claim-copy">{{ space.getRewardClaimReason(item.claim) }}</p>
                     <p class="space-meta-line reward-claim-meta">
                       <span>{{ item.claim.quantity > 1 ? `这一笔领了 ${item.claim.quantity} 份` : '这一笔已记下' }}</span>
                       <span>{{ space.formatBeijingDateTime(item.claim.createdAt) }}</span>
@@ -481,6 +492,8 @@ function formatRewardTitlePreview(rewards: Array<{ title: string }>, limit = 2) 
                     </button>
                     <button v-if="space.editingDailyRewardId" class="button-subtle" type="button" @click="space.resetRewardDraft('daily')">取消编辑</button>
                   </div>
+
+                  <p v-if="space.rewardMessage" :class="['feedback-message', 'space-reward-feedback-inline', space.rewardTone]">{{ space.rewardMessage }}</p>
                 </div>
               </form>
 
@@ -521,6 +534,8 @@ function formatRewardTitlePreview(rewards: Array<{ title: string }>, limit = 2) 
                     </button>
                     <button v-if="space.editingPremiumRewardId" class="button-subtle" type="button" @click="space.resetRewardDraft('premium')">取消编辑</button>
                   </div>
+
+                  <p v-if="space.rewardMessage" :class="['feedback-message', 'space-reward-feedback-inline', space.rewardTone]">{{ space.rewardMessage }}</p>
                 </div>
               </form>
             </div>
@@ -546,27 +561,30 @@ function formatRewardTitlePreview(rewards: Array<{ title: string }>, limit = 2) 
                 </div>
 
                 <div v-if="space.currentMemberDailyRewards.length" class="reward-compact-list">
-                  <article v-for="item in space.currentMemberDailyRewards" :key="item.id" class="reward-compact-row">
+                  <article v-for="item in space.currentMemberDailyRewards" :key="item.id" class="reward-compact-row" :class="{ 'is-collapsed': isRewardItemCollapsed(item.id) }">
                     <div class="reward-compact-main">
                       <span class="reward-card-kicker">日常奖励</span>
                       <strong>{{ item.title }}</strong>
-                      <p>{{ item.note || '这条日常奖励还没有补充说明。' }}</p>
+                      <p v-if="!isRewardItemCollapsed(item.id)">{{ item.note || '这条日常奖励还没有补充说明。' }}</p>
                     </div>
 
-                    <div class="reward-compact-meta">
+                    <div v-if="!isRewardItemCollapsed(item.id)" class="reward-compact-meta">
                       <span>已领 {{ space.wishStore.getRewardItemClaimCount(item) }} 份</span>
                       <span>小推进可领</span>
                     </div>
 
                     <div class="button-row reward-compact-actions">
                       <button class="button-subtle" type="button" @click="space.startEditingReward(item.id, 'daily')">编辑</button>
+                      <button class="button-subtle" type="button" @click="toggleRewardItemCollapse(item.id)">
+                        {{ isRewardItemCollapsed(item.id) ? '展开' : '收起' }}
+                      </button>
                       <button
                         class="button-subtle danger-button"
                         type="button"
                         :disabled="space.processingRewardItemId === item.id"
                         @click="void space.archiveReward(item.id)"
                       >
-                        {{ space.processingRewardItemId === item.id ? '处理中...' : '收起' }}
+                        {{ space.processingRewardItemId === item.id ? '处理中...' : '归档' }}
                       </button>
                     </div>
                   </article>
@@ -588,14 +606,14 @@ function formatRewardTitlePreview(rewards: Array<{ title: string }>, limit = 2) 
                 </div>
 
                 <div v-if="space.currentMemberPremiumRewards.length" class="reward-compact-list">
-                  <article v-for="item in space.currentMemberPremiumRewards" :key="item.id" class="reward-compact-row reward-compact-row-premium">
+                  <article v-for="item in space.currentMemberPremiumRewards" :key="item.id" class="reward-compact-row reward-compact-row-premium" :class="{ 'is-collapsed': isRewardItemCollapsed(item.id) }">
                     <div class="reward-compact-main">
                       <span class="reward-card-kicker">高档奖励</span>
                       <strong>{{ item.title }}</strong>
-                      <p>{{ item.note || '这条高档奖励还没有补充说明。' }}</p>
+                      <p v-if="!isRewardItemCollapsed(item.id)">{{ item.note || '这条高档奖励还没有补充说明。' }}</p>
                     </div>
 
-                    <div class="reward-compact-meta">
+                    <div v-if="!isRewardItemCollapsed(item.id)" class="reward-compact-meta">
                       <span>已领 {{ space.wishStore.getRewardItemClaimCount(item) }} 份</span>
                       <span v-if="item.starCoinCost > 0">{{ item.starCoinCost }} 星星币兑换</span>
                       <span v-else>详情页领取</span>
@@ -603,13 +621,16 @@ function formatRewardTitlePreview(rewards: Array<{ title: string }>, limit = 2) 
 
                     <div class="button-row reward-compact-actions">
                       <button class="button-subtle" type="button" @click="space.startEditingReward(item.id, 'premium')">编辑</button>
+                      <button class="button-subtle" type="button" @click="toggleRewardItemCollapse(item.id)">
+                        {{ isRewardItemCollapsed(item.id) ? '展开' : '收起' }}
+                      </button>
                       <button
                         class="button-subtle danger-button"
                         type="button"
                         :disabled="space.processingRewardItemId === item.id"
                         @click="void space.archiveReward(item.id)"
                       >
-                        {{ space.processingRewardItemId === item.id ? '处理中...' : '收起' }}
+                        {{ space.processingRewardItemId === item.id ? '处理中...' : '归档' }}
                       </button>
                     </div>
                   </article>
@@ -1581,14 +1602,14 @@ function formatRewardTitlePreview(rewards: Array<{ title: string }>, limit = 2) 
 
 .space-fold-summary:hover .space-fold-toggle,
 .space-fold-summary:focus-visible .space-fold-toggle,
-.space-fold-card[open] .space-fold-toggle {
+.space-fold-card[open] > .space-fold-summary .space-fold-toggle {
   border-color: rgba(201, 111, 74, 0.22);
   background: rgba(255, 249, 243, 0.92);
 }
 
 .space-fold-summary:hover .space-fold-arrow,
 .space-fold-summary:focus-visible .space-fold-arrow,
-.space-fold-card[open] .space-fold-arrow {
+.space-fold-card[open] > .space-fold-summary .space-fold-arrow {
   border-color: rgba(134, 86, 62, 0.96);
 }
 
@@ -1637,11 +1658,11 @@ function formatRewardTitlePreview(rewards: Array<{ title: string }>, limit = 2) 
   display: none;
 }
 
-.space-fold-card[open] .space-fold-when-open {
+.space-fold-card[open] > .space-fold-summary .space-fold-when-open {
   display: inline;
 }
 
-.space-fold-card[open] .space-fold-when-closed {
+.space-fold-card[open] > .space-fold-summary .space-fold-when-closed {
   display: none;
 }
 
@@ -1655,7 +1676,7 @@ function formatRewardTitlePreview(rewards: Array<{ title: string }>, limit = 2) 
   transition: transform 180ms ease, border-color 180ms ease;
 }
 
-.space-fold-card[open] .space-fold-arrow {
+.space-fold-card[open] > .space-fold-summary .space-fold-arrow {
   transform: rotate(225deg) translateY(-1px);
 }
 
@@ -2040,6 +2061,12 @@ function formatRewardTitlePreview(rewards: Array<{ title: string }>, limit = 2) 
   padding: 0.02rem 0.1rem 0;
 }
 
+.space-reward-feedback-inline {
+  width: 100%;
+  margin: 0;
+  padding: 0.42rem 0.1rem 0;
+}
+
 .reward-shelf-card {
   background: linear-gradient(180deg, rgba(255, 252, 248, 0.76), rgba(248, 240, 231, 0.72));
 }
@@ -2089,7 +2116,16 @@ function formatRewardTitlePreview(rewards: Array<{ title: string }>, limit = 2) 
 }
 
 .reward-compact-row-premium {
-  background: linear-gradient(135deg, rgba(255, 252, 246, 0.9), rgba(246, 239, 229, 0.76));
+  border-color: rgba(181, 138, 56, 0.26);
+  background:
+    linear-gradient(135deg, rgba(255, 252, 246, 0.96), rgba(246, 239, 229, 0.82)),
+    radial-gradient(circle at top right, rgba(232, 216, 166, 0.28), transparent 34%);
+  box-shadow: 0 12px 24px rgba(163, 118, 35, 0.12);
+}
+
+.reward-compact-row.is-collapsed {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.68rem;
 }
 
 .reward-compact-main {
@@ -2245,7 +2281,11 @@ function formatRewardTitlePreview(rewards: Array<{ title: string }>, limit = 2) 
 }
 
 .premium-card {
-  background: linear-gradient(135deg, rgba(255, 252, 246, 0.9), rgba(246, 239, 229, 0.78));
+  border-color: rgba(181, 138, 56, 0.24);
+  background:
+    linear-gradient(135deg, rgba(255, 252, 246, 0.94), rgba(246, 239, 229, 0.82)),
+    radial-gradient(circle at top right, rgba(232, 216, 166, 0.24), transparent 30%);
+  box-shadow: 0 14px 28px rgba(163, 118, 35, 0.1);
 }
 
 .premium-chip {

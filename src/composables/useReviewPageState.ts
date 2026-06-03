@@ -13,7 +13,7 @@ export function useReviewPageState() {
   const authStore = useAuthStore()
   const wishStore = useWishStore()
 
-  const reviewTab = ref<'journals' | 'live' | 'snapshots'>('journals')
+  const reviewTab = ref<'journals' | 'live' | 'snapshots'>('live')
   const topCoinWish = computed(() => wishStore.dragonBallWishes[0] ?? null)
   const topCoinWishSummary = computed(() => {
     return topCoinWish.value ? wishStore.getWishCoinSummary(topCoinWish.value) : null

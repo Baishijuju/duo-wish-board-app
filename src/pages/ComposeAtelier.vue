@@ -177,9 +177,13 @@ const submitButtonLabel = computed(() => {
             </div>
 
             <div v-if="draft.progressMode === 'count'" class="compose-preview-count-grid">
-              <label class="compose-field compact">
+              <label v-if="editingWish" class="compose-field compact">
                 <span>当前</span>
                 <input v-model.number="draft.progressCurrent" type="number" min="0" />
+              </label>
+              <label v-else class="compose-field compact compose-field-readonly">
+                <span>当前</span>
+                <input :value="0" type="number" min="0" readonly />
               </label>
               <label class="compose-field compact">
                 <span>目标</span>
@@ -570,6 +574,25 @@ const submitButtonLabel = computed(() => {
   padding: 0.64rem 0.78rem;
 }
 
+.compose-field-readonly input {
+  color: rgba(76, 59, 50, 0.64);
+  background: rgba(247, 241, 233, 0.84);
+}
+
+.compose-field-date {
+  min-width: 0;
+}
+
+.compose-field-date input {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+.compose-preview-actions {
+  min-width: 0;
+}
+
 .compose-preview-steps-stage,
 .compose-preview-step-notice {
   display: grid;
@@ -820,6 +843,10 @@ const submitButtonLabel = computed(() => {
 }
 
 @media (max-width: 640px) {
+  .compose-preview-count-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .compose-preview-hero h1 {
     font-size: var(--type-page-title-size);
   }

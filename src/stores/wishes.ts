@@ -47,6 +47,8 @@ const WISH_IMAGE_EXTENSION_BY_TYPE: Record<string, string> = {
   'image/webp': 'webp',
 }
 const WISH_IMAGE_COMPRESS_QUALITY_STEPS = [0.92, 0.88, 0.84, 0.8]
+const WISH_MAX_IMAGE_COUNT_PER_WISH = 1
+const MAX_THREAD_REACTIONS_PER_MEMBER = 3
 
 export const WISH_COIN_BUDGET_PER_CYCLE = 3
 export const DRAGON_BALL_COIN_TARGET = 7
@@ -4217,6 +4219,17 @@ export const useWishStore = defineStore('wishes', () => {
     const existingReaction = threadReactions.value.find(
       (reaction) => reaction.targetThreadId === threadId && reaction.actorId === memberId && reaction.emoji === normalizedEmoji,
     )
+    const existingMemberReactionCount = threadReactions.value.filter(
+      (reaction) => reaction.targetThreadId === threadId && reaction.actorId === memberId,
+    ).length
+
+    if (!existingReaction && existingMemberReactionCount >= MAX_THREAD_REACTIONS_PER_MEMBER) {
+      return {
+        message: `同一条记录里，每位成员最多保留 ${MAX_THREAD_REACTIONS_PER_MEMBER} 个表情回应。`,
+        ok: false,
+      }
+    }
+
     const successMessage = existingReaction ? '已取消这个表情回应。' : '已留下这个表情回应。'
 
     if (supabase && isUsingCloudWishes.value && authStore.currentSpaceId) {
@@ -4285,6 +4298,11 @@ export const useWishStore = defineStore('wishes', () => {
       return false
     }
 
+    if (wish.images.length >= WISH_MAX_IMAGE_COUNT_PER_WISH) {
+      syncMessage.value = '当前详情页只保留 1 张封面图；先删除旧图后再上传新图。'
+      return false
+    }
+
     if (!supabase || !isUsingCloudWishes.value || !authStore.currentSpaceId) {
       syncMessage.value = '图片上传仅在已连接的 Supabase 云端空间中可用。'
       return false
@@ -4306,7 +4324,7 @@ export const useWishStore = defineStore('wishes', () => {
     let nextSortOrder = wish.images.length
 
     try {
-      for (const file of files) {
+      for (const file of files.slice(0, WISH_MAX_IMAGE_COUNT_PER_WISH)) {
         const normalizedType = file.type.trim().toLowerCase()
 
         if (!WISH_IMAGE_ALLOWED_TYPES.has(normalizedType) || file.size > WISH_IMAGE_SOURCE_MAX_BYTES) {

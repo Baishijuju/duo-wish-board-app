@@ -15,10 +15,9 @@ const {
   THREAD_REACTION_OPTIONS,
   adjustCountProgress,
   authStore,
-  beginImageSelection,
+  canAddThreadReaction,
   cancelEditingImageNote,
   cancelEditingThreadComment,
-  cancelImageSelection,
   canConfirmWishReward,
   canDeleteImage,
   canManageThreadComment,
@@ -41,10 +40,8 @@ const {
   currentMemberPremiumRewards,
   currentMemberStarCoins,
   deleteImage,
-  deleteSelectedImages,
   deleteThreadComment,
   deleteWish,
-  deletableImageCount,
   deletingThreadId,
   draftMessage,
   dueDateLabel,
@@ -61,28 +58,19 @@ const {
   getThreadReactionAriaLabel,
   getThreadEyebrow,
   getThreadHeadline,
+  getThreadMemberReactionEmojis,
   getThreadReactionCount,
   getWishActionLabel,
   hasActiveOverflowThreadReaction,
   handleCommentImageSelection,
-  handleImageDragEnd,
-  handleImageDragEnter,
-  handleImageDragStart,
-  handleImageDrop,
   handleImageSelection,
   handleWishCompletionAction,
   imageNoteDraft,
   isCommentThread,
   isCoverImage,
-  isDeletingSelectedImages,
-  isDraggedImage,
-  isDropTargetImage,
   isEditingThreadComment,
-  isImageSelected,
-  isReorderingImages,
   isSavingImageNote,
   isSavingThreadEdit,
-  isSelectingImages,
   isSubmittingComment,
   isSubmittingReward,
   isThreadReactionActive,
@@ -107,19 +95,16 @@ const {
   saveCountProgress,
   saveImageNote,
   saveThreadComment,
-  selectedImageIds,
+  shouldRecordCountProgressLog,
   selectedWish,
-  setCoverImage,
   startEditingImageNote,
   startEditingThreadComment,
   stepDraft,
   stepPreview,
   submitComment,
   submitWishStep,
-  summaryCards,
   threadFeedback,
   threadFeedbackTone,
-  toggleImageSelection,
   toggleThreadReactionExpansion,
   toggleThreadReaction,
   toggleWishStep,
@@ -142,11 +127,12 @@ const detailTags = computed(() => {
   ]
 })
 
-const visibleImages = computed(() => selectedWish.value?.images ?? [])
+const visibleImages = computed(() => {
+  const firstImage = selectedWish.value?.images[0]
+  return firstImage ? [firstImage] : []
+})
 const coverImageEntry = computed(() => visibleImages.value.find((image) => isCoverImage(image.id)) ?? visibleImages.value[0] ?? null)
 const visibleThreads = computed(() => wishJournalEntries.value)
-const primarySummaryCard = computed(() => summaryCards.value[0] ?? null)
-const secondarySummaryCards = computed(() => summaryCards.value.slice(1))
 const isDeleteWishConfirming = ref(false)
 const isDeletingWish = ref(false)
 const deleteWishFeedback = ref('')
@@ -280,22 +266,8 @@ async function confirmDeleteWish() {
           </div>
 
           <div class="detail-atelier-cover-head">
-            <p class="detail-atelier-kicker detail-atelier-kicker-bilingual">这一页的近况 <span>At A Glance</span></p>
+            <p class="detail-atelier-kicker detail-atelier-kicker-bilingual">封面首图 <span>Cover</span></p>
             <span class="detail-atelier-badge">{{ coverImageEntry ? '已经留住一张首图' : '还没有留下首图' }}</span>
-          </div>
-
-          <article v-if="primarySummaryCard" class="detail-atelier-summary-card detail-atelier-summary-card-featured">
-            <span>{{ primarySummaryCard.label }}</span>
-            <strong>{{ primarySummaryCard.value }}</strong>
-            <p>{{ primarySummaryCard.note }}</p>
-          </article>
-
-          <div class="detail-atelier-summary-grid">
-            <article v-for="card in secondarySummaryCards" :key="card.label" class="detail-atelier-summary-card">
-              <span>{{ card.label }}</span>
-              <strong>{{ card.value }}</strong>
-              <p>{{ card.note }}</p>
-            </article>
           </div>
         </article>
       </section>
@@ -393,6 +365,11 @@ async function confirmDeleteWish() {
                 +1{{ selectedWish.progressUnit ? ` ${selectedWish.progressUnit}` : '' }}
               </button>
             </div>
+
+            <label class="detail-atelier-progress-log-toggle">
+              <input v-model="shouldRecordCountProgressLog" type="checkbox" />
+              <span>每次推进数字进度时，顺手记一笔手账记录</span>
+            </label>
 
             <p class="detail-atelier-support">每往前一点，小奖励会先记到空间页；想领的时候，再过去慢慢挑。</p>
 
@@ -552,6 +529,12 @@ async function confirmDeleteWish() {
 
               <div class="detail-atelier-reaction-row">
                 <div class="detail-atelier-reaction-groups">
+                  <div v-if="getThreadMemberReactionEmojis(thread).length" class="detail-atelier-reaction-list detail-atelier-reaction-list-selected">
+                    <span v-for="emoji in getThreadMemberReactionEmojis(thread)" :key="`${thread.id}-selected-${emoji}`" class="detail-atelier-chip">
+                      {{ emoji }}
+                    </span>
+                  </div>
+
                   <div class="detail-atelier-reaction-more">
                     <button
                       :class="['detail-atelier-secondary', 'detail-atelier-reaction-toggle', { active: isThreadReactionExpanded(thread.id) || hasActiveOverflowThreadReaction(thread) }]"
@@ -572,7 +555,7 @@ async function confirmDeleteWish() {
                         :key="`${thread.id}-reaction-${emoji}`"
                         :class="['detail-atelier-reaction-button', { active: isThreadReactionActive(thread, emoji), 'is-pending': isTogglingThreadReaction(thread.id, emoji) }]"
                         type="button"
-                        :disabled="isThreadReactionRowPending(thread.id)"
+                        :disabled="isThreadReactionRowPending(thread.id) || !canAddThreadReaction(thread, emoji)"
                         :aria-label="getThreadReactionAriaLabel(thread, emoji)"
                         :aria-pressed="isThreadReactionActive(thread, emoji)"
                         @click="void toggleThreadReaction(thread.id, emoji)"
@@ -622,43 +605,26 @@ async function confirmDeleteWish() {
               </div>
 
               <div class="detail-atelier-inline-buttons detail-atelier-image-toolbar-actions">
-                <label v-if="wishStore.isUsingCloudWishes" class="detail-atelier-secondary upload-trigger">
+                <label v-if="wishStore.isUsingCloudWishes && !visibleImages.length" class="detail-atelier-secondary upload-trigger">
                   <input
                     class="visually-hidden"
                     type="file"
                     accept="image/jpeg,image/png,image/webp,image/gif"
-                    multiple
                     @change="handleImageSelection"
                   />
-                  {{ isUploadingImages ? '上传中...' : '添加图片' }}
+                  {{ isUploadingImages ? '上传中...' : '添加封面图' }}
                 </label>
-
-                <button v-if="deletableImageCount" class="detail-atelier-secondary" type="button" @click="isSelectingImages ? cancelImageSelection() : beginImageSelection()">
-                  {{ isSelectingImages ? '取消批量选择' : '批量删除' }}
-                </button>
-                <button
-                  v-if="deletableImageCount && isSelectingImages"
-                  class="detail-atelier-text danger"
-                  type="button"
-                  :disabled="!selectedImageIds.length || isDeletingSelectedImages"
-                  @click="void deleteSelectedImages()"
-                >
-                  {{ isDeletingSelectedImages ? '删除中...' : `删除选中 ${selectedImageIds.length} 张` }}
-                </button>
+                <span v-else-if="wishStore.isUsingCloudWishes" class="detail-atelier-chip">已有限制：每条愿望 1 张封面图</span>
               </div>
             </div>
+
+            <p v-if="visibleImages.length" class="detail-atelier-support">当前只保留一张封面图；若要换图，先删除这张再上传。</p>
 
             <div v-if="visibleImages.length" class="detail-atelier-image-memory-strip">
               <article class="detail-atelier-image-memory-card">
                 <span>这一页的封面</span>
                 <strong>{{ coverImageEntry?.fileName || '还没设置首图' }}</strong>
                 <p>封面会先出现在首屏。</p>
-              </article>
-
-              <article class="detail-atelier-image-memory-card">
-                <span>整理方式</span>
-                <strong>{{ isSelectingImages ? `已选 ${selectedImageIds.length} 张待删除` : '拖动卡片调整顺序' }}</strong>
-                <p>{{ isSelectingImages ? '先挑出不想留的画面，再统一删掉。' : '把最想记住的排在前面，回看会更顺。' }}</p>
               </article>
             </div>
           </div>
@@ -667,13 +633,7 @@ async function confirmDeleteWish() {
             <figure
               v-for="(image, index) in visibleImages"
               :key="image.id"
-              :class="['detail-atelier-image-figure', { 'is-cover': isCoverImage(image.id), 'is-dragging': isDraggedImage(image.id), 'is-target': isDropTargetImage(image.id) }]"
-              :draggable="!isSelectingImages && !isReorderingImages"
-              @dragend="handleImageDragEnd"
-              @dragenter.prevent="handleImageDragEnter(image.id)"
-              @dragover.prevent
-              @dragstart="handleImageDragStart(image.id)"
-              @drop.prevent="void handleImageDrop(image.id)"
+              :class="['detail-atelier-image-figure', { 'is-cover': isCoverImage(image.id) }]"
             >
               <div class="detail-atelier-image-stage">
                 <button v-if="image.url" class="detail-atelier-image-button" type="button" @click="openImagePreview(visibleImages, image.id)">
@@ -683,7 +643,6 @@ async function confirmDeleteWish() {
 
                 <div class="detail-atelier-image-badges">
                   <span class="detail-atelier-chip">{{ isCoverImage(image.id) ? '当前首图' : `第 ${index + 1} 张` }}</span>
-                  <span v-if="isSelectingImages && isImageSelected(image.id)" class="detail-atelier-chip">已选中</span>
                 </div>
               </div>
 
@@ -718,19 +677,10 @@ async function confirmDeleteWish() {
                 </div>
 
                 <div class="detail-atelier-image-actions">
-                  <button
-                    v-if="isSelectingImages && canDeleteImage(image.createdBy)"
-                    class="detail-atelier-secondary"
-                    type="button"
-                    @click="toggleImageSelection(image.id)"
-                  >
-                    {{ isImageSelected(image.id) ? '取消选中' : '选中删除' }}
-                  </button>
-                  <button v-else class="detail-atelier-secondary" type="button" @click="startEditingImageNote(image.id, image.note)">
+                  <button class="detail-atelier-secondary" type="button" @click="startEditingImageNote(image.id, image.note)">
                     {{ image.note ? '编辑备注' : '添加备注' }}
                   </button>
-                  <button v-if="!isSelectingImages && !isCoverImage(image.id)" class="detail-atelier-secondary" type="button" @click="void setCoverImage(image.id)">设为首图</button>
-                  <button v-if="!isSelectingImages && canDeleteImage(image.createdBy)" class="detail-atelier-text danger" type="button" @click="void deleteImage(image.id)">删除图片</button>
+                  <button v-if="canDeleteImage(image.createdBy)" class="detail-atelier-text danger" type="button" @click="void deleteImage(image.id)">删除图片</button>
                 </div>
               </div>
             </figure>
@@ -1522,6 +1472,23 @@ async function confirmDeleteWish() {
   min-height: 112px;
 }
 
+.detail-atelier-progress-log-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: fit-content;
+  color: rgba(76, 59, 50, 0.72);
+  font-family: var(--font-body);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
+}
+
+.detail-atelier-progress-log-toggle input {
+  width: 1rem;
+  height: 1rem;
+}
+
 .detail-atelier-step-list,
 .detail-atelier-member-grid {
   display: grid;
@@ -1853,6 +1820,10 @@ async function confirmDeleteWish() {
   gap: 0.46rem;
 }
 
+.detail-atelier-reaction-list-selected {
+  gap: 0.4rem;
+}
+
 .detail-atelier-reaction-list.is-extended {
   flex: 1 1 100%;
   padding-top: 0.12rem;
@@ -1949,7 +1920,7 @@ async function confirmDeleteWish() {
   padding: 1.5rem;
   background: rgba(36, 27, 22, 0.34);
   backdrop-filter: blur(12px);
-  z-index: 50;
+  z-index: 90;
 }
 
 .detail-atelier-dialog,
@@ -2059,6 +2030,10 @@ async function confirmDeleteWish() {
   .detail-atelier-overlay {
     padding: 0.75rem;
     align-items: end;
+  }
+
+  .detail-atelier-dialog-actions {
+    padding-bottom: calc(0.35rem + env(safe-area-inset-bottom, 0px));
   }
 
   .detail-atelier-story-card,

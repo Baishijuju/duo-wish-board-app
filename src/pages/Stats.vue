@@ -211,7 +211,7 @@ const {
           <div class="review-panel-copy">
             <p class="eyebrow">本月页 Live</p>
             <h2 class="section-title">{{ currentMonthLabel }} 还在继续写</h2>
-            <p class="section-copy review-panel-note">这里先保留这个月还在发生的记录，月后再封成固定月刊。</p>
+            <p class="section-copy review-panel-note">这里先保留这个月还在发生的记录。</p>
           </div>
           <span class="badge">{{ liveMonthlyThreads.length }} 条</span>
         </div>
@@ -227,7 +227,7 @@ const {
               <div class="review-item-copy">
                 <p class="eyebrow review-item-eyebrow">{{ getWishTitle(thread) }}</p>
                 <h3>{{ thread.messageText }}</h3>
-                <p class="review-item-note">这笔记录先留在本月目录里，月后再封存。</p>
+                <p class="review-item-note">这笔记录已经收进本月实时回顾。</p>
               </div>
             </div>
             <p class="review-meta-line">

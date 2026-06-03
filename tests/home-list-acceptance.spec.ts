@@ -73,6 +73,11 @@ test.describe('home and list visual acceptance', () => {
       await disableMotion(page)
       await expectNoHorizontalOverflow(page)
 
+      const filterToggle = page.getByRole('button', { name: '展开筛选' })
+      if (await filterToggle.isVisible()) {
+        await filterToggle.click()
+      }
+
       await expect(page.locator('.list-board-filter-row').first()).toBeVisible()
       await expect(page.locator('.list-board-item').first()).toBeVisible()
 

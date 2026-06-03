@@ -124,6 +124,11 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
     }
 
     if (draft.value.progressMode === 'count') {
+      if (!editingWish.value) {
+        // 新建 count 愿望时固定从 0 开始，避免创建时带入已完成量。
+        draft.value.progressCurrent = 0
+      }
+
       draft.value.progressCurrent = Math.max(0, Math.min(draft.value.progressCurrent, draft.value.progressTarget))
     }
 

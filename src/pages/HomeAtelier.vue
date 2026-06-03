@@ -184,6 +184,7 @@ const wishBottleDisplayedStarsPlan = computed(() => {
 const visibleWishBottleStars = computed(() => {
   return wishBottleDisplayedStarsPlan.value.stars
 })
+const RECENT_THREAD_WINDOW_DAYS = 14
 const wishBottleUsesTenfoldStars = computed(() => {
   return wishBottleDisplayedStarsPlan.value.usesTenfoldStars
 })
@@ -195,8 +196,14 @@ const memberDisplayNameMap = computed(() => {
 })
 const latestHomeThreads = computed<HomeThreadSummary[]>(() => {
   const wishTitleMap = new Map(wishStore.wishes.map((wish) => [wish.id, wish.title]))
+  const now = Date.now()
+  const recentWindowStart = now - RECENT_THREAD_WINDOW_DAYS * 24 * 60 * 60 * 1000
 
   return [...wishStore.wishThreads]
+    .filter((thread) => {
+      const createdAtTime = new Date(thread.createdAt).getTime()
+      return Number.isFinite(createdAtTime) && createdAtTime >= recentWindowStart
+    })
     .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
     .slice(0, 5)
     .map((thread) => ({
@@ -313,10 +320,6 @@ const bottleMoodChips = computed(() => {
     displayStarCount ? `已点亮 ${displayStarCount} 颗星星` : '第一颗星星还在路上',
     `${approachingWishCount} 条愿望正在靠近`,
   ]
-
-  if (wishBottleUsesTenfoldStars.value) {
-    chips.push('金描边大星 = 10 颗')
-  }
 
   if (wishBottleHiddenStarCount.value) {
     chips.push(`另有 ${wishBottleHiddenStarCount.value} 颗星星收起`) 
@@ -525,7 +528,9 @@ function getHomeThreadHeadline(
   }
 
   if (thread.eventKind === 'reward_claimed') {
-    return '刚刚这一下靠近，也顺手接住了一点开心'
+    const rewardTitle = getMetaString(thread.meta, 'titleSnapshot')
+    const wishTarget = wishTitle || getMetaString(thread.meta, 'wishTitle') || '这条愿望'
+    return rewardTitle ? `「${wishTarget}」推进后，刚领到「${rewardTitle}」` : `「${wishTarget}」推进后，刚接住一份奖励`
   }
 
   if (thread.eventKind === 'premium_redeem') {
@@ -581,7 +586,18 @@ function getHomeThreadDetail(
   }
 
   if (thread.eventKind === 'reward_claimed') {
-    return '这一下不只是完成了，还顺手把一份小开心接到了手里。'
+    const rewardTitle = getMetaString(thread.meta, 'titleSnapshot')
+    const quantityRaw = Number(thread.meta.quantity)
+    const quantity = Number.isFinite(quantityRaw) ? Math.max(1, Math.trunc(quantityRaw)) : 1
+    if (rewardTitle) {
+      return quantity > 1
+        ? `因为这条愿望推进了 ${quantity} 点，这次领到了「${rewardTitle}」共 ${quantity} 份。`
+        : `因为这条愿望往前推进了一步，这次领到了「${rewardTitle}」。`
+    }
+
+    return quantity > 1
+      ? `因为这条愿望推进了 ${quantity} 点，这次接住了 ${quantity} 份奖励。`
+      : '因为这条愿望往前推进了一步，这次接住了一份奖励。'
   }
 
   if (thread.eventKind === 'premium_redeem') {
@@ -972,7 +988,7 @@ function formatRecentThreadTime(timestamp: string) {
             </div>
 
             <div v-else-if="!card.highlight" class="journal-member-empty">
-              <p class="journal-feature-meta">最近还没有新的近况</p>
+              <p class="journal-feature-meta">最近 14 天还没有新的近况</p>
               <h3>等下一次推进发生，这里会先替你们把这句招呼留住。</h3>
               <p>只要有一笔留言、投币或完成步骤，对方就会先从这里看到。</p>
             </div>

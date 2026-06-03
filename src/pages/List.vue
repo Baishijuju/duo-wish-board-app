@@ -124,6 +124,7 @@ const boardHeading = computed(() => {
 const pendingWishAction = ref<{ wishId: string; kind: ListActionKind } | null>(null)
 const pendingDeleteWishId = ref<string | null>(null)
 const pageFeedback = ref<{ tone: ListFeedbackTone; text: string } | null>(null)
+const isFilterPanelOpen = ref(false)
 
 function getWishCaption(wish: WishRecord) {
   return [wish.category || '还没有分类', priorityLabels[wish.priority]].join(' · ')
@@ -264,12 +265,16 @@ onBeforeUnmount(() => {
         <p>先选范围和状态，再往下看。</p>
       </div>
 
+      <button class="list-board-side-button list-board-filter-toggle" type="button" :aria-expanded="isFilterPanelOpen" @click="isFilterPanelOpen = !isFilterPanelOpen">
+        {{ isFilterPanelOpen ? '收起筛选' : '展开筛选' }}
+      </button>
+
       <label class="list-board-search-field">
         <span>搜索愿望</span>
         <input v-model="filterStore.search" type="search" placeholder="搜索标题、分类或写下的原因" />
       </label>
 
-      <div class="list-board-toolbar-actions">
+      <div v-if="isFilterPanelOpen" class="list-board-toolbar-actions">
         <div class="list-board-filter-stack">
           <div class="list-board-filter-group">
             <span class="list-board-filter-label">按范围看</span>
@@ -933,6 +938,10 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 0.36rem;
   max-width: 34rem;
+}
+
+.list-board-filter-toggle {
+  justify-self: start;
 }
 
 .list-board-toolbar-copy p {

@@ -524,6 +524,37 @@ export function useSpaceState() {
     return '兑换奖励'
   }
 
+  function getRewardClaimReason(claim: {
+    claimKind: string
+    sourceWishId: string | null
+    sourceStepId: string | null
+    titleSnapshot: string
+    quantity: number
+  }) {
+    const sourceWishTitle = claim.sourceWishId ? wishStore.findById(claim.sourceWishId)?.title ?? '这条愿望' : '这条愿望'
+    const rewardTitle = claim.titleSnapshot || '这份奖励'
+
+    if (claim.claimKind === 'step_reward') {
+      return `因为「${sourceWishTitle}」的小步骤完成了，接住了「${rewardTitle}」。`
+    }
+
+    if (claim.claimKind === 'count_reward') {
+      return `因为「${sourceWishTitle}」推进了 ${Math.max(1, claim.quantity)} 点，接住了「${rewardTitle}」。`
+    }
+
+    if (claim.claimKind === 'wish_reward') {
+      return `因为「${sourceWishTitle}」整条完成了，接住了「${rewardTitle}」。`
+    }
+
+    if (claim.claimKind === 'star_coin') {
+      return claim.sourceStepId
+        ? `因为「${sourceWishTitle}」的小步骤完成了，这次先存成了 ${Math.max(1, claim.quantity)} 枚星星币。`
+        : `因为「${sourceWishTitle}」数字进度推进了 ${Math.max(1, claim.quantity)} 点，这次先存成了 ${Math.max(1, claim.quantity)} 枚星星币。`
+    }
+
+    return `用星星币兑换到了「${rewardTitle}」。`
+  }
+
   return {
     archiveReward,
     authStore,
@@ -553,6 +584,7 @@ export function useSpaceState() {
     formatBeijingDateTime,
     formatStorageBytes,
     getRewardClaimLabel,
+    getRewardClaimReason,
     inviteDraft,
     inviteMessage,
     inviteTone,

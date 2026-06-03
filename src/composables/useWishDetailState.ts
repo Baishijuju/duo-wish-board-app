@@ -60,6 +60,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
   const rewardFeedback = ref('')
   const rewardFeedbackTone = ref<'success' | 'danger'>('success')
   const isSubmittingReward = ref(false)
+  const shouldRecordCountProgressLog = ref(false)
 
   const deletableImageCount = computed(() => selectedWish.value?.images.filter((image) => canDeleteImage(image.createdBy)).length ?? 0)
   const coinSnapshot = computed(() => {
@@ -105,7 +106,12 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
   })
 
   const FEATURED_THREAD_REACTION_OPTIONS = ['❤️', '😂', '😮', '🔥', '🎉', '✨']
-  const EXTENDED_THREAD_REACTION_OPTIONS = ['🫶', '👏', '🥹', '🥺', '💪', '🌟', '😍', '🥰', '🙌', '🤝', '😊', '😌', '😭', '🥳', '💖', '🙏']
+  const EXTENDED_THREAD_REACTION_OPTIONS = [
+    '👍', '👎', '👌', '👏', '🙌', '🤝', '🫶',
+    '😊', '😄', '😌', '🥰', '😍', '🤗', '🥳',
+    '🥹', '🥺', '😭', '😮', '🤯', '😡', '😴',
+    '💪', '🙏', '💯', '💖', '🌟', '✨', '🍀',
+  ]
   const THREAD_REACTION_OPTIONS = [...FEATURED_THREAD_REACTION_OPTIONS, ...EXTENDED_THREAD_REACTION_OPTIONS]
   const THREAD_REACTION_LABELS: Record<string, string> = {
     '❤️': '喜欢',
@@ -337,6 +343,24 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     return thread.reactions.some((reaction) => reaction.emoji === emoji && reaction.memberIds.includes(currentMemberId.value))
   }
 
+  function getThreadMemberReactionEmojis(thread: WishThreadEntry) {
+    if (!currentMemberId.value) {
+      return []
+    }
+
+    return thread.reactions
+      .filter((reaction) => reaction.memberIds.includes(currentMemberId.value))
+      .map((reaction) => reaction.emoji)
+  }
+
+  function canAddThreadReaction(thread: WishThreadEntry, emoji: string) {
+    if (isThreadReactionActive(thread, emoji)) {
+      return true
+    }
+
+    return getThreadMemberReactionEmojis(thread).length < 3
+  }
+
   function isTogglingThreadReaction(threadId: string, emoji: string) {
     return pendingThreadReactionKeys.value.includes(`${threadId}:${emoji}`)
   }
@@ -394,6 +418,13 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
 
   async function toggleThreadReaction(threadId: string, emoji: string) {
     const reactionKey = `${threadId}:${emoji}`
+    const thread = wishJournalEntries.value.find((entry) => entry.id === threadId)
+
+    if (thread && !canAddThreadReaction(thread, emoji)) {
+      threadFeedback.value = '同一条记录里，每位成员最多保留 3 个表情回应。'
+      threadFeedbackTone.value = 'danger'
+      return
+    }
 
     if (pendingThreadReactionKeys.value.includes(reactionKey)) {
       return
@@ -666,6 +697,17 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     const nextCurrent = selectedWish.value?.progressCurrent ?? previousCurrent
     const gainedUnits = Math.max(nextCurrent - previousCurrent, 0)
 
+    if (gainedUnits > 0 && shouldRecordCountProgressLog.value) {
+      const actorId = authStore.currentMemberId || authStore.currentMember?.id || ''
+      if (actorId) {
+        await wishStore.addComment(
+          selectedWish.value.id,
+          actorId,
+          `数字进度往前推进了 ${gainedUnits} 点（现在 ${nextCurrent}/${selectedWish.value.progressTarget}${selectedWish.value.progressUnit ? ` ${selectedWish.value.progressUnit}` : ''}）。`,
+        )
+      }
+    }
+
     setRewardFeedback(
       gainedUnits
         ? `数字进度先往前走了 ${gainedUnits} 点，小奖励已经留到空间页等你去领。`
@@ -691,6 +733,17 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
 
     const nextCurrent = selectedWish.value?.progressCurrent ?? previousCurrent
     const gainedUnits = Math.max(nextCurrent - previousCurrent, 0)
+
+    if (gainedUnits > 0 && shouldRecordCountProgressLog.value) {
+      const actorId = authStore.currentMemberId || authStore.currentMember?.id || ''
+      if (actorId) {
+        await wishStore.addComment(
+          selectedWish.value.id,
+          actorId,
+          `数字进度改到了 ${nextCurrent}/${selectedWish.value.progressTarget}${selectedWish.value.progressUnit ? ` ${selectedWish.value.progressUnit}` : ''}，本次新增 ${gainedUnits} 点。`,
+        )
+      }
+    }
 
     setRewardFeedback(
       gainedUnits
@@ -1126,6 +1179,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     selectedImageIds,
     selectedWish,
     setCoverImage,
+    shouldRecordCountProgressLog,
     startEditingImageNote,
     startEditingThreadComment,
     stepDraft,
@@ -1134,6 +1188,8 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     submitWishStep,
     threadFeedback,
     threadFeedbackTone,
+    getThreadMemberReactionEmojis,
+    canAddThreadReaction,
     toggleImageSelection,
     toggleThreadReactionExpansion,
     toggleThreadReaction,
