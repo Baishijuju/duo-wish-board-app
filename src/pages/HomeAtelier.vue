@@ -375,6 +375,14 @@ function getRelativeDueLabel(dueDate: string) {
 }
 
 function getWishCoinHint(wish: WishRecord) {
+  const progressSnapshot = wishStore.getWishProgressSnapshot(wish)
+
+  if (progressSnapshot.mode === 'none') {
+    return wish.note.trim()
+      ? '它先被认真写下来了，接下来只要偶尔回来看一眼，也算在靠近。'
+      : '它先安静住在这里，等你准备好时再往前走也不迟。'
+  }
+
   const coinSnapshot = wishStore.getWishCoinSummary(wish)
 
   if (coinSnapshot.isDragonBallReady) {

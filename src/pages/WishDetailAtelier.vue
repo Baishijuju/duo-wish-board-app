@@ -359,7 +359,6 @@ async function confirmDeleteWish() {
                   </div>
                   <p>{{ getStepStatusCopy(step.id, step.isDone) }}</p>
                 </div>
-                <button class="detail-atelier-text danger detail-atelier-step-remove" type="button" @click="void removeWishStep(step.id)">删除</button>
               </article>
             </div>
 
@@ -368,13 +367,15 @@ async function confirmDeleteWish() {
               <p>可以先写下第一个很具体的小目标，例如订票、办签证、买装备。</p>
             </div>
 
-            <form class="detail-atelier-inline-form" @submit.prevent="submitWishStep">
-              <label>
-                <span>新增一个小步骤</span>
-                <input v-model="stepDraft" type="text" maxlength="60" placeholder="例如：先确认路线和预算" />
-              </label>
-              <button class="detail-atelier-primary" type="submit" :disabled="!stepDraft.trim()">加入步骤</button>
-            </form>
+            <div class="detail-atelier-progress-quick-action">
+              <div class="detail-atelier-progress-quick-copy">
+                <strong>{{ selectedWish.steps.length ? '先完成眼前这一步' : '先写下第一步' }}</strong>
+                <p>{{ selectedWish.steps.length ? '走完下一步时，这页会继续替你把过程留住。' : '有了第一步，这条愿望会更容易继续往前。' }}</p>
+              </div>
+              <button class="detail-atelier-primary detail-atelier-progress-primary" type="button" @click="selectedWish.steps.length ? void toggleWishStep(selectedWish.steps[0].id) : undefined" :disabled="selectedWish.steps.length ? selectedWish.steps[0]?.isDone : true">
+                {{ selectedWish.steps.length ? '完成这一步' : '先去下面补一步' }}
+              </button>
+            </div>
           </div>
 
           <div v-else class="detail-atelier-empty-block">
@@ -713,9 +714,33 @@ async function confirmDeleteWish() {
                 <span>把它改成现在的位置</span>
                 <input v-model.number="countProgressDraft" type="number" min="0" :max="Math.max(1, selectedWish.progressTarget)" />
               </label>
-              <div class="detail-atelier-inline-buttons detail-atelier-danger-actions">
+              <div class="detail-atelier-inline-buttons detail-atelier-tools-actions">
                 <button class="detail-atelier-secondary" type="button" @click="void adjustCountProgress(-1)">往回调 1 点</button>
                 <button class="detail-atelier-secondary" type="button" @click="void saveCountProgress()">保存现在的位置</button>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="progressSnapshot?.mode === 'steps'" class="detail-atelier-tools-section">
+            <div class="detail-atelier-tools-copy">
+              <span>步骤整理</span>
+              <p>当你想回头整理步骤顺序时，再从这里增删小步骤就好。</p>
+            </div>
+
+            <form class="detail-atelier-inline-form detail-atelier-inline-form-compact" @submit.prevent="submitWishStep">
+              <label>
+                <span>补一小步</span>
+                <input v-model="stepDraft" type="text" maxlength="60" placeholder="例如：先确认路线和预算" />
+              </label>
+              <div class="detail-atelier-inline-buttons detail-atelier-tools-actions">
+                <button class="detail-atelier-secondary" type="submit" :disabled="!stepDraft.trim()">加入这一步</button>
+              </div>
+            </form>
+
+            <div v-if="selectedWish.steps.length" class="detail-atelier-step-manage-list">
+              <div v-for="step in selectedWish.steps" :key="`manage-${step.id}`" class="detail-atelier-step-manage-row">
+                <span>{{ step.title }}</span>
+                <button class="detail-atelier-text danger" type="button" @click="void removeWishStep(step.id)">移走这一步</button>
               </div>
             </div>
           </div>
@@ -1326,6 +1351,11 @@ async function confirmDeleteWish() {
   align-items: center;
 }
 
+.detail-atelier-tools-actions {
+  justify-content: flex-start;
+  align-items: center;
+}
+
 .detail-atelier-danger-chip {
   min-height: 38px;
   background: rgba(249, 238, 232, 0.84);
@@ -1606,6 +1636,30 @@ async function confirmDeleteWish() {
 .detail-atelier-member-grid {
   display: grid;
   gap: 0.58rem;
+}
+
+.detail-atelier-step-manage-list {
+  display: grid;
+  gap: 0.56rem;
+}
+
+.detail-atelier-step-manage-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.56rem;
+  align-items: center;
+  padding: 0.72rem 0.78rem;
+  border-radius: 18px;
+  border: 1px solid rgba(126, 96, 76, 0.1);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.detail-atelier-step-manage-row span {
+  color: #2e1f19;
+  font-family: var(--font-body);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
 }
 
 .detail-atelier-member-grid {

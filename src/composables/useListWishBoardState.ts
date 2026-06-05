@@ -173,7 +173,9 @@ export function useListWishBoardState() {
       return progress.pendingStepTitles.slice(0, 2).join('、') || '下一步已经在路上。'
     }
 
-    return ''
+    return wish.note.trim()
+      ? '它先被认真写下来了，什么时候开始往前都可以。'
+      : '先把它留在清单里，也是一种认真开始。'
   }
 
   return {

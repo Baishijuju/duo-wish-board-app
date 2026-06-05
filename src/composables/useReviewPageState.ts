@@ -138,7 +138,7 @@ export function useReviewPageState() {
     }
 
     if (!wishStore.stats.totalWishCoins) {
-      return `这段时间，你们已经写下了 ${wishStore.stats.total} 个愿望。本周的 ${WISH_COIN_BUDGET_PER_CYCLE} 枚愿望币还在等着落下，先挑一个最想先靠近的试试看。`
+      return `这段时间，你们已经写下了 ${wishStore.stats.total} 个愿望。有些愿望只是先被认真写下，也已经很重要；等哪一天更想靠近时，再把本周的 ${WISH_COIN_BUDGET_PER_CYCLE} 枚愿望币轻轻投出去就好。`
     }
 
     if (topCoinWish.value && topCoinWishSummary.value && !topCoinWishSummary.value.isDragonBallReady) {
