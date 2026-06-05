@@ -180,7 +180,7 @@ async function confirmDeleteWish() {
       <section class="detail-atelier-hero">
         <article class="page-card detail-atelier-story-card">
           <div class="detail-atelier-hero-top">
-            <p class="detail-atelier-kicker detail-atelier-kicker-bilingual">这一页愿望 <span>Wish Detail</span></p>
+            <p class="detail-atelier-kicker">这一页愿望</p>
             <RouterLink class="detail-atelier-mini-link" :to="{ name: 'list' }">回清单继续推进</RouterLink>
           </div>
 
@@ -232,41 +232,18 @@ async function confirmDeleteWish() {
             </div>
           </div>
 
-          <details class="detail-atelier-danger-row detail-atelier-danger-details">
-            <summary class="detail-atelier-danger-summary">
-              <span>低频操作</span>
-              <strong>移走这条愿望</strong>
-            </summary>
-
-            <div class="detail-atelier-danger-copy-block">
-              <p class="detail-atelier-danger-copy">如果这条愿望已经不需要了，再从这里移走就好。</p>
-              <p v-if="deleteWishFeedback" class="detail-atelier-feedback danger" role="status" aria-live="polite">{{ deleteWishFeedback }}</p>
-            </div>
-
-            <div class="detail-atelier-inline-buttons detail-atelier-danger-actions">
-              <template v-if="isDeleteWishConfirming">
-                <span class="detail-atelier-chip detail-atelier-danger-chip">移走后会回到清单页</span>
-                <button class="detail-atelier-secondary" type="button" :disabled="isDeletingWish" @click="cancelWishDeleteConfirm()">先不删</button>
-                <button class="detail-atelier-text danger" type="button" :disabled="isDeletingWish" @click="void confirmDeleteWish()">
-                  {{ isDeletingWish ? '删除中...' : '确认删除' }}
-                </button>
-              </template>
-              <button v-else class="detail-atelier-text danger" type="button" @click="openWishDeleteConfirm()">删除愿望</button>
-            </div>
-          </details>
-
           <p v-if="rewardFeedback && !pendingCompletionKind" :class="['detail-atelier-feedback', rewardFeedbackTone]" role="status" aria-live="polite">{{ rewardFeedback }}</p>
         </article>
 
         <article class="page-card detail-atelier-cover-card">
           <img v-if="coverImageUrl" class="detail-atelier-cover-image" :src="coverImageUrl" :alt="`${selectedWish.title} 首图`" />
           <div v-else class="detail-atelier-cover-empty">
-            <strong>还没有首图</strong>
+            <strong>这页还在等一张封面</strong>
             <p>这条愿望还没放进图片，但详情页仍会完整保留过程和记录。</p>
           </div>
 
           <div class="detail-atelier-cover-head">
-            <p class="detail-atelier-kicker detail-atelier-kicker-bilingual">封面首图 <span>Cover</span></p>
+            <p class="detail-atelier-kicker">封面首图</p>
             <span class="detail-atelier-badge">{{ coverImageEntry ? '已经留住一张首图' : '还没有留下首图' }}</span>
           </div>
         </article>
@@ -276,7 +253,7 @@ async function confirmDeleteWish() {
         <article class="page-card detail-atelier-compose-card">
           <div class="detail-atelier-section-head">
             <div class="detail-atelier-section-copy">
-              <p class="detail-atelier-kicker detail-atelier-kicker-bilingual">写一笔近况 <span>New Entry</span></p>
+              <p class="detail-atelier-kicker">写一笔近况</p>
               <h2>先记下一笔近况</h2>
             </div>
             <span class="detail-atelier-badge">会落在下面</span>
@@ -340,7 +317,7 @@ async function confirmDeleteWish() {
         <article id="progress" class="page-card detail-atelier-overview-card detail-atelier-progress-anchor">
           <div class="detail-atelier-section-head">
             <div class="detail-atelier-section-copy">
-              <p class="detail-atelier-kicker detail-atelier-kicker-bilingual">推进痕迹 <span>Progress</span></p>
+              <p class="detail-atelier-kicker">推进痕迹</p>
               <h2>这条愿望正走到哪里</h2>
             </div>
             <span class="detail-atelier-badge">{{ progressSnapshot?.label || '还没开始' }}</span>
@@ -359,26 +336,14 @@ async function confirmDeleteWish() {
           </div>
 
           <div v-if="progressSnapshot?.mode === 'count'" class="detail-atelier-progress-stack">
-            <div class="detail-atelier-inline-buttons">
-              <button class="detail-atelier-secondary" type="button" @click="void adjustCountProgress(-1)">-1</button>
-              <button class="detail-atelier-primary" type="button" @click="void adjustCountProgress(1)">
+            <div class="detail-atelier-progress-quick-action">
+              <div class="detail-atelier-progress-quick-copy">
+                <strong>先让它继续往前一点</strong>
+                <p>每往前一点，小奖励都会先被空间页接住。</p>
+              </div>
+              <button class="detail-atelier-primary detail-atelier-progress-primary" type="button" @click="void adjustCountProgress(1)">
                 +1{{ selectedWish.progressUnit ? ` ${selectedWish.progressUnit}` : '' }}
               </button>
-            </div>
-
-            <label class="detail-atelier-progress-log-toggle">
-              <input v-model="shouldRecordCountProgressLog" type="checkbox" />
-              <span>每次推进数字进度时，顺手记一笔手账记录</span>
-            </label>
-
-            <p class="detail-atelier-support">每往前一点，小奖励会先记到空间页；想领的时候，再过去慢慢挑。</p>
-
-            <div class="detail-atelier-inline-form">
-              <label>
-                <span>也可以直接改成现在的数值</span>
-                <input v-model.number="countProgressDraft" type="number" min="0" :max="Math.max(1, selectedWish.progressTarget)" />
-              </label>
-              <button class="detail-atelier-secondary" type="button" @click="void saveCountProgress()">保存当前进度</button>
             </div>
           </div>
 
@@ -421,7 +386,7 @@ async function confirmDeleteWish() {
         <article class="page-card detail-atelier-overview-card is-warm">
           <div class="detail-atelier-section-head">
             <div class="detail-atelier-section-copy">
-              <p class="detail-atelier-kicker detail-atelier-kicker-bilingual">愿望币与奖励 <span>Wish Coins</span></p>
+              <p class="detail-atelier-kicker">愿望币与奖励</p>
               <h2>把偏爱、鼓励和奖励留在同一页</h2>
             </div>
             <span class="detail-atelier-badge">{{ coinSnapshot?.total ?? 0 }} / {{ DRAGON_BALL_COIN_TARGET }}</span>
@@ -463,7 +428,7 @@ async function confirmDeleteWish() {
         <article class="page-card detail-atelier-thread-card">
           <div class="detail-atelier-section-head">
             <div class="detail-atelier-section-copy">
-              <p class="detail-atelier-kicker detail-atelier-kicker-bilingual">共同手账 <span>Thread</span></p>
+              <p class="detail-atelier-kicker">共同手账</p>
               <h2>这一页已经留下的过程</h2>
             </div>
             <span class="detail-atelier-badge">最新在上 · {{ visibleThreads.length }} 笔</span>
@@ -523,7 +488,7 @@ async function confirmDeleteWish() {
                   @click="openImagePreview(thread.images, image.id)"
                 >
                   <img v-if="image.url" class="detail-atelier-thread-image" :src="image.url" :alt="image.fileName" />
-                  <span v-else class="detail-atelier-image-empty">图片准备中</span>
+                  <span v-else class="detail-atelier-image-empty">这张图正在出现</span>
                 </button>
               </div>
 
@@ -591,7 +556,7 @@ async function confirmDeleteWish() {
         <article class="page-card detail-atelier-image-card">
           <div class="detail-atelier-section-head">
             <div class="detail-atelier-section-copy">
-              <p class="detail-atelier-kicker detail-atelier-kicker-bilingual">图片与纪念 <span>Images</span></p>
+              <p class="detail-atelier-kicker">图片与纪念</p>
               <h2>图片与纪念</h2>
             </div>
             <span class="detail-atelier-badge">{{ visibleImages.length }} 张</span>
@@ -614,11 +579,11 @@ async function confirmDeleteWish() {
                   />
                   {{ isUploadingImages ? '上传中...' : '添加封面图' }}
                 </label>
-                <span v-else-if="wishStore.isUsingCloudWishes" class="detail-atelier-chip">已有限制：每条愿望 1 张封面图</span>
+                <span v-else-if="wishStore.isUsingCloudWishes" class="detail-atelier-chip">现在先留住这一张封面</span>
               </div>
             </div>
 
-            <p v-if="visibleImages.length" class="detail-atelier-support">当前只保留一张封面图；若要换图，先删除这张再上传。</p>
+            <p v-if="visibleImages.length" class="detail-atelier-support">想换一张时，再回来慢慢整理也可以。</p>
 
             <div v-if="visibleImages.length" class="detail-atelier-image-memory-strip">
               <article class="detail-atelier-image-memory-card">
@@ -639,7 +604,7 @@ async function confirmDeleteWish() {
                 <button v-if="image.url" class="detail-atelier-image-button" type="button" @click="openImagePreview(visibleImages, image.id)">
                   <img class="detail-atelier-image" :src="image.url" :alt="image.fileName" draggable="false" />
                 </button>
-                <div v-else class="detail-atelier-image-empty">图片链接准备中</div>
+                <div v-else class="detail-atelier-image-empty">这张图正在展开</div>
 
                 <div class="detail-atelier-image-badges">
                   <span class="detail-atelier-chip">{{ isCoverImage(image.id) ? '当前首图' : `第 ${index + 1} 张` }}</span>
@@ -680,7 +645,6 @@ async function confirmDeleteWish() {
                   <button class="detail-atelier-secondary" type="button" @click="startEditingImageNote(image.id, image.note)">
                     {{ image.note ? '编辑备注' : '添加备注' }}
                   </button>
-                  <button v-if="canDeleteImage(image.createdBy)" class="detail-atelier-text danger" type="button" @click="void deleteImage(image.id)">删除图片</button>
                 </div>
               </div>
             </figure>
@@ -691,6 +655,71 @@ async function confirmDeleteWish() {
             <p>可以给这条愿望上传灵感图、截图或者完成过程里的纪念照片。</p>
           </div>
         </article>
+      </section>
+
+      <section class="detail-atelier-tools-band">
+        <details class="page-card detail-atelier-tools-card detail-atelier-danger-details">
+          <summary class="detail-atelier-danger-summary">
+            <span>低频工具</span>
+            <strong>整理这页愿望</strong>
+          </summary>
+
+          <div class="detail-atelier-danger-copy-block">
+            <p class="detail-atelier-danger-copy">删除和移走这条愿望，都放在这里，平时不用一直看见。</p>
+            <p v-if="deleteWishFeedback" class="detail-atelier-feedback danger" role="status" aria-live="polite">{{ deleteWishFeedback }}</p>
+          </div>
+
+          <div v-if="visibleImages.length" class="detail-atelier-tools-section">
+            <div class="detail-atelier-tools-copy">
+              <span>封面图片</span>
+              <p>如果想换掉这一张封面，先从这里整理会更安全。</p>
+            </div>
+            <div class="detail-atelier-inline-buttons detail-atelier-danger-actions">
+              <button
+                v-if="coverImageEntry && canDeleteImage(coverImageEntry.createdBy)"
+                class="detail-atelier-secondary"
+                type="button"
+                @click="void deleteImage(coverImageEntry.id)"
+              >
+                换一张封面
+              </button>
+            </div>
+          </div>
+
+          <div class="detail-atelier-inline-buttons detail-atelier-danger-actions">
+            <template v-if="isDeleteWishConfirming">
+              <span class="detail-atelier-chip detail-atelier-danger-chip">移走后会回到清单页</span>
+              <button class="detail-atelier-secondary" type="button" :disabled="isDeletingWish" @click="cancelWishDeleteConfirm()">先不删</button>
+              <button class="detail-atelier-text danger" type="button" :disabled="isDeletingWish" @click="void confirmDeleteWish()">
+                {{ isDeletingWish ? '删除中...' : '确认删除' }}
+              </button>
+            </template>
+            <button v-else class="detail-atelier-text danger" type="button" @click="openWishDeleteConfirm()">移走这条愿望</button>
+          </div>
+
+          <div v-if="progressSnapshot?.mode === 'count'" class="detail-atelier-tools-section">
+            <div class="detail-atelier-tools-copy">
+              <span>数字进度校正</span>
+              <p>只有当你想回头整理记录时，再从这里校正现在的数值。</p>
+            </div>
+
+            <label class="detail-atelier-progress-log-toggle">
+              <input v-model="shouldRecordCountProgressLog" type="checkbox" />
+              <span>每次推进数字进度时，顺手记一笔手账记录</span>
+            </label>
+
+            <div class="detail-atelier-inline-form detail-atelier-inline-form-compact">
+              <label>
+                <span>把它改成现在的位置</span>
+                <input v-model.number="countProgressDraft" type="number" min="0" :max="Math.max(1, selectedWish.progressTarget)" />
+              </label>
+              <div class="detail-atelier-inline-buttons detail-atelier-danger-actions">
+                <button class="detail-atelier-secondary" type="button" @click="void adjustCountProgress(-1)">往回调 1 点</button>
+                <button class="detail-atelier-secondary" type="button" @click="void saveCountProgress()">保存现在的位置</button>
+              </div>
+            </div>
+          </div>
+        </details>
       </section>
     </template>
 
@@ -798,6 +827,7 @@ async function confirmDeleteWish() {
 .detail-atelier-overview-grid,
 .detail-atelier-journal-grid,
 .detail-atelier-compose-band,
+.detail-atelier-tools-band,
 .detail-atelier-summary-grid,
 .detail-atelier-summary-card,
 .detail-atelier-story-card,
@@ -976,6 +1006,7 @@ async function confirmDeleteWish() {
 .detail-atelier-overview-card,
 .detail-atelier-image-card,
 .detail-atelier-thread-card,
+.detail-atelier-tools-card,
 .detail-atelier-empty-card {
   padding: 1.15rem;
 }
@@ -1217,6 +1248,42 @@ async function confirmDeleteWish() {
   border-top: 1px dashed rgba(126, 96, 76, 0.16);
 }
 
+.detail-atelier-tools-card {
+  background: rgba(255, 252, 247, 0.82);
+}
+
+.detail-atelier-tools-section {
+  display: grid;
+  gap: 0.6rem;
+  padding-top: 0.78rem;
+  border-top: 1px dashed rgba(126, 96, 76, 0.16);
+}
+
+.detail-atelier-tools-copy {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.detail-atelier-tools-copy span {
+  margin: 0;
+  color: rgba(70, 53, 45, 0.68);
+  font-family: var(--font-body);
+  font-size: var(--type-eyebrow-size);
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: var(--type-eyebrow-spacing);
+  text-transform: uppercase;
+}
+
+.detail-atelier-tools-copy p {
+  margin: 0;
+  font-family: var(--font-body);
+  color: rgba(76, 59, 50, 0.62);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
+}
+
 .detail-atelier-danger-details {
   display: grid;
   justify-content: stretch;
@@ -1373,6 +1440,44 @@ async function confirmDeleteWish() {
     linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(250, 243, 235, 0.72));
 }
 
+.detail-atelier-progress-quick-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.82rem;
+  align-items: center;
+  padding: 0.88rem 0.92rem;
+  border-radius: 20px;
+  border: 1px solid rgba(126, 96, 76, 0.12);
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.detail-atelier-progress-quick-copy {
+  display: grid;
+  gap: 0.22rem;
+}
+
+.detail-atelier-progress-quick-copy strong {
+  color: #2e1f19;
+  font-family: var(--font-heading);
+  font-size: var(--type-l5-size);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+
+.detail-atelier-progress-quick-copy p {
+  margin: 0;
+  color: rgba(76, 59, 50, 0.62);
+  font-family: var(--font-body);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
+}
+
+.detail-atelier-progress-primary {
+  min-width: 10rem;
+}
+
 .detail-atelier-overview-card.is-warm .detail-atelier-meter-card {
   background:
     linear-gradient(180deg, rgba(255, 250, 244, 0.9), rgba(255, 244, 236, 0.78)),
@@ -1491,6 +1596,10 @@ async function confirmDeleteWish() {
 .detail-atelier-progress-log-toggle input {
   width: 1rem;
   height: 1rem;
+}
+
+.detail-atelier-inline-form-compact {
+  gap: 0.72rem;
 }
 
 .detail-atelier-step-list,
@@ -2193,7 +2302,8 @@ async function confirmDeleteWish() {
 
   .detail-atelier-progress-stack,
   .detail-atelier-step-list,
-  .detail-atelier-inline-form {
+  .detail-atelier-inline-form,
+  .detail-atelier-progress-quick-action {
     gap: 0.68rem;
   }
 
@@ -2238,6 +2348,15 @@ async function confirmDeleteWish() {
   .detail-atelier-inline-form > .detail-atelier-secondary {
     justify-self: start;
     min-height: 38px;
+  }
+
+  .detail-atelier-progress-quick-action {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-atelier-progress-primary {
+    width: 100%;
+    min-width: 0;
   }
 
   .detail-atelier-thread-entry,

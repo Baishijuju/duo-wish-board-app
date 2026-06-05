@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useComposePreviewState } from '../composables/useComposePreviewState'
 
@@ -23,7 +23,6 @@ const {
   progressSummary,
   priorityOptions,
   removeInitialStepField,
-  resetDraft,
   scopeOptions,
   selectedOwnerLabel,
   selectedPriorityLabel,
@@ -37,8 +36,26 @@ const feedbackToneClass = computed(() => {
   return `compose-preview-feedback-${feedbackTone.value}`
 })
 
+const isSupplementaryOpen = ref(false)
+
+watch(
+  () => editingWish.value?.id ?? '',
+  (wishId) => {
+    isSupplementaryOpen.value = !!wishId
+  },
+  { immediate: true },
+)
+
 const stepPreview = computed(() => {
   return initialStepDrafts.value.map((step) => step.trim()).filter(Boolean).slice(0, 4)
+})
+
+const shouldShowSummaryStage = computed(() => {
+  return isSupplementaryOpen.value || !!editingWish.value
+})
+
+const supplementaryToggleLabel = computed(() => {
+  return isSupplementaryOpen.value ? '先写到这里' : '再补一些细节'
 })
 
 const sideLead = computed(() => {
@@ -46,16 +63,24 @@ const sideLead = computed(() => {
     return '这里只改基本信息；步骤、图片和留言继续回详情页。'
   }
 
-  return '这里只留下必要字段，让内容比说明更先被看见。'
-})
-
-const resetButtonLabel = computed(() => {
-  return editingWish.value ? '先不改了' : '重置草稿'
+  return '先写下名字和一句心情，这条愿望就已经开始了。'
 })
 
 const submitButtonLabel = computed(() => {
-  return editingWish.value ? '保存这次整理' : '把这条愿望收进清单'
+  return editingWish.value ? '保存这次整理' : '先写下这条愿望'
 })
+
+const previewStageTitle = computed(() => {
+  return editingWish.value ? '这页整理后会变成这样' : '补充之后，这页会慢慢变成这样'
+})
+
+function toggleSupplementaryFields() {
+  if (editingWish.value) {
+    return
+  }
+
+  isSupplementaryOpen.value = !isSupplementaryOpen.value
+}
 </script>
 
 <template>
@@ -63,7 +88,7 @@ const submitButtonLabel = computed(() => {
     <article class="compose-preview-shell page-card">
       <header class="compose-preview-hero">
         <div class="compose-preview-hero-copy">
-          <p class="eyebrow">Compose</p>
+          <p class="eyebrow">{{ editingWish ? '整理这一页愿望' : '写下这条愿望' }}</p>
           <h1>
             <span class="compose-atelier-hero-name">{{ viewerName }}</span>
             <span class="compose-atelier-hero-headline">{{ composerHeadline }}</span>
@@ -73,180 +98,216 @@ const submitButtonLabel = computed(() => {
         <p class="compose-preview-lead">{{ sideLead }}</p>
       </header>
 
-      <div class="compose-preview-grid">
+      <div class="compose-preview-grid" :class="{ 'is-single-stage': !shouldShowSummaryStage }">
         <form id="compose-atelier-form" class="compose-preview-form-stage" @submit.prevent="submitWish">
-          <label class="compose-field compose-field-title">
-            <span>愿望名字</span>
-            <input v-model="draft.title" type="text" maxlength="36" placeholder="例如：一起去看海边的日出" />
-          </label>
-
-          <div class="compose-preview-chip-row" aria-label="分类建议">
-            <button
-              v-for="category in categorySuggestions"
-              :key="category"
-              type="button"
-              class="compose-chip"
-              :class="{ active: draft.category === category }"
-              @click="applyCategory(category)"
-            >
-              {{ category }}
-            </button>
-          </div>
-
-          <label class="compose-field compact">
-            <span>分类</span>
-            <input v-model="draft.category" type="text" maxlength="20" placeholder="旅行 / 生活 / 成长" />
-          </label>
-
-          <label class="compose-field">
-            <span>一句心情</span>
-            <textarea
-              v-model="draft.note"
-              rows="3"
-              maxlength="180"
-              placeholder="只留一句就够，比如为什么现在想把它写下来。"
-            />
-          </label>
-
-          <section class="compose-preview-section">
-            <header class="compose-preview-section-head">
-              <div>
-                <p class="eyebrow">Visibility</p>
-                <h2>给它一个被看见的方式</h2>
-              </div>
-              <span>{{ selectedScopeLabel }}</span>
-            </header>
-
-            <div class="compose-preview-option-grid">
-              <button
-                v-for="option in scopeOptions"
-                :key="option.value"
-                type="button"
-                class="compose-option-card"
-                :class="{ active: draft.scope === option.value }"
-                @click="draft.scope = option.value"
-              >
-                <strong>{{ option.label }}</strong>
-              </button>
-            </div>
-          </section>
-
-          <section class="compose-preview-section compact">
-            <header class="compose-preview-section-head">
-              <div>
-                <p class="eyebrow">Priority</p>
-                <h2>想把它放在哪一层</h2>
-              </div>
-              <span>{{ selectedPriorityLabel }}</span>
-            </header>
-
-            <div class="compose-preview-member-row priority-row">
-              <button
-                v-for="option in priorityOptions"
-                :key="option.value"
-                type="button"
-                class="compose-member-chip"
-                :class="{ active: draft.priority === option.value }"
-                @click="draft.priority = option.value"
-              >
-                {{ option.label }}
-              </button>
-            </div>
-          </section>
-
-          <section class="compose-preview-section">
-            <header class="compose-preview-section-head">
-              <div>
-                <p class="eyebrow">Progress</p>
-                <h2>推进方式</h2>
-              </div>
-              <span>{{ selectedProgressLabel }}</span>
-            </header>
-
-            <div class="compose-preview-option-grid compact">
-              <button
-                v-for="option in progressOptions"
-                :key="option.value"
-                type="button"
-                class="compose-option-card"
-                :class="{ active: draft.progressMode === option.value }"
-                @click="draft.progressMode = option.value"
-              >
-                <strong>{{ option.label }}</strong>
-              </button>
-            </div>
-
-            <div v-if="draft.progressMode === 'count'" class="compose-preview-count-grid">
-              <label v-if="editingWish" class="compose-field compact">
-                <span>当前</span>
-                <input v-model.number="draft.progressCurrent" type="number" min="0" />
-              </label>
-              <label v-else class="compose-field compact compose-field-readonly">
-                <span>当前</span>
-                <input :value="0" type="number" min="0" readonly />
-              </label>
-              <label class="compose-field compact">
-                <span>目标</span>
-                <input v-model.number="draft.progressTarget" type="number" min="1" />
-              </label>
-              <label class="compose-field compact">
-                <span>单位</span>
-                <input v-model="draft.progressUnit" type="text" maxlength="10" placeholder="次 / 公里 / 页" />
-              </label>
-            </div>
-
-            <div v-else-if="draft.progressMode === 'steps' && !editingWish" class="compose-preview-steps-stage">
-              <div class="compose-preview-step-head">
-                <span>起步步骤 {{ initialStepCount }}</span>
-                <button type="button" class="compose-inline-action" @click="addInitialStepField">再加一步</button>
-              </div>
-
-              <div class="compose-preview-step-list">
-                <label v-for="index in initialStepDrafts.length" :key="index" class="compose-field compact">
-                  <span>第 {{ index }} 步</span>
-                  <div class="compose-preview-step-field">
-                    <input
-                      v-model="initialStepDrafts[index - 1]"
-                      type="text"
-                      maxlength="30"
-                      placeholder="写一个很小的起步动作"
-                    />
-                    <button type="button" class="compose-inline-action subtle" @click="removeInitialStepField(index - 1)">
-                      移除
-                    </button>
-                  </div>
-                </label>
-              </div>
-            </div>
-
-            <div v-else-if="draft.progressMode === 'steps' && editingWish" class="compose-preview-step-notice">
-              <strong>这条愿望已经有步骤管理区了</strong>
-              <p>写下页只改基本信息；如果要继续拆步骤，回详情页会更顺。</p>
-              <RouterLink class="compose-inline-action" :to="{ name: 'wish-detail', params: { id: editingWish.id } }">
-                去详情页管理步骤
-              </RouterLink>
-            </div>
-          </section>
-
-          <div class="compose-preview-bottom-row">
-            <label class="compose-field compact compose-field-date">
-              <span>想在什么时候开始靠近</span>
-              <input v-model="draft.dueDate" type="date" />
+          <section class="compose-preview-core-stage">
+            <label class="compose-field compose-field-title">
+              <span>愿望名字</span>
+              <input v-model="draft.title" type="text" maxlength="36" placeholder="例如：一起去看海边的日出" />
             </label>
 
-            <div class="compose-preview-actions">
-              <button type="button" class="compose-secondary-button" @click="editingWish ? cancelEditing() : resetDraft()">
-                {{ resetButtonLabel }}
-              </button>
-              <button type="submit" class="compose-primary-button compose-mobile-submit">
+            <label class="compose-field">
+              <span>一句心情</span>
+              <textarea
+                v-model="draft.note"
+                rows="3"
+                maxlength="180"
+                placeholder="先留一句就够，比如为什么现在想把它写下来。"
+              />
+            </label>
+
+            <div class="compose-preview-primary-actions">
+              <button type="submit" class="compose-primary-button compose-primary-button-inline">
                 {{ submitButtonLabel }}
               </button>
+              <button
+                v-if="!editingWish"
+                type="button"
+                class="compose-secondary-button"
+                @click="toggleSupplementaryFields()"
+              >
+                {{ supplementaryToggleLabel }}
+              </button>
+              <button v-else type="button" class="compose-secondary-button" @click="cancelEditing()">
+                回详情页
+              </button>
             </div>
-          </div>
+
+            <p v-if="feedbackMessage" class="compose-preview-feedback" :class="feedbackToneClass" role="status" aria-live="polite">{{ feedbackMessage }}</p>
+          </section>
+
+          <section v-if="isSupplementaryOpen || editingWish" class="compose-preview-supplementary-stage">
+            <header class="compose-preview-supplementary-head">
+              <div>
+                <p class="eyebrow">补充这条愿望</p>
+                <h2>这些都可以慢一点再决定</h2>
+              </div>
+              <button v-if="!editingWish" type="button" class="compose-inline-action" @click="toggleSupplementaryFields()">
+                先写到这里
+              </button>
+            </header>
+
+            <div class="compose-preview-chip-row" aria-label="分类建议">
+              <button
+                v-for="category in categorySuggestions"
+                :key="category"
+                type="button"
+                class="compose-chip"
+                :class="{ active: draft.category === category }"
+                @click="applyCategory(category)"
+              >
+                {{ category }}
+              </button>
+            </div>
+
+            <label class="compose-field compact">
+              <span>分类</span>
+              <input v-model="draft.category" type="text" maxlength="20" placeholder="旅行 / 生活 / 成长" />
+            </label>
+
+            <section class="compose-preview-section">
+              <header class="compose-preview-section-head">
+                <div>
+                  <p class="eyebrow">一起怎么看这条愿望</p>
+                  <h2>先决定它要不要一起被看见</h2>
+                </div>
+                <span>{{ selectedScopeLabel }}</span>
+              </header>
+
+              <div class="compose-preview-option-grid">
+                <button
+                  v-for="option in scopeOptions"
+                  :key="option.value"
+                  type="button"
+                  class="compose-option-card"
+                  :class="{ active: draft.scope === option.value }"
+                  @click="draft.scope = option.value"
+                >
+                  <strong>{{ option.label }}</strong>
+                </button>
+              </div>
+            </section>
+
+            <section class="compose-preview-section compact">
+              <header class="compose-preview-section-head">
+                <div>
+                  <p class="eyebrow">想先把它放在哪</p>
+                  <h2>给它一个靠近生活的位置</h2>
+                </div>
+                <span>{{ selectedPriorityLabel }}</span>
+              </header>
+
+              <div class="compose-preview-member-row priority-row">
+                <button
+                  v-for="option in priorityOptions"
+                  :key="option.value"
+                  type="button"
+                  class="compose-member-chip"
+                  :class="{ active: draft.priority === option.value }"
+                  @click="draft.priority = option.value"
+                >
+                  {{ option.label }}
+                </button>
+              </div>
+            </section>
+
+            <section class="compose-preview-section">
+              <header class="compose-preview-section-head">
+                <div>
+                  <p class="eyebrow">慢慢靠近的方式</p>
+                  <h2>等你愿意时，再决定怎么记进度</h2>
+                </div>
+                <span>{{ selectedProgressLabel }}</span>
+              </header>
+
+              <div class="compose-preview-option-grid compact">
+                <button
+                  v-for="option in progressOptions"
+                  :key="option.value"
+                  type="button"
+                  class="compose-option-card"
+                  :class="{ active: draft.progressMode === option.value }"
+                  @click="draft.progressMode = option.value"
+                >
+                  <strong>{{ option.label }}</strong>
+                </button>
+              </div>
+
+              <div v-if="draft.progressMode === 'count'" class="compose-preview-count-grid">
+                <label v-if="editingWish" class="compose-field compact">
+                  <span>当前</span>
+                  <input v-model.number="draft.progressCurrent" type="number" min="0" />
+                </label>
+                <label v-else class="compose-field compact compose-field-readonly">
+                  <span>当前</span>
+                  <input :value="0" type="number" min="0" readonly />
+                </label>
+                <label class="compose-field compact">
+                  <span>目标</span>
+                  <input v-model.number="draft.progressTarget" type="number" min="1" />
+                </label>
+                <label class="compose-field compact">
+                  <span>单位</span>
+                  <input v-model="draft.progressUnit" type="text" maxlength="10" placeholder="次 / 公里 / 页" />
+                </label>
+              </div>
+
+              <div v-else-if="draft.progressMode === 'steps' && !editingWish" class="compose-preview-steps-stage">
+                <div class="compose-preview-step-head">
+                  <span>起步步骤 {{ initialStepCount }}</span>
+                  <button type="button" class="compose-inline-action" @click="addInitialStepField">再加一步</button>
+                </div>
+
+                <div class="compose-preview-step-list">
+                  <label v-for="index in initialStepDrafts.length" :key="index" class="compose-field compact">
+                    <span>第 {{ index }} 步</span>
+                    <div class="compose-preview-step-field">
+                      <input
+                        v-model="initialStepDrafts[index - 1]"
+                        type="text"
+                        maxlength="30"
+                        placeholder="写一个很小的起步动作"
+                      />
+                      <button type="button" class="compose-inline-action subtle" @click="removeInitialStepField(index - 1)">
+                        移除
+                      </button>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <div v-else-if="draft.progressMode === 'steps' && editingWish" class="compose-preview-step-notice">
+                <strong>这条愿望已经有步骤管理区了</strong>
+                <p>这里只整理基本信息；想继续拆步骤，回详情页会更顺。</p>
+                <RouterLink class="compose-inline-action" :to="{ name: 'wish-detail', params: { id: editingWish.id } }">
+                  去详情页管理步骤
+                </RouterLink>
+              </div>
+            </section>
+
+            <div class="compose-preview-bottom-row">
+              <label class="compose-field compact compose-field-date">
+                <span>想在什么时候开始靠近</span>
+                <input v-model="draft.dueDate" type="date" />
+              </label>
+
+              <div class="compose-preview-actions">
+                <button v-if="editingWish" type="button" class="compose-secondary-button" @click="cancelEditing()">
+                  回详情页
+                </button>
+                <button v-else type="button" class="compose-secondary-button" @click="toggleSupplementaryFields()">
+                  先写到这里
+                </button>
+                <button type="submit" class="compose-primary-button compose-mobile-submit">
+                  {{ submitButtonLabel }}
+                </button>
+              </div>
+            </div>
+          </section>
         </form>
 
-        <aside class="compose-preview-summary-stage">
-          <p class="compose-preview-summary-kicker">实时预览</p>
+        <aside v-if="shouldShowSummaryStage" class="compose-preview-summary-stage">
+          <p class="compose-preview-summary-kicker">{{ previewStageTitle }}</p>
           <h2>{{ draftTitlePreview }}</h2>
           <p class="compose-preview-summary-note">{{ draftNotePreview }}</p>
 
@@ -274,7 +335,7 @@ const submitButtonLabel = computed(() => {
           </dl>
 
           <section class="compose-preview-scene">
-            <p class="compose-preview-scene-label">收进首页时会更像这样</p>
+            <p class="compose-preview-scene-label">写下之后，它会先这样出现</p>
             <div class="compose-preview-mini-card">
               <span>{{ draft.category || '生活' }}</span>
               <strong>{{ draftTitlePreview }}</strong>
@@ -288,8 +349,6 @@ const submitButtonLabel = computed(() => {
               <li v-for="step in stepPreview" :key="step">{{ step }}</li>
             </ol>
           </section>
-
-          <p v-if="feedbackMessage" class="compose-preview-feedback" :class="feedbackToneClass" role="status" aria-live="polite">{{ feedbackMessage }}</p>
 
           <button type="submit" form="compose-atelier-form" class="compose-primary-button compose-preview-submit">
             {{ submitButtonLabel }}
@@ -380,6 +439,10 @@ const submitButtonLabel = computed(() => {
   gap: 0.85rem;
 }
 
+.compose-preview-grid.is-single-stage {
+  grid-template-columns: 1fr;
+}
+
 .compose-preview-form-stage,
 .compose-preview-summary-stage {
   display: grid;
@@ -391,6 +454,43 @@ const submitButtonLabel = computed(() => {
   border: 1px solid rgba(95, 74, 55, 0.08);
   border-radius: 22px;
   background: rgba(255, 255, 255, 0.62);
+}
+
+.compose-preview-core-stage,
+.compose-preview-supplementary-stage {
+  display: grid;
+  gap: 0.82rem;
+}
+
+.compose-preview-supplementary-stage {
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(95, 74, 55, 0.08);
+}
+
+.compose-preview-supplementary-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.compose-preview-supplementary-head h2 {
+  margin: 0.1rem 0 0;
+  font-family: var(--font-heading);
+  font-size: var(--type-card-title-size);
+  line-height: var(--type-card-title-line);
+  letter-spacing: var(--type-card-title-tracking);
+}
+
+.compose-preview-primary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.compose-primary-button-inline {
+  min-width: 11rem;
 }
 
 .compose-field {
@@ -816,6 +916,12 @@ const submitButtonLabel = computed(() => {
   .compose-preview-count-grid,
   .compose-preview-bottom-row {
     grid-template-columns: 1fr;
+  }
+
+  .compose-preview-supplementary-head,
+  .compose-preview-primary-actions {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .compose-preview-step-field {

@@ -82,6 +82,17 @@ const searchSummary = computed(() => {
 
   return `正在搜「${query}」· 找到 ${filteredWishes.value.length} 条。`
 })
+const quickGuide = computed(() => {
+  if (filterStore.search.trim()) {
+    return searchSummary.value
+  }
+
+  if (filterStore.visibility !== 'all' || filterStore.status !== 'active' || filterStore.sortMode !== 'time') {
+    return `现在先看 ${selectedVisibilityLabel.value} · ${selectedStatusLabel.value} · ${selectedSortLabel.value}。`
+  }
+
+  return '先从眼前这批愿望里挑一条，继续往前就好。'
+})
 const boardHeading = computed(() => {
   const query = filterStore.search.trim()
 
@@ -125,7 +136,9 @@ const boardHeading = computed(() => {
 })
 const pendingWishAction = ref<{ wishId: string; kind: ListActionKind } | null>(null)
 const pageFeedback = ref<{ tone: ListFeedbackTone; text: string } | null>(null)
-const isFilterPanelOpen = ref(false)
+const hasActiveFilters = computed(() => {
+  return !!filterStore.search.trim() || filterStore.visibility !== 'all' || filterStore.status !== 'active' || filterStore.sortMode !== 'time'
+})
 
 function getWishCaption(wish: WishRecord) {
   return [wish.category || '还没有分类', priorityLabels[wish.priority]].join(' · ')
@@ -143,6 +156,11 @@ function getProgressCopy(wish: WishRecord) {
   }
 
   return '先把愿望本身写清楚'
+}
+
+function resetFilters() {
+  filterStore.reset()
+  showPageFeedback('info', '先把这些筛选放下，看看全部愿望。')
 }
 
 function showPageFeedback(tone: ListFeedbackTone, text: string) {
@@ -174,7 +192,7 @@ async function handleCastWishCoin(wish: WishRecord) {
   <section class="list-board-page">
     <article class="page-card list-board-hero-card">
       <div class="list-board-hero-copy">
-        <p class="list-board-kicker">愿望清单 <span>Wish Board</span></p>
+        <p class="list-board-kicker">这批愿望</p>
         <h1>
           <span class="list-board-hero-name">{{ viewerName }}</span>
           <span class="list-board-hero-promise">把正在路上的愿望，排成今天能继续推进的顺序。</span>
@@ -188,24 +206,20 @@ async function handleCastWishCoin(wish: WishRecord) {
 
     <article class="page-card list-board-toolbar-card">
       <div class="list-board-toolbar-copy">
-        <p class="list-board-kicker">筛选工作台 <span>Filters</span></p>
-        <h2>先把眼前这批愿望理清楚</h2>
-        <p>先选范围和状态，再往下看。</p>
+        <p class="list-board-kicker">先看哪一类</p>
+        <h2>想先看得更近一点，也可以</h2>
+        <p>{{ quickGuide }}</p>
       </div>
-
-      <button class="list-board-side-button list-board-filter-toggle" type="button" :aria-expanded="isFilterPanelOpen" @click="isFilterPanelOpen = !isFilterPanelOpen">
-        {{ isFilterPanelOpen ? '收起筛选' : '展开筛选' }}
-      </button>
 
       <label class="list-board-search-field">
         <span>搜索愿望</span>
         <input v-model="filterStore.search" type="search" placeholder="搜索标题、分类或写下的原因" />
       </label>
 
-      <div v-if="isFilterPanelOpen" class="list-board-toolbar-actions">
+      <div class="list-board-toolbar-actions">
         <div class="list-board-filter-stack">
           <div class="list-board-filter-group">
-            <span class="list-board-filter-label">按范围看</span>
+            <span class="list-board-filter-label">先看哪一类</span>
             <div class="list-board-filter-row">
               <button
                 class="list-board-filter-pill"
@@ -235,7 +249,7 @@ async function handleCastWishCoin(wish: WishRecord) {
           </div>
 
           <div class="list-board-filter-group">
-            <span class="list-board-filter-label">按状态看</span>
+            <span class="list-board-filter-label">现在是什么状态</span>
             <div class="list-board-filter-row">
               <button
                 class="list-board-filter-pill"
@@ -265,7 +279,7 @@ async function handleCastWishCoin(wish: WishRecord) {
           </div>
 
           <div class="list-board-filter-group">
-            <span class="list-board-filter-label">排序方式</span>
+            <span class="list-board-filter-label">想按什么顺序看</span>
             <div class="list-board-filter-row is-sort-row">
               <button
                 class="list-board-filter-pill"
@@ -273,7 +287,7 @@ async function handleCastWishCoin(wish: WishRecord) {
                 :class="{ 'is-active': filterStore.sortMode === 'time' }"
                 @click="filterStore.sortMode = 'time'"
               >
-                按时间
+                先看最近的
               </button>
               <button
                 class="list-board-filter-pill"
@@ -281,7 +295,7 @@ async function handleCastWishCoin(wish: WishRecord) {
                 :class="{ 'is-active': filterStore.sortMode === 'progress' }"
                 @click="filterStore.sortMode = 'progress'"
               >
-                按进度
+                先看快靠近的
               </button>
             </div>
           </div>
@@ -289,12 +303,12 @@ async function handleCastWishCoin(wish: WishRecord) {
 
         <div class="list-board-toolbar-side">
           <div class="list-board-toolbar-side-copy">
-            <span class="list-board-filter-label">当前结果</span>
+            <span class="list-board-filter-label">眼前这批</span>
             <strong>{{ filteredWishes.length }} 条</strong>
             <p>{{ searchSummary }}</p>
           </div>
           <div class="list-board-inline-actions">
-            <button class="list-board-side-button" type="button" @click="filterStore.reset()">重置筛选</button>
+            <button v-if="hasActiveFilters" class="list-board-side-button" type="button" @click="resetFilters()">先看全部</button>
             <RouterLink class="list-board-side-button" :to="{ name: 'review' }">去回顾页</RouterLink>
           </div>
         </div>
@@ -309,7 +323,7 @@ async function handleCastWishCoin(wish: WishRecord) {
 
       <div class="list-board-head">
         <div>
-          <p class="list-board-kicker">今天这批 <span>Wish List</span></p>
+          <p class="list-board-kicker">今天这批</p>
           <h2>{{ boardHeading }}</h2>
         </div>
 
@@ -336,7 +350,7 @@ async function handleCastWishCoin(wish: WishRecord) {
           <div class="list-board-card-body" :class="{ 'has-image': !!getCoverImageUrl(wish) }">
             <div class="list-board-card-copy">
               <h3>{{ wish.title }}</h3>
-              <p>{{ wish.note || '还没写下原因。' }}</p>
+              <p>{{ wish.note || '先留一个名字也没关系，想说的话还可以慢慢补。' }}</p>
             </div>
 
             <img v-if="getCoverImageUrl(wish)" class="list-board-card-image" :src="getCoverImageUrl(wish)" :alt="`${wish.title} 首图`" />
@@ -346,7 +360,7 @@ async function handleCastWishCoin(wish: WishRecord) {
             <RouterLink class="list-board-data-block list-board-progress-link" :to="{ name: 'wish-detail', params: { id: wish.id }, hash: '#progress' }" aria-label="打开详情页进度区域">
               <span>当前进度</span>
               <strong>{{ getProgressCopy(wish) }}</strong>
-              <p>{{ getWishProgressHint(wish) || '还没补进度说明。' }}</p>
+              <p>{{ getWishProgressHint(wish) || '等这条愿望继续往前时，这里会慢慢更清楚。' }}</p>
             </RouterLink>
           </div>
 

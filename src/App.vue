@@ -67,7 +67,7 @@ function isActivePath(targetPath: string) {
     <header class="shell-header">
       <article class="shell-topbar page-card">
         <div class="shell-brand">
-          <p class="eyebrow">Two Hearts, One Horizon</p>
+          <p class="eyebrow">两个人的愿望页</p>
           <div class="shell-brand-row">
             <h1>人生愿望清单</h1>
           </div>

@@ -86,7 +86,7 @@ function toggleRewardItemCollapse(itemId: string) {
         <div class="space-main-summary-shell">
           <div class="space-main-summary-intro">
             <div class="space-hero-copy-block">
-              <p class="eyebrow space-main-kicker">共同空间 Space</p>
+              <p class="eyebrow space-main-kicker">共同空间</p>
               <h1 class="section-title space-hero-title">把两个人的日常收在同一页</h1>
               <p class="section-copy space-main-summary-lead">成员、邀请、奖励和照片，都从这里往后翻。</p>
             </div>
@@ -137,12 +137,31 @@ function toggleRewardItemCollapse(itemId: string) {
         <p v-if="space.rewardMessage && rewardHubTab === 'claim'" :class="['feedback-message', 'space-reward-feedback', space.rewardTone]">{{ space.rewardMessage }}</p>
 
         <template v-if="rewardHubTab === 'claim'">
+          <article v-if="space.currentCatchMoment" class="space-current-catch-card">
+            <div class="space-current-catch-copy">
+              <p class="eyebrow">{{ space.currentCatchMoment.eyebrow }}</p>
+              <h3 class="space-fold-title">{{ space.currentCatchMoment.title }}</h3>
+              <p class="space-fold-copy">{{ space.currentCatchMoment.note }}</p>
+            </div>
+
+            <div class="space-current-catch-meta">
+              <span class="badge">{{ space.currentCatchMoment.sourceLabel }}</span>
+              <span class="badge">{{ space.currentCatchMoment.sourceMeta }}</span>
+            </div>
+
+            <div class="button-row space-current-catch-actions">
+              <button class="button-solid" type="button" @click="void space.claimCurrentCatchMoment()">
+                {{ space.currentCatchMoment.actionLabel }}
+              </button>
+            </div>
+          </article>
+
           <details class="space-inline-panel space-fold-card space-claim-fold space-claim-fold-top space-pending-stage">
             <summary class="space-fold-summary space-claim-summary">
               <div class="space-fold-copy-block">
                 <p class="eyebrow">待领奖励</p>
-                <h3 class="space-fold-title">先接住这些小奖励</h3>
-                <p class="space-fold-copy">步骤和数字进度累下来的小奖励，都会先收在这里。</p>
+                <h3 class="space-fold-title">先接住这次推进</h3>
+                <p class="space-fold-copy">步骤和数字进度累下来的小奖励，都会先收在这里，等你慢慢接住。</p>
               </div>
 
               <div class="space-fold-meta">
@@ -152,10 +171,6 @@ function toggleRewardItemCollapse(itemId: string) {
                   <span class="badge">数字 {{ space.pendingCountRewardUnits }} 点</span>
                 </div>
                 <div class="space-fold-toggle" aria-hidden="true">
-                  <span class="space-fold-toggle-state">
-                    <span class="space-fold-when-closed">展开</span>
-                    <span class="space-fold-when-open">收起</span>
-                  </span>
                   <span class="space-fold-arrow"></span>
                 </div>
               </div>
@@ -167,8 +182,8 @@ function toggleRewardItemCollapse(itemId: string) {
                   <summary class="space-fold-summary space-pending-summary">
                     <div class="space-fold-copy-block">
                       <p class="eyebrow">步骤奖励</p>
-                      <h3>完成了，还没领的步骤</h3>
-                      <p class="space-fold-copy">完成的小步骤会先排在这里，想领奖励或先存星星币，都从这里开始。</p>
+                      <h3>刚刚走完的这一步</h3>
+                      <p class="space-fold-copy">完成的小步骤会先排在这里，先接住它，再决定要怎么领都来得及。</p>
                     </div>
 
                     <div class="space-fold-meta">
@@ -176,10 +191,6 @@ function toggleRewardItemCollapse(itemId: string) {
                         <span class="badge">{{ space.pendingStepRewards.length }} 条</span>
                       </div>
                       <div class="space-fold-toggle" aria-hidden="true">
-                        <span class="space-fold-toggle-state">
-                          <span class="space-fold-when-closed">展开</span>
-                          <span class="space-fold-when-open">收起</span>
-                        </span>
                         <span class="space-fold-arrow"></span>
                       </div>
                     </div>
@@ -201,12 +212,12 @@ function toggleRewardItemCollapse(itemId: string) {
 
                         <div class="space-pending-controls">
                           <label v-if="space.currentMemberDailyRewards.length" class="space-pending-select">
-                            <span class="muted">领哪条日常奖励</span>
+                            <span class="muted">想把这次推进接成哪份日常奖励</span>
                             <select :value="space.getPendingRewardSelection(`step:${item.stepId}`)" @change="space.handlePendingRewardSelectionChange(`step:${item.stepId}`, $event)">
                               <option v-for="reward in space.currentMemberDailyRewards" :key="reward.id" :value="reward.id">{{ reward.title }}</option>
                             </select>
                           </label>
-                          <p v-else class="muted">还没准备日常奖励，也可以先把这一笔存成星星币。</p>
+                          <p v-else class="muted">如果你还没放进日常奖励，也可以先把这一笔收成星星币。</p>
 
                           <div class="button-row space-pending-action-grid">
                             <button
@@ -215,7 +226,7 @@ function toggleRewardItemCollapse(itemId: string) {
                               :disabled="space.isProcessingPendingReward(`step:${item.stepId}:daily`) || !space.currentMemberDailyRewards.length"
                               @click="void space.claimPendingStepReward(item.wishId, item.stepId)"
                             >
-                              {{ space.isProcessingPendingReward(`step:${item.stepId}:daily`) ? '领取中...' : '领日常奖励' }}
+                              {{ space.isProcessingPendingReward(`step:${item.stepId}:daily`) ? '接住中...' : '接住这次奖励' }}
                             </button>
                             <button
                               class="button-subtle"
@@ -223,7 +234,7 @@ function toggleRewardItemCollapse(itemId: string) {
                               :disabled="space.isProcessingPendingReward(`step:${item.stepId}:star`)"
                               @click="void space.claimPendingStepReward(item.wishId, item.stepId, true)"
                             >
-                              {{ space.isProcessingPendingReward(`step:${item.stepId}:star`) ? '存币中...' : '存成星星币' }}
+                              {{ space.isProcessingPendingReward(`step:${item.stepId}:star`) ? '收好中...' : '先收成星星币' }}
                             </button>
                           </div>
                         </div>
@@ -231,8 +242,8 @@ function toggleRewardItemCollapse(itemId: string) {
                     </div>
 
                     <div v-else class="space-empty-card">
-                      <strong>现在没有待领取的步骤奖励</strong>
-                      <p>下一次把小步骤走完，它就会先落到这里。</p>
+                      <strong>这会儿还没有新的步骤奖励</strong>
+                      <p>下一次把小步骤走完，它会先安静落到这里。</p>
                     </div>
                   </div>
                 </details>
@@ -241,8 +252,8 @@ function toggleRewardItemCollapse(itemId: string) {
                   <summary class="space-fold-summary space-pending-summary">
                     <div class="space-fold-copy-block">
                       <p class="eyebrow">数字奖励</p>
-                      <h3>积下来的进度也在这里</h3>
-                      <p class="space-fold-copy">数字推进累下来的小奖励，可以按 1 点或整批处理。</p>
+                      <h3>这段推进也先收在这里</h3>
+                      <p class="space-fold-copy">数字推进累下来的小奖励，可以先接住一部分，也可以等一整段再来。</p>
                     </div>
 
                     <div class="space-fold-meta">
@@ -250,10 +261,6 @@ function toggleRewardItemCollapse(itemId: string) {
                         <span class="badge">{{ space.pendingCountRewardUnits }} 点</span>
                       </div>
                       <div class="space-fold-toggle" aria-hidden="true">
-                        <span class="space-fold-toggle-state">
-                          <span class="space-fold-when-closed">展开</span>
-                          <span class="space-fold-when-open">收起</span>
-                        </span>
                         <span class="space-fold-arrow"></span>
                       </div>
                     </div>
@@ -275,12 +282,12 @@ function toggleRewardItemCollapse(itemId: string) {
 
                         <div class="space-pending-controls">
                           <label v-if="space.currentMemberDailyRewards.length" class="space-pending-select">
-                            <span class="muted">整批领日常奖励时，先选这一条</span>
+                            <span class="muted">想把这段推进接成哪份日常奖励</span>
                             <select :value="space.getPendingRewardSelection(`count:${item.wishId}`)" @change="space.handlePendingRewardSelectionChange(`count:${item.wishId}`, $event)">
                               <option v-for="reward in space.currentMemberDailyRewards" :key="reward.id" :value="reward.id">{{ reward.title }}</option>
                             </select>
                           </label>
-                          <p v-else class="muted">还没准备日常奖励时，也可以先按 1 点或整批存成星星币。</p>
+                          <p v-else class="muted">如果你还没放进日常奖励，也可以先按 1 点或整段收成星星币。</p>
 
                           <div class="button-row space-pending-action-grid">
                             <button
@@ -289,7 +296,7 @@ function toggleRewardItemCollapse(itemId: string) {
                               :disabled="space.isProcessingPendingReward(`count:${item.wishId}:1:daily`) || !space.currentMemberDailyRewards.length"
                               @click="void space.claimPendingCountReward(item.wishId, 1)"
                             >
-                              {{ space.isProcessingPendingReward(`count:${item.wishId}:1:daily`) ? '领取中...' : '领 1 点日常奖励' }}
+                              {{ space.isProcessingPendingReward(`count:${item.wishId}:1:daily`) ? '接住中...' : '先接住这 1 点' }}
                             </button>
                             <button
                               v-if="item.pendingUnits > 1"
@@ -298,7 +305,7 @@ function toggleRewardItemCollapse(itemId: string) {
                               :disabled="space.isProcessingPendingReward(`count:${item.wishId}:${item.pendingUnits}:daily`) || !space.currentMemberDailyRewards.length"
                               @click="void space.claimPendingCountReward(item.wishId, item.pendingUnits)"
                             >
-                              {{ space.isProcessingPendingReward(`count:${item.wishId}:${item.pendingUnits}:daily`) ? '领取中...' : '整批领日常奖励' }}
+                              {{ space.isProcessingPendingReward(`count:${item.wishId}:${item.pendingUnits}:daily`) ? '接住中...' : '把这一段都接住' }}
                             </button>
                             <button
                               class="button-subtle"
@@ -306,7 +313,7 @@ function toggleRewardItemCollapse(itemId: string) {
                               :disabled="space.isProcessingPendingReward(`count:${item.wishId}:1:star`)"
                               @click="void space.claimPendingCountReward(item.wishId, 1, true)"
                             >
-                              {{ space.isProcessingPendingReward(`count:${item.wishId}:1:star`) ? '存币中...' : '存 1 点星星币' }}
+                              {{ space.isProcessingPendingReward(`count:${item.wishId}:1:star`) ? '收好中...' : '先收成 1 点星星币' }}
                             </button>
                             <button
                               v-if="item.pendingUnits > 1"
@@ -315,7 +322,7 @@ function toggleRewardItemCollapse(itemId: string) {
                               :disabled="space.isProcessingPendingReward(`count:${item.wishId}:${item.pendingUnits}:star`)"
                               @click="void space.claimPendingCountReward(item.wishId, item.pendingUnits, true)"
                             >
-                              {{ space.isProcessingPendingReward(`count:${item.wishId}:${item.pendingUnits}:star`) ? '存币中...' : '整批存成星星币' }}
+                              {{ space.isProcessingPendingReward(`count:${item.wishId}:${item.pendingUnits}:star`) ? '收好中...' : '整段收成星星币' }}
                             </button>
                           </div>
                         </div>
@@ -323,8 +330,8 @@ function toggleRewardItemCollapse(itemId: string) {
                     </div>
 
                     <div v-else class="space-empty-card">
-                      <strong>现在没有待领取的数字进度奖励</strong>
-                      <p>下次把数字往前推一点，这里就会先替你记住。</p>
+                      <strong>这会儿还没有新的数字奖励</strong>
+                      <p>下次把数字往前推一点，这里会先替你轻轻记住。</p>
                     </div>
                   </div>
                 </details>
@@ -347,10 +354,6 @@ function toggleRewardItemCollapse(itemId: string) {
                   <span class="badge">现在可换 {{ space.premiumRedeemableNowCount }} 条</span>
                 </div>
                 <div class="space-fold-toggle" aria-hidden="true">
-                  <span class="space-fold-toggle-state">
-                    <span class="space-fold-when-closed">展开</span>
-                    <span class="space-fold-when-open">收起</span>
-                  </span>
                   <span class="space-fold-arrow"></span>
                 </div>
               </div>
@@ -409,10 +412,6 @@ function toggleRewardItemCollapse(itemId: string) {
                   <span class="badge">最近 {{ space.recentRewardClaims.length }} 笔</span>
                 </div>
                 <div class="space-fold-toggle" aria-hidden="true">
-                  <span class="space-fold-toggle-state">
-                    <span class="space-fold-when-closed">展开</span>
-                    <span class="space-fold-when-open">收起</span>
-                  </span>
                   <span class="space-fold-arrow"></span>
                 </div>
               </div>
@@ -689,7 +688,7 @@ function toggleRewardItemCollapse(itemId: string) {
 
     <div class="space-utility-band-head">
       <div>
-        <p class="eyebrow">后页工具 Space Tools</p>
+        <p class="eyebrow">后页工具</p>
         <h2 class="space-utility-band-title">需要时再往后翻</h2>
       </div>
       <p class="section-copy">{{ space.utilityBandLead }}</p>
@@ -710,10 +709,6 @@ function toggleRewardItemCollapse(itemId: string) {
               <span class="badge">{{ space.authStore.members.length }} 位成员</span>
             </div>
             <div class="space-fold-toggle" aria-hidden="true">
-              <span class="space-fold-toggle-state">
-                <span class="space-fold-when-closed">展开</span>
-                <span class="space-fold-when-open">收起</span>
-              </span>
               <span class="space-fold-arrow"></span>
             </div>
           </div>
@@ -754,7 +749,7 @@ function toggleRewardItemCollapse(itemId: string) {
         <summary class="space-fold-summary space-utility-summary">
           <div class="space-fold-copy-block">
             <p class="eyebrow">进入与邀请</p>
-            <h3>进入与邀请</h3>
+            <h3>需要时再来处理进入方式</h3>
             <p class="space-fold-copy">{{ space.accountSummary }}</p>
           </div>
 
@@ -763,10 +758,6 @@ function toggleRewardItemCollapse(itemId: string) {
               <span v-for="badge in space.accountBadges" :key="badge" class="badge">{{ badge }}</span>
             </div>
             <div class="space-fold-toggle" aria-hidden="true">
-              <span class="space-fold-toggle-state">
-                <span class="space-fold-when-closed">展开</span>
-                <span class="space-fold-when-open">收起</span>
-              </span>
               <span class="space-fold-arrow"></span>
             </div>
           </div>
@@ -885,7 +876,7 @@ function toggleRewardItemCollapse(itemId: string) {
         <summary class="space-fold-summary space-utility-summary">
           <div class="space-fold-copy-block">
             <p class="eyebrow">照片与备份</p>
-            <h3>照片空间与备份</h3>
+            <h3>照片空间和备份都放在这里</h3>
             <p class="space-fold-copy">{{ space.storageSummaryLabel }}</p>
           </div>
 
@@ -895,10 +886,6 @@ function toggleRewardItemCollapse(itemId: string) {
               <span class="badge">{{ space.authStore.usesSupabaseSpace ? '云端空间' : '本地体验空间' }}</span>
             </div>
             <div class="space-fold-toggle" aria-hidden="true">
-              <span class="space-fold-toggle-state">
-                <span class="space-fold-when-closed">展开</span>
-                <span class="space-fold-when-open">收起</span>
-              </span>
               <span class="space-fold-arrow"></span>
             </div>
           </div>
@@ -945,7 +932,7 @@ function toggleRewardItemCollapse(itemId: string) {
         <summary class="space-fold-summary space-utility-summary">
           <div class="space-fold-copy-block">
             <p class="eyebrow">同步与退出</p>
-            <h3>同步与退出</h3>
+            <h3>只在需要排查时再翻</h3>
             <p class="space-fold-copy">{{ space.advancedSummary }}</p>
           </div>
 
@@ -954,10 +941,6 @@ function toggleRewardItemCollapse(itemId: string) {
               <span class="badge">{{ space.syncStatusLabel }}</span>
             </div>
             <div class="space-fold-toggle" aria-hidden="true">
-              <span class="space-fold-toggle-state">
-                <span class="space-fold-when-closed">展开</span>
-                <span class="space-fold-when-open">收起</span>
-              </span>
               <span class="space-fold-arrow"></span>
             </div>
           </div>
@@ -1116,6 +1099,32 @@ function toggleRewardItemCollapse(itemId: string) {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.56rem;
+}
+
+.space-current-catch-card {
+  display: grid;
+  gap: 0.82rem;
+  padding: 1rem 1.02rem;
+  border-radius: 24px;
+  border: 1px solid rgba(201, 124, 97, 0.16);
+  background:
+    linear-gradient(180deg, rgba(255, 250, 244, 0.94), rgba(255, 255, 255, 0.82)),
+    radial-gradient(circle at top right, rgba(241, 214, 202, 0.18), transparent 30%);
+}
+
+.space-current-catch-copy {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.space-current-catch-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.space-current-catch-actions {
+  justify-content: flex-start;
 }
 
 .space-reward-hub-tab {
@@ -1640,30 +1649,6 @@ function toggleRewardItemCollapse(itemId: string) {
 
 .space-fold-toggle-strong {
   background: rgba(255, 250, 244, 0.9);
-}
-
-.space-fold-toggle-state {
-  display: inline-flex;
-  align-items: center;
-  color: rgba(122, 92, 74, 0.84);
-  font-family: var(--font-body);
-  font-size: var(--type-meta-size);
-  font-weight: 600;
-  letter-spacing: var(--type-meta-spacing);
-  line-height: var(--type-meta-line);
-  text-transform: uppercase;
-}
-
-.space-fold-when-open {
-  display: none;
-}
-
-.space-fold-card[open] > .space-fold-summary .space-fold-when-open {
-  display: inline;
-}
-
-.space-fold-card[open] > .space-fold-summary .space-fold-when-closed {
-  display: none;
 }
 
 .space-fold-arrow {
@@ -2508,6 +2493,7 @@ function toggleRewardItemCollapse(itemId: string) {
   .space-fact-grid,
   .space-storage-grid,
   .space-pending-grid,
+  .space-current-catch-card,
   .reward-claim-list {
     gap: 0.8rem;
   }

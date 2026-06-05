@@ -73,21 +73,16 @@ test.describe('home and list visual acceptance', () => {
       await disableMotion(page)
       await expectNoHorizontalOverflow(page)
 
-      const filterToggle = page.getByRole('button', { name: '展开筛选' })
-      if (await filterToggle.isVisible()) {
-        await filterToggle.click()
-      }
-
       await expect(page.locator('.list-board-filter-row').first()).toBeVisible()
-      await expect(page.getByRole('button', { name: '按时间' })).toBeVisible()
-      await expect(page.getByRole('button', { name: '按进度' })).toBeVisible()
+      await expect(page.getByRole('button', { name: '先看最近的' })).toBeVisible()
+      await expect(page.getByRole('button', { name: '先看快靠近的' })).toBeVisible()
       await expect(page.locator('.list-board-item').first()).toBeVisible()
       await expect(page.locator('.list-board-data-block.is-coin')).toHaveCount(0)
       await expect(page.locator('.list-board-more-trigger')).toHaveCount(0)
       await expect(page.locator('.list-board-progress-link').first()).toHaveAttribute('href', /#progress$/)
 
-      await page.getByRole('button', { name: '按进度' }).click()
-      await expect(page.getByRole('button', { name: '按进度' })).toHaveClass(/is-active/)
+      await page.getByRole('button', { name: '先看快靠近的' }).click()
+      await expect(page.getByRole('button', { name: '先看快靠近的' })).toHaveClass(/is-active/)
 
       if (viewport.width <= 430) {
         const metrics = await page.evaluate(() => {

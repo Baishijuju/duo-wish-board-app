@@ -41,7 +41,7 @@ const {
     <article class="page-card review-story-card">
       <div class="section-heading review-story-head">
         <div class="review-story-copy">
-          <p class="eyebrow">回顾页 Review</p>
+          <p class="eyebrow">这一册回顾</p>
           <h2 class="section-title">{{ reviewHeroTitle }}</h2>
           <p class="section-copy review-copy">
             {{ reviewHeroLead }}
@@ -75,7 +75,7 @@ const {
     <article class="page-card monthly-note-card">
       <div class="review-note-head">
         <div>
-          <p class="eyebrow">本月小注 Monthly Note</p>
+          <p class="eyebrow">本月小注</p>
           <h3>这一期刚刚写到这里</h3>
         </div>
         <span class="badge">{{ currentMonthLabel }}</span>
@@ -87,7 +87,7 @@ const {
       <div class="review-tab-head">
         <div class="section-heading review-tab-intro">
           <div class="review-tab-copy">
-            <p class="eyebrow">翻阅目录 Reading Shelf</p>
+            <p class="eyebrow">翻到哪一册</p>
             <h3>这次想先翻哪一册</h3>
             <p class="section-copy review-tab-note">三种视角读的是同一段日子，只是分别看完成、本月和封存。</p>
           </div>
@@ -133,7 +133,7 @@ const {
       <div v-if="reviewTab === 'journals'" class="review-panel-stack">
         <div class="section-heading review-panel-head">
           <div class="review-panel-copy">
-            <p class="eyebrow">完成手账 Journals</p>
+            <p class="eyebrow">完成册页</p>
             <h2 class="section-title">已经走完整条路的这些册页</h2>
             <p class="section-copy review-panel-note">这些愿望已经完成，更适合回头翻过程。</p>
           </div>
@@ -200,8 +200,8 @@ const {
             </article>
           </div>
           <div class="button-row review-empty-actions">
-            <RouterLink class="button-subtle" :to="{ name: 'list' }">先去清单看看</RouterLink>
-            <RouterLink class="button-link" :to="{ name: 'compose' }">写下一条新愿望</RouterLink>
+            <RouterLink class="button-link" :to="{ name: 'list' }">回清单推进一条</RouterLink>
+            <RouterLink class="button-subtle" :to="{ name: 'compose' }">再写下一条愿望</RouterLink>
           </div>
         </div>
       </div>
@@ -209,7 +209,7 @@ const {
       <div v-else-if="reviewTab === 'live'" class="review-panel-stack">
         <div class="section-heading review-panel-head">
           <div class="review-panel-copy">
-            <p class="eyebrow">本月页 Live</p>
+            <p class="eyebrow">这一期</p>
             <h2 class="section-title">{{ currentMonthLabel }} 还在继续写</h2>
             <p class="section-copy review-panel-note">这里先保留这个月还在发生的记录。</p>
           </div>
@@ -255,8 +255,8 @@ const {
             </article>
           </div>
           <div class="button-row review-empty-actions">
-            <RouterLink class="button-subtle" :to="{ name: 'list' }">先去清单看看</RouterLink>
-            <RouterLink class="button-link" :to="{ name: 'compose' }">先写下一条愿望</RouterLink>
+            <RouterLink class="button-link" :to="{ name: 'list' }">回清单推进一条</RouterLink>
+            <RouterLink class="button-subtle" :to="{ name: 'compose' }">先写下一条愿望</RouterLink>
           </div>
         </div>
       </div>
@@ -264,7 +264,7 @@ const {
       <div v-else class="review-panel-stack">
         <div class="section-heading review-panel-head">
           <div class="review-panel-copy">
-            <p class="eyebrow">冻结月刊 Snapshot</p>
+            <p class="eyebrow">已封存月刊</p>
             <h2 class="section-title">已经封存下来的固定月刊</h2>
             <p class="section-copy review-panel-note">这些页面不会再变化，适合回头慢慢翻看。</p>
           </div>
@@ -345,8 +345,8 @@ const {
             </article>
           </div>
           <div class="button-row review-empty-actions">
-            <button class="button-subtle" type="button" @click="reviewTab = 'live'">先看本月实时回顾</button>
-            <RouterLink class="button-link" :to="{ name: 'list' }">回清单继续推进</RouterLink>
+            <button class="button-link" type="button" @click="reviewTab = 'live'">先看这一期</button>
+            <RouterLink class="button-subtle" :to="{ name: 'list' }">回清单继续推进</RouterLink>
           </div>
         </div>
       </div>

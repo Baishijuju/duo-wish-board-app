@@ -668,7 +668,7 @@ function formatRecentThreadTime(timestamp: string) {
   <section class="atelier-home-page">
     <section class="atelier-hero panel">
       <div class="atelier-hero-copy">
-        <p class="atelier-kicker">今天先做 <span>Today First</span></p>
+        <p class="atelier-kicker">今天先做</p>
         <h1>
           <span class="atelier-hero-name">{{ viewerName }}</span>
           <span class="atelier-hero-promise">
@@ -721,7 +721,7 @@ function formatRecentThreadTime(timestamp: string) {
       >
         <div class="atelier-stage-note">
           <div class="wish-bottle-story">
-            <p class="wish-bottle-story-kicker">愿望瓶 <span>Wish Bottle</span></p>
+            <p class="wish-bottle-story-kicker">愿望瓶</p>
             <h2 class="wish-bottle-story-title">{{ getWishBottleHeroHeading() }}</h2>
           </div>
         </div>
@@ -954,7 +954,7 @@ function formatRecentThreadTime(timestamp: string) {
       <article class="atelier-journal panel">
         <div class="section-head">
           <div class="section-head-copy">
-            <p class="atelier-kicker">最近发生 <span>Recent Journal</span></p>
+            <p class="atelier-kicker">最近发生</p>
             <h2>刚刚，你们又先跟彼此说了什么</h2>
             <p>先看看这两句近况，再决定下一步往哪条愿望靠。</p>
           </div>
@@ -1005,7 +1005,7 @@ function formatRecentThreadTime(timestamp: string) {
       <article class="atelier-agenda panel">
         <div class="section-head">
           <div class="section-head-copy">
-            <p class="atelier-kicker">CLOSER NEXT</p>
+            <p class="atelier-kicker">接下来先往哪靠</p>
             <h2>下一步往哪里靠</h2>
           </div>
         </div>

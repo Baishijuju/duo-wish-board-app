@@ -87,6 +87,41 @@ export function useSpaceState() {
       memberName: authStore.members.find((member) => member.id === claim.ownerId)?.displayName ?? '未命名成员',
     }))
   })
+  const currentCatchMoment = computed(() => {
+    const firstPendingStepReward = pendingStepRewards.value[0]
+
+    if (firstPendingStepReward) {
+      return {
+        actionLabel: currentMemberDailyRewards.value.length ? '接住这次奖励' : '先收成星星币',
+        actionMode: currentMemberDailyRewards.value.length ? 'step-daily' : 'step-star',
+        eyebrow: '刚刚完成的一步',
+        note: currentMemberDailyRewards.value.length
+          ? '这一步的小奖励已经到了，先接住它就好。'
+          : '这一步的小奖励已经到了，先收成星星币也可以。',
+        sourceLabel: `来自「${firstPendingStepReward.wishTitle}」`,
+        sourceMeta: formatBeijingDateTime(firstPendingStepReward.completedAt),
+        title: firstPendingStepReward.stepTitle,
+      } as const
+    }
+
+    const firstPendingCountReward = pendingCountRewardSummaries.value[0]
+
+    if (firstPendingCountReward) {
+      return {
+        actionLabel: currentMemberDailyRewards.value.length ? '先接住这一段' : '先收成星星币',
+        actionMode: currentMemberDailyRewards.value.length ? 'count-daily' : 'count-star',
+        eyebrow: '刚刚推进的这一段',
+        note: currentMemberDailyRewards.value.length
+          ? `已经替你攒下 ${getPendingCountUnitLabel(firstPendingCountReward.pendingUnits, firstPendingCountReward.progressUnit)} 小奖励。`
+          : `已经替你攒下 ${getPendingCountUnitLabel(firstPendingCountReward.pendingUnits, firstPendingCountReward.progressUnit)}，先收成星星币也可以。`,
+        sourceLabel: `来自「${firstPendingCountReward.wishTitle}」`,
+        sourceMeta: formatBeijingDateTime(firstPendingCountReward.updatedAt),
+        title: `${getPendingCountUnitLabel(firstPendingCountReward.pendingUnits, firstPendingCountReward.progressUnit)} 正在等你接住`,
+      } as const
+    }
+
+    return null
+  })
 
   const joinedSpaceLabel = computed(() => {
     if (!authStore.joinedSpaceAt) {
@@ -504,6 +539,31 @@ export function useSpaceState() {
     }
   }
 
+  async function claimCurrentCatchMoment() {
+    const currentMoment = currentCatchMoment.value
+
+    if (!currentMoment) {
+      return
+    }
+
+    const firstPendingStepReward = pendingStepRewards.value[0]
+
+    if (firstPendingStepReward && (currentMoment.actionMode === 'step-daily' || currentMoment.actionMode === 'step-star')) {
+      await claimPendingStepReward(firstPendingStepReward.wishId, firstPendingStepReward.stepId, currentMoment.actionMode === 'step-star')
+      return
+    }
+
+    const firstPendingCountReward = pendingCountRewardSummaries.value[0]
+
+    if (firstPendingCountReward && (currentMoment.actionMode === 'count-daily' || currentMoment.actionMode === 'count-star')) {
+      await claimPendingCountReward(
+        firstPendingCountReward.wishId,
+        firstPendingCountReward.pendingUnits,
+        currentMoment.actionMode === 'count-star',
+      )
+    }
+  }
+
   function getRewardClaimLabel(claimKind: string) {
     if (claimKind === 'wish_reward') {
       return '完成愿望'
@@ -563,6 +623,7 @@ export function useSpaceState() {
     bindFixedEmail,
     canBindFixedEmail,
     canCopyInviteCode,
+    claimCurrentCatchMoment,
     claimPendingCountReward,
     claimPendingStepReward,
     canRedeemPremiumReward,
@@ -571,6 +632,7 @@ export function useSpaceState() {
     currentMemberPremiumExchangeRewards,
     currentMemberPremiumRewards,
     currentMemberStarCoins,
+    currentCatchMoment,
     currentRoleLabel,
     currentWishCoinCycleLabel,
     dailyRewardNoteDraft,
