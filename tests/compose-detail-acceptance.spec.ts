@@ -76,8 +76,35 @@ test.describe('compose and detail visual acceptance', () => {
       await expect(page.locator('.detail-atelier-danger-actions')).not.toBeVisible()
       await expect(page.getByText('以谁的身份留言')).toHaveCount(0)
       await expect(page.locator('.detail-atelier-compose-message-field textarea')).toBeVisible()
-      await expect(page.locator('.detail-atelier-compose-attachment-panel')).toBeVisible()
-      await expect(page.locator('.detail-atelier-reaction-toggle').first()).toBeVisible()
+      if (viewport.width <= 430) {
+        await expect(page.locator('.detail-atelier-compose-attachment-details')).toBeVisible()
+      } else {
+        await expect(page.locator('.detail-atelier-compose-attachment-panel')).toBeVisible()
+      }
+      const reactionToggle = viewport.width <= 430
+        ? page.locator('.detail-atelier-mobile-thread-more[open] .detail-atelier-reaction-toggle').first()
+        : page.locator('.detail-atelier-reaction-toggle').first()
+
+      if (viewport.width <= 430) {
+        await expect(page.locator('.detail-atelier-mobile-thread-more-summary').first()).toBeVisible()
+        const compactThreadMetrics = await page.evaluate(() => {
+          const card = document.querySelector('.detail-atelier-thread-list.detail-atelier-mobile-only .detail-atelier-thread-entry')?.getBoundingClientRect()
+          const chips = document.querySelector('.detail-atelier-thread-list.detail-atelier-mobile-only .detail-atelier-mobile-thread-corner-chips')?.getBoundingClientRect()
+
+          return {
+            cornerChipsRightInset: Math.round((card?.right ?? 0) - (chips?.right ?? 0)),
+            cornerChipsTop: Math.round((chips?.top ?? 0) - (card?.top ?? 0)),
+            firstThreadHeight: Math.round(card?.height ?? 0),
+          }
+        })
+
+        expect(compactThreadMetrics.firstThreadHeight).toBeLessThanOrEqual(190)
+        expect(compactThreadMetrics.cornerChipsTop).toBeLessThanOrEqual(20)
+        expect(compactThreadMetrics.cornerChipsRightInset).toBeLessThanOrEqual(24)
+        await page.locator('.detail-atelier-mobile-thread-more-summary').first().click()
+      }
+
+      await expect(reactionToggle).toBeVisible()
       await expect(page.locator('.detail-atelier-reaction-list.is-extended .detail-atelier-reaction-button')).toHaveCount(0)
 
       if (viewport.width <= 430) {
@@ -102,8 +129,8 @@ test.describe('compose and detail visual acceptance', () => {
         expect(metrics.compactChipRowMaxWidth).toBeLessThanOrEqual(metrics.viewportWidth)
       }
 
-      await page.locator('.detail-atelier-reaction-toggle').first().click()
-      await expect(page.locator('.detail-atelier-reaction-list.is-extended .detail-atelier-reaction-button').first()).toBeVisible()
+      await reactionToggle.click()
+      await expect(page.locator('.detail-atelier-reaction-list.is-extended:visible .detail-atelier-reaction-button').first()).toBeVisible()
     })
 
     test(`space keeps reward member cards paired at ${viewport.name}`, async ({ page }) => {
