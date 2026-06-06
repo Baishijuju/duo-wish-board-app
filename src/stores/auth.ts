@@ -29,6 +29,7 @@ import {
   isBoundSpaceMembershipFeatureMissing,
   type AppCapabilities,
   type AppCapabilityKey,
+  type AppCapabilitiesStatus,
 } from '../modules/sync/capabilities'
 
 export type MemberRole = 'owner' | 'member'
@@ -81,8 +82,6 @@ export interface AuthActionResult {
   message: string
   mode: 'mock' | 'supabase'
 }
-
-export type AppCapabilitiesStatus = 'idle' | 'loading' | 'ready' | 'fallback' | 'error'
 
 function formatAuthError(prefix: string, error: { code?: string; message: string }) {
   return formatAuthErrorModule(prefix, error)

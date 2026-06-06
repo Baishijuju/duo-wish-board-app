@@ -19,9 +19,12 @@ import {
   shouldSyncForWishRealtimeEvent,
 } from '../modules/sync/realtime.filters'
 import {
+  getKnownAppCapabilityMessage,
+  shouldRefreshAppCapabilities,
   isWishThreadFeatureMissing as isWishThreadFeatureMissingModule,
 } from '../modules/sync/capabilities'
 import {
+  buildRealtimeSubscription,
   createRealtimeSyncControllerState,
   scheduleRealtimeSync as scheduleRealtimeSyncModule,
   teardownRealtimeSubscription as teardownRealtimeSubscriptionModule,
@@ -1583,12 +1586,20 @@ export const useWishStore = defineStore('wishes', () => {
     return authStore.getCapabilityHint(key)
   }
 
+  const capabilityAccess = {
+    get hasKnownCapabilities() {
+      return authStore.hasKnownCapabilities
+    },
+    hasCapability,
+    getCapabilityHint,
+  }
+
   function isWishThreadFeatureMissing(message: string) {
     return isWishThreadFeatureMissingModule(message)
   }
 
   function getKnownCapabilityMessage(key: Parameters<typeof authStore.getCapabilityHint>[0]) {
-    return isCapabilityKnownMissing(key) ? getCapabilityHint(key) : null
+    return getKnownAppCapabilityMessage(capabilityAccess, key)
   }
 
   function scheduleRealtimeSync(reason: string) {
@@ -1656,83 +1667,105 @@ export const useWishStore = defineStore('wishes', () => {
     }
 
     teardownRealtimeSubscription()
-    realtimeStatus.value = 'connecting'
-    realtimeSyncController.subscribedSpaceId = spaceId
-
-    realtimeSyncController.channel = supabase
-      .channel(`wish-space-${spaceId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wishes', filter: `space_id=eq.${spaceId}` }, () => {
-        scheduleRealtimeSync('愿望')
-      })
-
-    if (!authStore.hasKnownCapabilities || hasCapability('hasUnifiedThreads')) {
-      realtimeSyncController.channel = realtimeSyncController.channel
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wish_threads', filter: `space_id=eq.${spaceId}` }, () => {
-          scheduleRealtimeSync('愿望手账')
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wish_thread_images' }, (payload) => {
-          handleThreadImageRealtimeEvent(payload as { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null })
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'thread_reactions', filter: `space_id=eq.${spaceId}` }, () => {
-          scheduleRealtimeSync('表情回应')
-        })
-    }
-
-    realtimeSyncController.channel = realtimeSyncController.channel
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wish_comments' }, (payload) => {
-        handleCommentRealtimeEvent(payload as { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null })
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wish_images' }, (payload) => {
-        handleImageRealtimeEvent(payload as { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null })
-      })
-
-    if (!authStore.hasKnownCapabilities || hasCapability('hasWishCoins')) {
-      realtimeSyncController.channel = realtimeSyncController.channel
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wish_coins', filter: `space_id=eq.${spaceId}` }, () => {
-          scheduleRealtimeSync('愿望币')
-        })
-    }
-
-    if (!authStore.hasKnownCapabilities || hasCapability('hasRewardPools')) {
-      realtimeSyncController.channel = realtimeSyncController.channel
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'reward_pool_items', filter: `space_id=eq.${spaceId}` }, () => {
-          scheduleRealtimeSync('奖励池')
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'reward_claims', filter: `space_id=eq.${spaceId}` }, () => {
-          scheduleRealtimeSync('领奖记录')
-        })
-    }
-
-    if (!authStore.hasKnownCapabilities || hasCapability('hasMonthlySnapshots')) {
-      realtimeSyncController.channel = realtimeSyncController.channel
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'monthly_journal_snapshots', filter: `space_id=eq.${spaceId}` }, () => {
-          scheduleRealtimeSync('月刊快照')
-        })
-    }
-
-    if (!authStore.hasKnownCapabilities || hasCapability('hasWishCommentImages')) {
-      realtimeSyncController.channel = realtimeSyncController.channel
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wish_comment_images' }, (payload) => {
-          handleCommentImageRealtimeEvent(payload as { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null })
-        })
-    }
-
-    realtimeSyncController.channel = realtimeSyncController.channel
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          realtimeStatus.value = 'subscribed'
-          return
-        }
-
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          realtimeStatus.value = 'error'
-          return
-        }
-
-        if (status === 'CLOSED') {
-          realtimeStatus.value = 'idle'
-        }
-      })
+    buildRealtimeSubscription(realtimeSyncController, {
+      supabase,
+      spaceId,
+      capabilityAccess,
+      bindings: [
+        {
+          table: 'wishes',
+          filter: `space_id=eq.${spaceId}`,
+          onEvent: () => {
+            scheduleRealtimeSync('愿望')
+          },
+        },
+        {
+          table: 'wish_threads',
+          filter: `space_id=eq.${spaceId}`,
+          capabilityKey: 'hasUnifiedThreads',
+          onEvent: () => {
+            scheduleRealtimeSync('愿望手账')
+          },
+        },
+        {
+          table: 'wish_thread_images',
+          capabilityKey: 'hasUnifiedThreads',
+          onEvent: (payload) => {
+            if (payload) {
+              handleThreadImageRealtimeEvent(payload)
+            }
+          },
+        },
+        {
+          table: 'thread_reactions',
+          filter: `space_id=eq.${spaceId}`,
+          capabilityKey: 'hasUnifiedThreads',
+          onEvent: () => {
+            scheduleRealtimeSync('表情回应')
+          },
+        },
+        {
+          table: 'wish_comments',
+          onEvent: (payload) => {
+            if (payload) {
+              handleCommentRealtimeEvent(payload)
+            }
+          },
+        },
+        {
+          table: 'wish_images',
+          onEvent: (payload) => {
+            if (payload) {
+              handleImageRealtimeEvent(payload)
+            }
+          },
+        },
+        {
+          table: 'wish_coins',
+          filter: `space_id=eq.${spaceId}`,
+          capabilityKey: 'hasWishCoins',
+          onEvent: () => {
+            scheduleRealtimeSync('愿望币')
+          },
+        },
+        {
+          table: 'reward_pool_items',
+          filter: `space_id=eq.${spaceId}`,
+          capabilityKey: 'hasRewardPools',
+          onEvent: () => {
+            scheduleRealtimeSync('奖励池')
+          },
+        },
+        {
+          table: 'reward_claims',
+          filter: `space_id=eq.${spaceId}`,
+          capabilityKey: 'hasRewardPools',
+          onEvent: () => {
+            scheduleRealtimeSync('领奖记录')
+          },
+        },
+        {
+          table: 'monthly_journal_snapshots',
+          filter: `space_id=eq.${spaceId}`,
+          capabilityKey: 'hasMonthlySnapshots',
+          onEvent: () => {
+            scheduleRealtimeSync('月刊快照')
+          },
+        },
+        {
+          table: 'wish_comment_images',
+          capabilityKey: 'hasWishCommentImages',
+          onEvent: (payload) => {
+            if (payload) {
+              handleCommentImageRealtimeEvent(payload)
+            }
+          },
+        },
+      ],
+      onStatusChange: (status) => {
+        realtimeStatus.value = status
+      },
+    })
   }
 
   async function syncFromSupabase(spaceId = authStore.currentSpaceId) {
@@ -1740,7 +1773,7 @@ export const useWishStore = defineStore('wishes', () => {
       return false
     }
 
-    if (authStore.appCapabilitiesStatus === 'idle' || authStore.appCapabilitiesStatus === 'error') {
+    if (shouldRefreshAppCapabilities(authStore.appCapabilitiesStatus)) {
       await authStore.refreshAppCapabilities()
     }
 

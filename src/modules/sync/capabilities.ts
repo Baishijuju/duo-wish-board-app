@@ -15,6 +15,13 @@ export interface AppCapabilities {
 }
 
 export type AppCapabilityKey = keyof AppCapabilities
+export type AppCapabilitiesStatus = 'idle' | 'loading' | 'ready' | 'fallback' | 'error'
+
+export interface AppCapabilityAccess {
+  hasKnownCapabilities: boolean
+  hasCapability: (key: AppCapabilityKey) => boolean
+  getCapabilityHint: (key: AppCapabilityKey) => string
+}
 
 const DEFAULT_APP_CAPABILITIES: AppCapabilities = {
   hasBoundSpaceMemberships: false,
@@ -76,6 +83,23 @@ export function normalizeAppCapabilities(value: unknown): AppCapabilities {
 
 export function getCapabilityMissingMessage(key: AppCapabilityKey) {
   return APP_CAPABILITY_MISSING_MESSAGES[key]
+}
+
+export function shouldUseAppCapability(
+  access: Pick<AppCapabilityAccess, 'hasKnownCapabilities' | 'hasCapability'>,
+  key: AppCapabilityKey,
+) {
+  return !access.hasKnownCapabilities || access.hasCapability(key)
+}
+
+export function getKnownAppCapabilityMessage(access: AppCapabilityAccess, key: AppCapabilityKey) {
+  return access.hasKnownCapabilities && !access.hasCapability(key)
+    ? access.getCapabilityHint(key)
+    : null
+}
+
+export function shouldRefreshAppCapabilities(status: AppCapabilitiesStatus) {
+  return status === 'idle' || status === 'error'
 }
 
 export async function fetchAppCapabilities(supabase: SupabaseClient) {
