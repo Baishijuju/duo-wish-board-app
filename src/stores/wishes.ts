@@ -1,7 +1,94 @@
-import type { RealtimeChannel } from '@supabase/supabase-js'
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
+import {
+  compareIsoAscending as compareIsoAscendingModule,
+  createMonthlyJournalSnapshotRecord as createMonthlyJournalSnapshotRecordModule,
+  createThreadReactionRecord as createThreadReactionRecordModule,
+  createWishThreadEntry as createWishThreadEntryModule,
+} from '../modules/journal/journal.factories'
+import {
+  buildDerivedWishThreadEntries as buildDerivedWishThreadEntriesModule,
+  createLocalMonthlyJournalSnapshot as createLocalMonthlyJournalSnapshotModule,
+  ensureLocalMonthlySnapshots as ensureLocalMonthlySnapshotsModule,
+} from '../modules/journal/journal.projection.local'
+import {
+  shouldSyncForCommentImageRealtimeEvent,
+  shouldSyncForThreadImageRealtimeEvent,
+  shouldSyncForWishRealtimeEvent,
+} from '../modules/sync/realtime.filters'
+import {
+  isWishThreadFeatureMissing as isWishThreadFeatureMissingModule,
+} from '../modules/sync/capabilities'
+import {
+  createRealtimeSyncControllerState,
+  scheduleRealtimeSync as scheduleRealtimeSyncModule,
+  teardownRealtimeSubscription as teardownRealtimeSubscriptionModule,
+} from '../modules/sync/wish.sync.controller'
+import { composeWishCloudState } from '../modules/sync/wish.cloud.compose'
+import { fetchWishCloudRows } from '../modules/sync/wish.cloud.fetch'
+import { createRewardClaimRecord as createRewardClaimRecordModule, createRewardPoolItem as createRewardPoolItemModule } from '../modules/rewards/reward.factories'
+import {
+  addRewardPoolItemWrite,
+  archiveRewardPoolItemWrite,
+  redeemPremiumRewardWrite,
+  updateRewardPoolItemWrite,
+} from '../modules/rewards/reward.write'
+import {
+  buildCountRewardClaimedUnitsByWish,
+  buildRewardClaimByStepId,
+  buildRewardClaimByWishId,
+  buildRewardClaimCountsByItem,
+  buildStarCoinBalanceByMember,
+} from '../modules/rewards/reward.rules'
+import {
+  createWishCoinRecord as createWishCoinRecordModule,
+  createWishComment as createWishCommentModule,
+  createWishRecord as createWishRecordModule,
+  createWishStep as createWishStepModule,
+} from '../modules/wishes/wish.factories'
+import { addCommentWrite, deleteCommentWrite, updateCommentWrite } from '../modules/wishes/wish.comments.write'
+import {
+  addWishStepWrite,
+  castWishCoinWrite,
+  claimCompletedStepRewardWrite,
+  claimCountProgressRewardWrite,
+  completeWishWithRewardWrite,
+  deleteWishStepWrite,
+  setWishCountProgressWrite,
+  toggleDoneWrite,
+  toggleWishStepWrite,
+} from '../modules/wishes/wish.progress.write'
+import {
+  addWishCloud,
+  addWishLocal,
+  deleteWishLocal,
+  runCloudMutation as runCloudMutationModule,
+  updateWishLocal,
+} from '../modules/wishes/wish.write'
+import {
+  deleteWishImageWrite,
+  deleteWishImagesWrite,
+  reorderWishImagesWrite,
+  setWishCoverImageWrite,
+  updateWishImageNoteWrite,
+  uploadCommentImagesWrite,
+  uploadWishImagesWrite,
+} from '../modules/wishes/wish.media.write'
+import {
+  getWishBottleColorTier as getWishBottleColorTierModule,
+  getWishCompletionTimestamp as getWishCompletionTimestampModule,
+  getWishProgressSnapshot as getWishProgressSnapshotModule,
+  normalizeProgressNumber as normalizeProgressNumberModule,
+} from '../modules/wishes/wish.progress'
+import { getWishCoinCycle as getWishCoinCycleModule } from '../modules/wishes/wish.coins'
+import {
+  getBrowserStorage as getBrowserStorageModule,
+  hydrateWishState as hydrateWishStateModule,
+  STORAGE_KEY as STORAGE_KEY_MODULE,
+  touchWish as touchWishModule,
+} from '../modules/wishes/wish.local'
+import { createId as createIdModule } from '../shared/ids'
 import { useAuthStore } from './auth'
 
 export type WishStatus = 'active' | 'done'
@@ -23,8 +110,7 @@ export type WishThreadEventKind =
   | 'premium_redeem'
 export type MonthlyJournalSnapshotStatus = 'ready'
 
-const STORAGE_KEY = 'duo-wish-board-app:v3'
-const LEGACY_STORAGE_KEYS = ['duo-wish-board-app:v2'] as const
+const STORAGE_KEY = STORAGE_KEY_MODULE
 const WISH_IMAGE_BUCKET = 'wish-images'
 const WISH_COMMENT_IMAGE_BUCKET = 'wish-comment-images'
 const WISH_IMAGE_MAX_BYTES = 10 * 1024 * 1024
@@ -36,8 +122,6 @@ const RECENTLY_COMPLETED_WINDOW_DAYS = 30
 const SUPABASE_FREE_FILE_STORAGE_BYTES = 1024 * 1024 * 1024
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000
 const BEIJING_TIME_OFFSET_MS = 8 * 60 * 60 * 1000
-const WISH_COIN_CYCLE_BOUNDARY_DAY = 5
-const WISH_COIN_CYCLE_BOUNDARY_HOUR = 20
 const WISH_IMAGE_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 const WISH_IMAGE_COMPRESSIBLE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const WISH_IMAGE_EXTENSION_BY_TYPE: Record<string, string> = {
@@ -283,27 +367,6 @@ export interface RewardActionResult {
   message: string
 }
 
-interface WishRow {
-  id: string
-  space_id: string
-  owner_id: string
-  title: string
-  category: string
-  note: string
-  priority: WishPriority
-  scope: WishScope
-  status: WishStatus
-  is_starred: boolean
-  due_date: string | null
-  progress_mode: WishProgressMode | null
-  progress_current: number | null
-  progress_target: number | null
-  progress_unit: string | null
-  completed_at: string | null
-  created_at: string
-  updated_at: string
-}
-
 interface PersistedWishState {
   version: 6
   monthlyJournalSnapshots: MonthlyJournalSnapshotRecord[]
@@ -314,296 +377,56 @@ interface PersistedWishState {
   coins: WishCoinRecord[]
 }
 
-interface WishCommentRow {
-  id: string
-  wish_id: string
-  author_id: string
-  body: string
-  created_at: string
-}
-
-interface WishCommentImageRow {
-  id: string
-  comment_id: string
-  created_by: string
-  storage_path: string
-  file_name: string
-  mime_type: string
-  size_bytes: number
-  sort_order: number
-  created_at: string
-}
-
-interface WishImageRow {
-  id: string
-  wish_id: string
-  created_by: string
-  storage_path: string
-  file_name: string
-  mime_type: string
-  note: string
-  size_bytes: number
-  sort_order: number
-  created_at: string
-}
-
-interface WishStepRow {
-  id: string
-  wish_id: string
-  title: string
-  is_done: boolean
-  sort_order: number
-  created_at: string
-  updated_at: string
-}
-
-interface WishCoinRow {
-  id: string
-  space_id: string
-  wish_id: string
-  voter_id: string
-  cycle_key: string
-  amount: number
-  created_at: string
-}
-
-interface RewardPoolItemRow {
-  id: string
-  space_id: string
-  owner_id: string
-  tier: RewardTier
-  title: string
-  note: string
-  star_coin_cost: number
-  is_archived: boolean
-  created_at: string
-  updated_at: string
-}
-
-interface RewardClaimRow {
-  id: string
-  space_id: string
-  owner_id: string
-  reward_item_id: string | null
-  source_wish_id: string | null
-  source_step_id: string | null
-  claim_kind: RewardClaimKind
-  quantity: number | null
-  title_snapshot: string
-  note_snapshot: string
-  star_coin_delta: number
-  created_at: string
-}
-
-interface WishThreadRow {
-  id: string
-  space_id: string
-  wish_id: string | null
-  actor_id: string | null
-  event_kind: WishThreadEventKind
-  message_text: string
-  meta: Record<string, unknown> | null
-  created_at: string
-  updated_at: string
-}
-
-interface WishThreadImageRow {
-  id: string
-  thread_id: string
-  created_by: string
-  storage_path: string
-  file_name: string
-  mime_type: string
-  size_bytes: number
-  sort_order: number
-  created_at: string
-}
-
-interface ThreadReactionRow {
-  id: string
-  space_id: string
-  target_thread_id: string
-  actor_id: string
-  emoji: string
-  created_at: string
-}
-
-interface MonthlyJournalSnapshotRow {
-  id: string
-  space_id: string
-  month_key: string
-  snapshot_status: MonthlyJournalSnapshotStatus
-  cover_title: string
-  cover_subtitle: string
-  narrative_blocks: unknown
-  metrics_snapshot: unknown
-  source_refs: unknown
-  created_at: string
-  created_by: string | null
-}
-
 function createId() {
-  return globalThis.crypto?.randomUUID?.() ?? `wish-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  return createIdModule()
 }
 
 function createWishComment(partial: Partial<WishComment> & Pick<WishComment, 'authorId' | 'message'>): WishComment {
-  return {
-    id: partial.id ?? createId(),
-    authorId: partial.authorId,
-    message: partial.message.trim(),
-    images: Array.isArray(partial.images) ? partial.images.map((image) => createWishImage(image)) : [],
-    createdAt: partial.createdAt ?? new Date().toISOString(),
-  }
-}
-
-function createWishImage(partial: Partial<WishImage> & Pick<WishImage, 'fileName' | 'mimeType' | 'sizeBytes' | 'storagePath'>): WishImage {
-  return {
-    id: partial.id ?? createId(),
-    createdAt: partial.createdAt ?? new Date().toISOString(),
-    createdBy: partial.createdBy ?? '',
-    fileName: partial.fileName.trim(),
-    mimeType: partial.mimeType.trim(),
-    note: partial.note?.trim() ?? '',
-    sizeBytes: partial.sizeBytes,
-    storagePath: partial.storagePath.trim(),
-    url: partial.url ?? '',
-  }
+  return createWishCommentModule(partial)
 }
 
 function createWishStep(partial: Partial<WishStep> & Pick<WishStep, 'title'>): WishStep {
-  const createdAt = partial.createdAt ?? new Date().toISOString()
-
-  return {
-    id: partial.id ?? createId(),
-    title: partial.title.trim(),
-    isDone: partial.isDone ?? false,
-    createdAt,
-    updatedAt: partial.updatedAt ?? createdAt,
-  }
+  return createWishStepModule(partial)
 }
 
 function createWishCoinRecord(
   partial: Partial<WishCoinRecord> & Pick<WishCoinRecord, 'wishId' | 'voterId' | 'cycleKey'>,
 ): WishCoinRecord {
-  const normalizedAmount = Math.max(1, Math.round(Number(partial.amount ?? 1) || 1))
-
-  return {
-    id: partial.id ?? createId(),
-    wishId: partial.wishId,
-    voterId: partial.voterId,
-    cycleKey: partial.cycleKey.trim(),
-    amount: normalizedAmount,
-    createdAt: partial.createdAt ?? new Date().toISOString(),
-  }
+  return createWishCoinRecordModule(partial)
 }
 
 function createRewardPoolItem(
   partial: Partial<RewardPoolItem> & Pick<RewardPoolItem, 'ownerId' | 'tier' | 'title'>,
 ): RewardPoolItem {
-  const createdAt = partial.createdAt ?? new Date().toISOString()
-
-  return {
-    id: partial.id ?? createId(),
-    ownerId: partial.ownerId,
-    tier: partial.tier,
-    title: partial.title.trim(),
-    note: partial.note?.trim() ?? '',
-    starCoinCost: Math.max(0, Math.round(Number(partial.starCoinCost ?? 0) || 0)),
-    isArchived: partial.isArchived ?? false,
-    createdAt,
-    updatedAt: partial.updatedAt ?? createdAt,
-  }
+  return createRewardPoolItemModule(partial)
 }
 
 function createRewardClaimRecord(
   partial: Partial<RewardClaimRecord> & Pick<RewardClaimRecord, 'ownerId' | 'claimKind' | 'titleSnapshot'>,
 ): RewardClaimRecord {
-  return {
-    id: partial.id ?? createId(),
-    ownerId: partial.ownerId,
-    rewardItemId: partial.rewardItemId ?? null,
-    sourceWishId: partial.sourceWishId ?? null,
-    sourceStepId: partial.sourceStepId ?? null,
-    claimKind: partial.claimKind,
-    quantity: Math.max(1, Math.trunc(Number(partial.quantity ?? 1) || 1)),
-    titleSnapshot: partial.titleSnapshot.trim(),
-    noteSnapshot: partial.noteSnapshot?.trim() ?? '',
-    starCoinDelta: Math.trunc(Number(partial.starCoinDelta ?? 0) || 0),
-    createdAt: partial.createdAt ?? new Date().toISOString(),
-  }
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
+  return createRewardClaimRecordModule(partial)
 }
 
 function createThreadReactionRecord(
   partial: Partial<ThreadReactionRecord> & Pick<ThreadReactionRecord, 'targetThreadId' | 'actorId' | 'emoji'>,
 ): ThreadReactionRecord {
-  return {
-    id: partial.id ?? createId(),
-    spaceId: partial.spaceId ?? null,
-    targetThreadId: partial.targetThreadId,
-    actorId: partial.actorId,
-    emoji: partial.emoji.trim(),
-    createdAt: partial.createdAt ?? new Date().toISOString(),
-  }
+  return createThreadReactionRecordModule(partial)
 }
 
 function createWishThreadEntry(
   partial: Partial<WishThreadEntry> & Pick<WishThreadEntry, 'eventKind' | 'messageText'>,
 ): WishThreadEntry {
-  const createdAt = partial.createdAt ?? new Date().toISOString()
-
-  return {
-    id: partial.id ?? createId(),
-    spaceId: partial.spaceId ?? null,
-    wishId: partial.wishId ?? null,
-    actorId: partial.actorId ?? null,
-    eventKind: partial.eventKind,
-    messageText: partial.messageText.trim(),
-    images: Array.isArray(partial.images) ? partial.images.map((image) => createWishImage(image)) : [],
-    reactions: Array.isArray(partial.reactions)
-      ? partial.reactions
-        .filter((reaction): reaction is ThreadReactionSummary => !!reaction && typeof reaction.emoji === 'string')
-        .map((reaction) => ({
-          count: Math.max(1, Math.round(Number(reaction.count) || 1)),
-          emoji: reaction.emoji.trim(),
-          memberIds: Array.isArray(reaction.memberIds)
-            ? reaction.memberIds.filter((memberId): memberId is string => typeof memberId === 'string' && !!memberId)
-            : [],
-        }))
-      : [],
-    meta: isPlainRecord(partial.meta) ? { ...partial.meta } : {},
-    createdAt,
-    updatedAt: partial.updatedAt ?? createdAt,
-  }
+  return createWishThreadEntryModule(partial)
 }
 
 function createMonthlyJournalSnapshotRecord(
   partial: Partial<MonthlyJournalSnapshotRecord> & Pick<MonthlyJournalSnapshotRecord, 'monthKey' | 'coverTitle'>,
 ): MonthlyJournalSnapshotRecord {
-  return {
-    id: partial.id ?? createId(),
-    spaceId: partial.spaceId ?? null,
-    monthKey: partial.monthKey,
-    snapshotStatus: partial.snapshotStatus ?? 'ready',
-    coverTitle: partial.coverTitle.trim(),
-    coverSubtitle: partial.coverSubtitle?.trim() ?? '',
-    narrativeBlocks: Array.isArray(partial.narrativeBlocks)
-      ? partial.narrativeBlocks.filter(isPlainRecord).map((block) => ({ ...block }))
-      : [],
-    metricsSnapshot: isPlainRecord(partial.metricsSnapshot) ? { ...partial.metricsSnapshot } : {},
-    sourceRefs: Array.isArray(partial.sourceRefs)
-      ? partial.sourceRefs.filter(isPlainRecord).map((sourceRef) => ({ ...sourceRef }))
-      : [],
-    createdAt: partial.createdAt ?? new Date().toISOString(),
-    createdBy: partial.createdBy ?? null,
-  }
+  return createMonthlyJournalSnapshotRecordModule(partial)
 }
 
 function compareIsoAscending(leftDateValue: string, rightDateValue: string) {
-  return new Date(leftDateValue).getTime() - new Date(rightDateValue).getTime()
+  return compareIsoAscendingModule(leftDateValue, rightDateValue)
 }
 
 function getBeijingMonthKey(dateValue: Date | number | string = new Date()) {
@@ -620,293 +443,13 @@ function getBeijingMonthKey(dateValue: Date | number | string = new Date()) {
   return `${year}-${month}`
 }
 
-function formatMonthCoverTitle(monthKey: string) {
-  const [year = '', month = ''] = monthKey.split('-')
-  return `${year}年${month}月 月刊`
-}
-
-function buildThreadReactionSummaryMap(reactions: ThreadReactionRecord[]) {
-  const threadMap = new Map<string, Map<string, ThreadReactionSummary>>()
-
-  for (const reaction of [...reactions].sort((left, right) => compareIsoAscending(left.createdAt, right.createdAt))) {
-    const emojiMap = threadMap.get(reaction.targetThreadId) ?? new Map<string, ThreadReactionSummary>()
-    const existingSummary = emojiMap.get(reaction.emoji)
-
-    if (existingSummary) {
-      existingSummary.count += 1
-
-      if (!existingSummary.memberIds.includes(reaction.actorId)) {
-        existingSummary.memberIds.push(reaction.actorId)
-      }
-    } else {
-      emojiMap.set(reaction.emoji, {
-        count: 1,
-        emoji: reaction.emoji,
-        memberIds: [reaction.actorId],
-      })
-    }
-
-    threadMap.set(reaction.targetThreadId, emojiMap)
-  }
-
-  return new Map(
-    [...threadMap.entries()].map(([threadId, emojiMap]) => [
-      threadId,
-      [...emojiMap.values()].sort((left, right) => right.count - left.count || left.emoji.localeCompare(right.emoji)),
-    ]),
-  )
-}
-
-function attachThreadReactions(entries: WishThreadEntry[], reactions: ThreadReactionRecord[]) {
-  const reactionSummaryMap = buildThreadReactionSummaryMap(reactions)
-
-  return [...entries]
-    .map((entry) =>
-      createWishThreadEntry({
-        ...entry,
-        reactions: reactionSummaryMap.get(entry.id) ?? [],
-      }),
-    )
-    .sort((left, right) => compareIsoAscending(left.createdAt, right.createdAt) || left.id.localeCompare(right.id))
-}
-
-function buildWishThreadEntriesFromRows(
-  threadRows: WishThreadRow[],
-  threadImageRows: WishThreadImageRow[],
-  reactions: ThreadReactionRecord[],
-  imageUrlMap: Map<string, string>,
-) {
-  const imagesByThreadId = new Map<string, WishImage[]>()
-
-  for (const image of [...threadImageRows].sort((left, right) => left.sort_order - right.sort_order || compareIsoAscending(left.created_at, right.created_at))) {
-    const threadImages = imagesByThreadId.get(image.thread_id) ?? []
-
-    threadImages.push(
-      createWishImage({
-        id: image.id,
-        createdAt: image.created_at,
-        createdBy: image.created_by,
-        fileName: image.file_name,
-        mimeType: image.mime_type,
-        sizeBytes: image.size_bytes,
-        storagePath: image.storage_path,
-        url: imageUrlMap.get(image.storage_path) ?? '',
-      }),
-    )
-
-    imagesByThreadId.set(image.thread_id, threadImages)
-  }
-
-  const baseEntries = threadRows.map((thread) =>
-    createWishThreadEntry({
-      actorId: thread.actor_id,
-      createdAt: thread.created_at,
-      eventKind: thread.event_kind,
-      id: thread.id,
-      images: imagesByThreadId.get(thread.id) ?? [],
-      messageText: thread.message_text,
-      meta: isPlainRecord(thread.meta) ? thread.meta : {},
-      spaceId: thread.space_id,
-      updatedAt: thread.updated_at,
-      wishId: thread.wish_id,
-    }),
-  )
-
-  return attachThreadReactions(baseEntries, reactions)
-}
-
-function buildCommentRowsFromThreadEntries(threadEntries: WishThreadEntry[]): WishCommentRow[] {
-  return threadEntries
-    .filter((thread) => thread.eventKind === 'comment' && !!thread.wishId)
-    .map((thread) => ({
-      author_id: thread.actorId ?? '',
-      body: thread.messageText,
-      created_at: thread.createdAt,
-      id: thread.id,
-      wish_id: thread.wishId ?? '',
-    }))
-}
-
 function buildDerivedWishThreadEntries(
   wishes: WishRecord[],
   coins: WishCoinRecord[],
   rewardClaims: RewardClaimRecord[],
   reactions: ThreadReactionRecord[],
 ) {
-  const wishMap = new Map(wishes.map((wish) => [wish.id, wish]))
-  const stepMap = new Map(
-    wishes.flatMap((wish) => wish.steps.map((step) => [step.id, { step, wish }] as const)),
-  )
-  const threadEntries: WishThreadEntry[] = []
-
-  for (const wish of wishes) {
-    threadEntries.push(
-      createWishThreadEntry({
-        actorId: wish.ownerId,
-        createdAt: wish.createdAt,
-        eventKind: 'wish_published',
-        id: `thread-wish-published-${wish.id}`,
-        messageText: `认真写下了「${wish.title}」。`,
-        meta: {
-          priority: wish.priority,
-          scope: wish.scope,
-          status: wish.status,
-        },
-        updatedAt: wish.createdAt,
-        wishId: wish.id,
-      }),
-    )
-
-    if (wish.status === 'done') {
-      const completedAt = wish.completedAt ?? wish.updatedAt
-
-      threadEntries.push(
-        createWishThreadEntry({
-          actorId: wish.ownerId,
-          createdAt: completedAt,
-          eventKind: 'wish_completed',
-          id: `thread-wish-completed-${wish.id}`,
-          messageText: `把「${wish.title}」收进了回忆里。`,
-          meta: {
-            completedAt,
-            status: wish.status,
-          },
-          updatedAt: completedAt,
-          wishId: wish.id,
-        }),
-      )
-    }
-
-    for (const step of wish.steps.filter((item) => item.isDone)) {
-      threadEntries.push(
-        createWishThreadEntry({
-          actorId: wish.ownerId,
-          createdAt: step.updatedAt,
-          eventKind: 'wish_step_completed',
-          id: `thread-wish-step-${step.id}`,
-          messageText: `走完了小步骤「${step.title}」。`,
-          meta: {
-            stepId: step.id,
-            stepTitle: step.title,
-            wishTitle: wish.title,
-          },
-          updatedAt: step.updatedAt,
-          wishId: wish.id,
-        }),
-      )
-    }
-
-    for (const comment of wish.comments) {
-      threadEntries.push(
-        createWishThreadEntry({
-          actorId: comment.authorId,
-          createdAt: comment.createdAt,
-          eventKind: 'comment',
-          id: comment.id,
-          images: comment.images,
-          messageText: comment.message,
-          updatedAt: comment.createdAt,
-          wishId: wish.id,
-        }),
-      )
-    }
-  }
-
-  const coinTotals = new Map<string, number>()
-  const dragonBallCompletedWishIds = new Set<string>()
-
-  for (const coin of [...coins].sort((left, right) => compareIsoAscending(left.createdAt, right.createdAt) || left.id.localeCompare(right.id))) {
-    const wish = wishMap.get(coin.wishId)
-
-    if (!wish) {
-      continue
-    }
-
-    threadEntries.push(
-      createWishThreadEntry({
-        actorId: coin.voterId,
-        createdAt: coin.createdAt,
-        eventKind: 'wish_coin_cast',
-        id: `thread-wish-coin-${coin.id}`,
-        messageText: `给「${wish.title}」轻轻投下了 1 枚愿望币。`,
-        meta: {
-          amount: coin.amount,
-          cycleKey: coin.cycleKey,
-          wishTitle: wish.title,
-        },
-        updatedAt: coin.createdAt,
-        wishId: coin.wishId,
-      }),
-    )
-
-    const nextCoinTotal = (coinTotals.get(coin.wishId) ?? 0) + coin.amount
-    coinTotals.set(coin.wishId, nextCoinTotal)
-
-    if (!dragonBallCompletedWishIds.has(coin.wishId) && nextCoinTotal >= DRAGON_BALL_COIN_TARGET) {
-      dragonBallCompletedWishIds.add(coin.wishId)
-
-      threadEntries.push(
-        createWishThreadEntry({
-          actorId: coin.voterId,
-          createdAt: coin.createdAt,
-          eventKind: 'dragon_ball_reached',
-          id: `thread-dragon-ball-${coin.wishId}`,
-          messageText: `「${wish.title}」集齐了七龙珠，神龙开始认真听见这份心愿。`,
-          meta: {
-            cycleKey: coin.cycleKey,
-            totalCoins: nextCoinTotal,
-            wishTitle: wish.title,
-          },
-          updatedAt: coin.createdAt,
-          wishId: coin.wishId,
-        }),
-      )
-    }
-  }
-
-  for (const claim of rewardClaims) {
-    const relatedWish = claim.sourceWishId ? wishMap.get(claim.sourceWishId) ?? null : null
-    const relatedStep = claim.sourceStepId ? stepMap.get(claim.sourceStepId)?.step ?? null : null
-    const eventKind: WishThreadEventKind = claim.claimKind === 'premium_redeem' ? 'premium_redeem' : 'reward_claimed'
-    const countUnitLabel = `${claim.quantity} 点`
-    const messageText = claim.claimKind === 'step_reward'
-      ? `走完了小步骤「${relatedStep?.title ?? '这个小步骤'}」，也接住了「${claim.titleSnapshot}」。`
-      : claim.claimKind === 'count_reward'
-        ? `把「${relatedWish?.title ?? '这个数字愿望'}」往前推进了 ${countUnitLabel}，也接住了「${claim.titleSnapshot}」。`
-      : claim.claimKind === 'wish_reward'
-        ? `把「${relatedWish?.title ?? claim.titleSnapshot}」认真完成，也接住了「${claim.titleSnapshot}」。`
-        : claim.claimKind === 'star_coin'
-          ? claim.sourceStepId
-            ? `完成了小步骤「${relatedStep?.title ?? '这个小步骤'}」，把这次奖励存成了 ${Math.abs(claim.starCoinDelta)} 枚星星币。`
-            : `把「${relatedWish?.title ?? '这个数字愿望'}」往前推进了 ${countUnitLabel}，并存下了 ${Math.abs(claim.starCoinDelta)} 枚星星币。`
-          : `用 ${Math.abs(claim.starCoinDelta)} 枚星星币换来了「${claim.titleSnapshot}」。`
-
-    threadEntries.push(
-      createWishThreadEntry({
-        actorId: claim.ownerId,
-        createdAt: claim.createdAt,
-        eventKind,
-        id: `thread-reward-claim-${claim.id}`,
-        messageText,
-        meta: {
-          claimKind: claim.claimKind,
-          noteSnapshot: claim.noteSnapshot,
-          quantity: claim.quantity,
-          rewardItemId: claim.rewardItemId,
-          sourceStepId: claim.sourceStepId,
-          sourceWishId: claim.sourceWishId,
-          starCoinDelta: claim.starCoinDelta,
-          stepTitle: relatedStep?.title ?? null,
-          titleSnapshot: claim.titleSnapshot,
-          wishTitle: relatedWish?.title ?? null,
-        },
-        updatedAt: claim.createdAt,
-        wishId: claim.sourceWishId,
-      }),
-    )
-  }
-
-  return attachThreadReactions(threadEntries, reactions)
+  return buildDerivedWishThreadEntriesModule(wishes, coins, rewardClaims, reactions)
 }
 
 function reorderImagesByIds(images: WishImage[], orderedImageIds: string[]) {
@@ -1087,188 +630,28 @@ function getTodayStartTimestamp() {
   return today.getTime()
 }
 
-function formatCycleBoundaryKey(shiftedTimestamp: number) {
-  const shiftedDate = new Date(shiftedTimestamp)
-  const year = shiftedDate.getUTCFullYear()
-  const month = `${shiftedDate.getUTCMonth() + 1}`.padStart(2, '0')
-  const day = `${shiftedDate.getUTCDate()}`.padStart(2, '0')
-
-  return `${year}-${month}-${day}T20:00:00+08:00`
-}
-
 function getWishCoinCycle(dateValue: Date | number | string = new Date()) {
-  const rawTimestamp = dateValue instanceof Date
-    ? dateValue.getTime()
-    : typeof dateValue === 'number'
-      ? dateValue
-      : new Date(dateValue).getTime()
-  const baseTimestamp = Number.isNaN(rawTimestamp) ? Date.now() : rawTimestamp
-  const shiftedTimestamp = baseTimestamp + BEIJING_TIME_OFFSET_MS
-  const shiftedDate = new Date(shiftedTimestamp)
-  const currentWeekMilliseconds = (
-    ((shiftedDate.getUTCDay() * 24 + shiftedDate.getUTCHours()) * 60 + shiftedDate.getUTCMinutes()) * 60
-    + shiftedDate.getUTCSeconds()
-  ) * 1000 + shiftedDate.getUTCMilliseconds()
-  const boundaryWeekMilliseconds = ((WISH_COIN_CYCLE_BOUNDARY_DAY * 24 + WISH_COIN_CYCLE_BOUNDARY_HOUR) * 60 * 60) * 1000
-  let elapsedSinceBoundary = currentWeekMilliseconds - boundaryWeekMilliseconds
-
-  if (elapsedSinceBoundary < 0) {
-    elapsedSinceBoundary += 7 * MILLISECONDS_PER_DAY
-  }
-
-  const cycleStartShiftedTimestamp = shiftedTimestamp - elapsedSinceBoundary
-  const cycleEndShiftedTimestamp = cycleStartShiftedTimestamp + 7 * MILLISECONDS_PER_DAY
-
-  return {
-    endsAt: new Date(cycleEndShiftedTimestamp - BEIJING_TIME_OFFSET_MS).toISOString(),
-    key: formatCycleBoundaryKey(cycleStartShiftedTimestamp),
-    startsAt: new Date(cycleStartShiftedTimestamp - BEIJING_TIME_OFFSET_MS).toISOString(),
-  }
+  return getWishCoinCycleModule(dateValue)
 }
 
 function normalizeProgressNumber(value: number | null | undefined) {
-  const numericValue = Number(value)
-
-  if (!Number.isFinite(numericValue)) {
-    return 0
-  }
-
-  return Math.max(0, Math.round(numericValue))
-}
-
-function normalizeProgressMode(
-  progressMode: WishProgressMode | null | undefined,
-  steps: WishStep[],
-  progressTarget: number,
-  progressCurrent: number,
-  progressUnit: string,
-): WishProgressMode {
-  if (progressMode === 'count' || progressMode === 'steps' || progressMode === 'none') {
-    return progressMode
-  }
-
-  if (steps.length) {
-    return 'steps'
-  }
-
-  if (progressTarget > 0 || progressCurrent > 0 || progressUnit) {
-    return 'count'
-  }
-
-  return 'none'
+  return normalizeProgressNumberModule(value)
 }
 
 function getWishCompletionTimestamp(wish: Pick<WishRecord, 'status' | 'completedAt' | 'updatedAt'>) {
-  if (wish.status !== 'done') {
-    return null
-  }
-
-  const timestamp = new Date(wish.completedAt ?? wish.updatedAt).getTime()
-  return Number.isNaN(timestamp) ? null : timestamp
+  return getWishCompletionTimestampModule(wish)
 }
 
 function getWishProgressSnapshot(wish: Pick<WishRecord, 'progressMode' | 'progressCurrent' | 'progressTarget' | 'progressUnit' | 'steps'>): WishProgressSnapshot {
-  if (wish.progressMode === 'count') {
-    const target = Math.max(1, normalizeProgressNumber(wish.progressTarget))
-    const current = Math.min(normalizeProgressNumber(wish.progressCurrent), target)
-    const unit = wish.progressUnit.trim()
-
-    return {
-      mode: 'count',
-      current,
-      target,
-      percent: Math.round((current / target) * 100),
-      label: `${current}/${target}${unit ? ` ${unit}` : ''}`,
-      pendingStepTitles: [],
-      isReady: current >= target,
-    }
-  }
-
-  if (wish.progressMode === 'steps') {
-    const target = wish.steps.length
-    const current = wish.steps.filter((step) => step.isDone).length
-
-    return {
-      mode: 'steps',
-      current,
-      target,
-      percent: target ? Math.round((current / target) * 100) : 0,
-      label: `${current}/${target} steps`,
-      pendingStepTitles: wish.steps.filter((step) => !step.isDone).map((step) => step.title),
-      isReady: target > 0 && current >= target,
-    }
-  }
-
-  return {
-    mode: 'none',
-    current: 0,
-    target: 0,
-    percent: 0,
-    label: '',
-    pendingStepTitles: [],
-    isReady: false,
-  }
+  return getWishProgressSnapshotModule(wish)
 }
 
 function getWishBottleColorTier(percent: number): WishBottleColorTier {
-  const normalizedPercent = Math.max(0, Math.min(100, Math.round(percent)))
-
-  if (normalizedPercent <= 20) {
-    return 'blue'
-  }
-
-  if (normalizedPercent <= 40) {
-    return 'green'
-  }
-
-  if (normalizedPercent <= 60) {
-    return 'orange'
-  }
-
-  if (normalizedPercent <= 80) {
-    return 'gold'
-  }
-
-  return 'rainbow'
+  return getWishBottleColorTierModule(percent)
 }
 
 function createWishRecord(partial: Partial<WishRecord> & WishDraft): WishRecord {
-  const normalizedSteps = Array.isArray(partial.steps)
-    ? partial.steps.map((step) => createWishStep(step)).filter((step) => !!step.title)
-    : []
-  const rawProgressCurrent = normalizeProgressNumber(partial.progressCurrent)
-  const rawProgressTarget = normalizeProgressNumber(partial.progressTarget)
-  const rawProgressUnit = partial.progressUnit?.trim() ?? ''
-  const progressMode = normalizeProgressMode(partial.progressMode, normalizedSteps, rawProgressTarget, rawProgressCurrent, rawProgressUnit)
-  const progressTarget = progressMode === 'count' ? Math.max(1, rawProgressTarget) : rawProgressTarget
-  const progressCurrent = progressMode === 'count' ? Math.min(rawProgressCurrent, progressTarget) : rawProgressCurrent
-  const createdAt = partial.createdAt ?? new Date().toISOString()
-  const updatedAt = partial.updatedAt ?? createdAt
-  const status = partial.status ?? 'active'
-  const normalizedCompletedAt = typeof partial.completedAt === 'string' && partial.completedAt.trim() ? partial.completedAt : null
-
-  return {
-    id: partial.id ?? createId(),
-    title: partial.title.trim(),
-    category: partial.category.trim(),
-    priority: partial.priority,
-    dueDate: partial.dueDate,
-    note: partial.note.trim(),
-    ownerId: partial.ownerId,
-    scope: partial.scope,
-    status,
-    starred: partial.starred ?? false,
-    progressMode,
-    progressCurrent,
-    progressTarget,
-    progressUnit: rawProgressUnit,
-    completedAt: status === 'done' ? normalizedCompletedAt ?? updatedAt : null,
-    steps: normalizedSteps,
-    comments: Array.isArray(partial.comments) ? partial.comments.map((comment) => createWishComment(comment)) : [],
-    images: Array.isArray(partial.images) ? partial.images.map((image) => createWishImage(image)) : [],
-    createdAt,
-    updatedAt,
-  }
+  return createWishRecordModule(partial)
 }
 
 const currentSeedCoinCycle = getWishCoinCycle()
@@ -1594,208 +977,15 @@ function createSeedWishState() {
 }
 
 function getBrowserStorage() {
-  if (typeof window === 'undefined') {
-    return null
-  }
-
-  return window.localStorage
-}
-
-function clearLegacyWishStorage(storage: Storage) {
-  for (const legacyStorageKey of LEGACY_STORAGE_KEYS) {
-    storage.removeItem(legacyStorageKey)
-  }
+  return getBrowserStorageModule()
 }
 
 function hydrateWishState() {
-  const storage = getBrowserStorage()
-
-  if (!storage) {
-    return createSeedWishState()
-  }
-
-  clearLegacyWishStorage(storage)
-
-  const raw = storage.getItem(STORAGE_KEY)
-
-  if (!raw) {
-    return createSeedWishState()
-  }
-
-  try {
-    const parsed = JSON.parse(raw)
-
-    if (Array.isArray(parsed)) {
-      return {
-        coins: [],
-        monthlyJournalSnapshots: [],
-        rewardClaims: [],
-        rewardPoolItems: [],
-        threadReactions: [],
-        wishes: parsed.map((wish) => createWishRecord(wish)),
-      }
-    }
-
-    if (!parsed || typeof parsed !== 'object') {
-      return createSeedWishState()
-    }
-
-    const parsedWishes = Array.isArray((parsed as { wishes?: unknown }).wishes)
-      ? (parsed as { wishes: WishRecord[] }).wishes.map((wish) => createWishRecord(wish))
-      : null
-    const parsedCoins = Array.isArray((parsed as { coins?: unknown }).coins)
-      ? (parsed as { coins: WishCoinRecord[] }).coins.map((coin) => createWishCoinRecord(coin))
-      : []
-    const parsedRewardPoolItems = Array.isArray((parsed as { rewardPoolItems?: unknown }).rewardPoolItems)
-      ? (parsed as { rewardPoolItems: RewardPoolItem[] }).rewardPoolItems.map((item) => createRewardPoolItem(item))
-      : []
-    const parsedRewardClaims = Array.isArray((parsed as { rewardClaims?: unknown }).rewardClaims)
-      ? (parsed as { rewardClaims: RewardClaimRecord[] }).rewardClaims.map((claim) => createRewardClaimRecord(claim))
-      : []
-    const parsedThreadReactions = Array.isArray((parsed as { threadReactions?: unknown }).threadReactions)
-      ? (parsed as { threadReactions: ThreadReactionRecord[] }).threadReactions.map((reaction) => createThreadReactionRecord(reaction))
-      : []
-    const parsedMonthlyJournalSnapshots = Array.isArray((parsed as { monthlyJournalSnapshots?: unknown }).monthlyJournalSnapshots)
-      ? (parsed as { monthlyJournalSnapshots: MonthlyJournalSnapshotRecord[] }).monthlyJournalSnapshots.map((snapshot) => createMonthlyJournalSnapshotRecord(snapshot))
-      : []
-
-    if (!parsedWishes) {
-      return createSeedWishState()
-    }
-
-    return {
-      coins: parsedCoins,
-      monthlyJournalSnapshots: parsedMonthlyJournalSnapshots,
-      rewardClaims: parsedRewardClaims,
-      rewardPoolItems: parsedRewardPoolItems,
-      threadReactions: parsedThreadReactions,
-      wishes: parsedWishes,
-    }
-  } catch {
-    return createSeedWishState()
-  }
+  return hydrateWishStateModule(createSeedWishState)
 }
 
 function touchWish(wish: WishRecord) {
-  return {
-    ...wish,
-    updatedAt: new Date().toISOString(),
-  }
-}
-
-function createWishRecordFromRow(
-  row: WishRow,
-  coinRows: WishCoinRow[],
-  commentRows: WishCommentRow[],
-  commentImageRows: WishCommentImageRow[],
-  imageRows: WishImageRow[],
-  stepRows: WishStepRow[],
-  imageUrlMap: Map<string, string>,
-  commentImageUrlMap: Map<string, string>,
-) {
-  return createWishRecord({
-    id: row.id,
-    title: row.title,
-    category: row.category,
-    priority: row.priority,
-    dueDate: row.due_date ?? '',
-    note: row.note,
-    ownerId: row.owner_id,
-    scope: row.scope,
-    status: row.status,
-    starred: row.is_starred || coinRows.some((coin) => coin.wish_id === row.id),
-    progressMode: row.progress_mode ?? 'none',
-    progressCurrent: row.progress_current ?? 0,
-    progressTarget: row.progress_target ?? 0,
-    progressUnit: row.progress_unit ?? '',
-    completedAt: row.completed_at,
-    steps: stepRows
-      .filter((step) => step.wish_id === row.id)
-      .sort((left, right) => left.sort_order - right.sort_order || new Date(left.created_at).getTime() - new Date(right.created_at).getTime())
-      .map((step) =>
-        createWishStep({
-          id: step.id,
-          title: step.title,
-          isDone: step.is_done,
-          createdAt: step.created_at,
-          updatedAt: step.updated_at,
-        }),
-      ),
-    comments: commentRows
-      .filter((comment) => comment.wish_id === row.id)
-      .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())
-      .map((comment) =>
-        createWishComment({
-          id: comment.id,
-          authorId: comment.author_id,
-          createdAt: comment.created_at,
-          images: commentImageRows
-            .filter((image) => image.comment_id === comment.id)
-            .sort((left, right) => left.sort_order - right.sort_order || new Date(left.created_at).getTime() - new Date(right.created_at).getTime())
-            .map((image) =>
-              createWishImage({
-                id: image.id,
-                createdAt: image.created_at,
-                createdBy: image.created_by,
-                fileName: image.file_name,
-                mimeType: image.mime_type,
-                sizeBytes: image.size_bytes,
-                storagePath: image.storage_path,
-                url: commentImageUrlMap.get(image.storage_path) ?? '',
-              }),
-            ),
-          message: comment.body,
-        }),
-      ),
-    images: imageRows
-      .filter((image) => image.wish_id === row.id)
-      .sort((left, right) => left.sort_order - right.sort_order || new Date(left.created_at).getTime() - new Date(right.created_at).getTime())
-      .map((image) =>
-        createWishImage({
-          id: image.id,
-          createdAt: image.created_at,
-          createdBy: image.created_by,
-          fileName: image.file_name,
-          mimeType: image.mime_type,
-          note: image.note,
-          sizeBytes: image.size_bytes,
-          storagePath: image.storage_path,
-          url: imageUrlMap.get(image.storage_path) ?? '',
-        }),
-      ),
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  })
-}
-
-function createRewardPoolItemFromRow(row: RewardPoolItemRow) {
-  return createRewardPoolItem({
-    createdAt: row.created_at,
-    id: row.id,
-    isArchived: row.is_archived,
-    note: row.note,
-    ownerId: row.owner_id,
-    starCoinCost: row.star_coin_cost,
-    tier: row.tier,
-    title: row.title,
-    updatedAt: row.updated_at,
-  })
-}
-
-function createRewardClaimFromRow(row: RewardClaimRow) {
-  return createRewardClaimRecord({
-    claimKind: row.claim_kind,
-    createdAt: row.created_at,
-    id: row.id,
-    noteSnapshot: row.note_snapshot,
-    ownerId: row.owner_id,
-    quantity: row.quantity ?? 1,
-    rewardItemId: row.reward_item_id,
-    sourceStepId: row.source_step_id,
-    sourceWishId: row.source_wish_id,
-    starCoinDelta: row.star_coin_delta,
-    titleSnapshot: row.title_snapshot,
-  })
+  return touchWishModule(wish)
 }
 
 export const useWishStore = defineStore('wishes', () => {
@@ -1836,9 +1026,7 @@ export const useWishStore = defineStore('wishes', () => {
     return 'Realtime 当前未连接。'
   })
 
-  let realtimeChannel: RealtimeChannel | null = null
-  let subscribedSpaceId: string | null = null
-  let realtimeSyncTimer: ReturnType<typeof setTimeout> | null = null
+  const realtimeSyncController = createRealtimeSyncControllerState()
 
   const priorityScore: Record<WishPriority, number> = {
     high: 0,
@@ -1886,51 +1074,19 @@ export const useWishStore = defineStore('wishes', () => {
   const currentMemberUsedCoins = computed(() => Math.max(0, WISH_COIN_BUDGET_PER_CYCLE - currentMemberRemainingCoins.value))
 
   const rewardClaimCountsByItem = computed(() => {
-    const counts = new Map<string, number>()
-
-    for (const claim of rewardClaims.value) {
-      if (!claim.rewardItemId) {
-        continue
-      }
-
-      counts.set(claim.rewardItemId, (counts.get(claim.rewardItemId) ?? 0) + claim.quantity)
-    }
-
-    return counts
+    return buildRewardClaimCountsByItem(rewardClaims.value)
   })
 
   const rewardClaimByWishId = computed(() => {
-    const claimMap = new Map<string, RewardClaimRecord>()
-
-    for (const claim of rewardClaims.value) {
-      if (claim.sourceWishId && claim.claimKind === 'wish_reward') {
-        claimMap.set(claim.sourceWishId, claim)
-      }
-    }
-
-    return claimMap
+    return buildRewardClaimByWishId(rewardClaims.value)
   })
 
   const rewardClaimByStepId = computed(() => {
-    const claimMap = new Map<string, RewardClaimRecord>()
-
-    for (const claim of rewardClaims.value) {
-      if (claim.sourceStepId) {
-        claimMap.set(claim.sourceStepId, claim)
-      }
-    }
-
-    return claimMap
+    return buildRewardClaimByStepId(rewardClaims.value)
   })
 
   const starCoinBalanceByMember = computed(() => {
-    const balanceMap = new Map<string, number>()
-
-    for (const claim of rewardClaims.value) {
-      balanceMap.set(claim.ownerId, (balanceMap.get(claim.ownerId) ?? 0) + claim.starCoinDelta)
-    }
-
-    return balanceMap
+    return buildStarCoinBalanceByMember(rewardClaims.value)
   })
 
   const currentMemberStarCoinBalance = computed(() => {
@@ -1944,21 +1100,7 @@ export const useWishStore = defineStore('wishes', () => {
   })
 
   const countRewardClaimedUnitsByWish = computed(() => {
-    const claimMap = new Map<string, number>()
-
-    for (const claim of rewardClaims.value) {
-      if (!claim.sourceWishId || claim.sourceStepId) {
-        continue
-      }
-
-      if (claim.claimKind !== 'count_reward' && claim.claimKind !== 'star_coin') {
-        continue
-      }
-
-      claimMap.set(claim.sourceWishId, (claimMap.get(claim.sourceWishId) ?? 0) + claim.quantity)
-    }
-
-    return claimMap
+    return buildCountRewardClaimedUnitsByWish(rewardClaims.value)
   })
 
   const pendingStepRewards = computed<PendingStepRewardEntry[]>(() => {
@@ -2391,96 +1533,24 @@ export const useWishStore = defineStore('wishes', () => {
     return authStore.members.find((member) => member.id === memberId)?.displayName ?? '未命名成员'
   }
 
-  function createSnapshotNarrativeBlock(thread: WishThreadEntry) {
-    return {
-      actorId: thread.actorId,
-      actorName: getMemberDisplayName(thread.actorId),
-      createdAt: thread.createdAt,
-      eventKind: thread.eventKind,
-      id: thread.id,
-      images: thread.images.map((image) => ({
-        createdAt: image.createdAt,
-        createdBy: image.createdBy,
-        fileName: image.fileName,
-        id: image.id,
-        mimeType: image.mimeType,
-        sizeBytes: image.sizeBytes,
-        storagePath: image.storagePath,
-        url: image.url,
-      })),
-      messageText: thread.messageText,
-      meta: { ...thread.meta },
-      reactions: thread.reactions.map((reaction) => ({
-        count: reaction.count,
-        emoji: reaction.emoji,
-        memberIds: [...reaction.memberIds],
-      })),
-      updatedAt: thread.updatedAt,
-      wishId: thread.wishId,
-    }
-  }
-
   function createLocalMonthlyJournalSnapshot(monthKey: string, sourceThreads: WishThreadEntry[]) {
-    const orderedThreads = [...sourceThreads].sort((left, right) => compareIsoAscending(left.createdAt, right.createdAt) || left.id.localeCompare(right.id))
-
-    return createMonthlyJournalSnapshotRecord({
-      coverSubtitle: `${authStore.spaceName || '愿望空间'} 的固定版本回顾`,
-      coverTitle: formatMonthCoverTitle(monthKey),
-      createdAt: new Date().toISOString(),
-      createdBy: getCurrentMemberId(),
-      id: `snapshot-${monthKey}`,
-      metricsSnapshot: {
-        coinEventCount: orderedThreads.filter((thread) => thread.eventKind === 'wish_coin_cast').length,
-        commentCount: orderedThreads.filter((thread) => thread.eventKind === 'comment').length,
-        completedWishCount: orderedThreads.filter((thread) => thread.eventKind === 'wish_completed').length,
-        dragonBallCount: orderedThreads.filter((thread) => thread.eventKind === 'dragon_ball_reached').length,
-        reactionCount: orderedThreads.reduce((count, thread) => count + thread.reactions.reduce((total, reaction) => total + reaction.count, 0), 0),
-        rewardEventCount: orderedThreads.filter((thread) => thread.eventKind === 'reward_claimed' || thread.eventKind === 'premium_redeem').length,
-        threadCount: orderedThreads.length,
-        wishCount: new Set(orderedThreads.map((thread) => thread.wishId).filter((wishId): wishId is string => !!wishId)).size,
-      },
+    return createLocalMonthlyJournalSnapshotModule(
       monthKey,
-      narrativeBlocks: orderedThreads.map((thread) => createSnapshotNarrativeBlock(thread)),
-      snapshotStatus: 'ready',
-      sourceRefs: orderedThreads.map((thread) => ({
-        createdAt: thread.createdAt,
-        eventKind: thread.eventKind,
-        threadId: thread.id,
-        wishId: thread.wishId,
-      })),
-      spaceId: authStore.currentSpaceId || null,
-    })
+      sourceThreads,
+      authStore.currentSpaceId || null,
+      authStore.spaceName,
+      getCurrentMemberId(),
+      getMemberDisplayName,
+    )
   }
 
   function ensureLocalMonthlySnapshots(nextThreads: WishThreadEntry[]) {
-    const currentMonthKey = getBeijingMonthKey()
-    const existingMonthKeys = new Set(monthlyJournalSnapshots.value.map((snapshot) => snapshot.monthKey))
-    const pendingThreadsByMonth = new Map<string, WishThreadEntry[]>()
-
-    for (const thread of nextThreads) {
-      const monthKey = getBeijingMonthKey(thread.createdAt)
-
-      if (monthKey >= currentMonthKey || existingMonthKeys.has(monthKey)) {
-        continue
-      }
-
-      const bucket = pendingThreadsByMonth.get(monthKey) ?? []
-      bucket.push(thread)
-      pendingThreadsByMonth.set(monthKey, bucket)
-    }
-
-    if (!pendingThreadsByMonth.size) {
-      monthlyJournalSnapshots.value = [...monthlyJournalSnapshots.value]
-        .sort((left, right) => right.monthKey.localeCompare(left.monthKey) || compareIsoAscending(right.createdAt, left.createdAt))
-      return
-    }
-
-    monthlyJournalSnapshots.value = [
-      ...monthlyJournalSnapshots.value,
-      ...[...pendingThreadsByMonth.entries()]
-        .sort(([leftMonthKey], [rightMonthKey]) => leftMonthKey.localeCompare(rightMonthKey))
-        .map(([monthKey, sourceThreads]) => createLocalMonthlyJournalSnapshot(monthKey, sourceThreads)),
-    ].sort((left, right) => right.monthKey.localeCompare(left.monthKey) || compareIsoAscending(right.createdAt, left.createdAt))
+    monthlyJournalSnapshots.value = ensureLocalMonthlySnapshotsModule(
+      nextThreads,
+      monthlyJournalSnapshots.value,
+      getBeijingMonthKey(),
+      (monthKey, sourceThreads) => createLocalMonthlyJournalSnapshot(monthKey, sourceThreads),
+    )
   }
 
   function refreshLocalActivityState() {
@@ -2500,110 +1570,63 @@ export const useWishStore = defineStore('wishes', () => {
     return { ok, message }
   }
 
-  function isRewardFeatureMissing(message: string) {
-    return /reward_pool_items|reward_claims|complete_wish_with_reward|claim_completed_step_reward|claim_count_progress_reward|redeem_premium_reward/i.test(message)
-  }
-
   function isWishThreadFeatureMissing(message: string) {
-    return /wish_threads|wish_thread_images|thread_reactions|monthly_journal_snapshots|ensure_monthly_journal_snapshots/i.test(message)
-  }
-
-  function clearRealtimeSyncTimer() {
-    if (!realtimeSyncTimer) {
-      return
-    }
-
-    clearTimeout(realtimeSyncTimer)
-    realtimeSyncTimer = null
+    return isWishThreadFeatureMissingModule(message)
   }
 
   function scheduleRealtimeSync(reason: string) {
-    if (!authStore.currentSpaceId || !isUsingCloudWishes.value) {
-      return
-    }
-
-    clearRealtimeSyncTimer()
-    syncMessage.value = `${reason}有更新，正在刷新云端数据...`
-
-    const targetSpaceId = authStore.currentSpaceId
-
-    realtimeSyncTimer = setTimeout(() => {
-      void syncFromSupabase(targetSpaceId)
-    }, 180)
+    scheduleRealtimeSyncModule(realtimeSyncController, {
+      isUsingCloudSpace: isUsingCloudWishes.value,
+      currentSpaceId: authStore.currentSpaceId,
+      reason,
+      onSyncMessage: (message) => {
+        syncMessage.value = message
+      },
+      runSync: (spaceId) => syncFromSupabase(spaceId),
+    })
   }
 
   function handleCommentRealtimeEvent(payload: { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null }) {
-    const nextWishId = typeof payload.new?.wish_id === 'string' ? payload.new.wish_id : null
-    const previousWishId = typeof payload.old?.wish_id === 'string' ? payload.old.wish_id : null
     const visibleWishIds = new Set(wishes.value.map((wish) => wish.id))
 
-    if (!nextWishId && !previousWishId) {
-      scheduleRealtimeSync('留言')
-      return
-    }
-
-    if ((nextWishId && visibleWishIds.has(nextWishId)) || (previousWishId && visibleWishIds.has(previousWishId))) {
+    if (shouldSyncForWishRealtimeEvent(payload, visibleWishIds)) {
       scheduleRealtimeSync('留言')
     }
   }
 
   function handleImageRealtimeEvent(payload: { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null }) {
-    const nextWishId = typeof payload.new?.wish_id === 'string' ? payload.new.wish_id : null
-    const previousWishId = typeof payload.old?.wish_id === 'string' ? payload.old.wish_id : null
     const visibleWishIds = new Set(wishes.value.map((wish) => wish.id))
 
-    if (!nextWishId && !previousWishId) {
-      scheduleRealtimeSync('图片')
-      return
-    }
-
-    if ((nextWishId && visibleWishIds.has(nextWishId)) || (previousWishId && visibleWishIds.has(previousWishId))) {
+    if (shouldSyncForWishRealtimeEvent(payload, visibleWishIds)) {
       scheduleRealtimeSync('图片')
     }
   }
 
   function handleCommentImageRealtimeEvent(payload: { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null }) {
-    const nextCommentId = typeof payload.new?.comment_id === 'string' ? payload.new.comment_id : null
-    const previousCommentId = typeof payload.old?.comment_id === 'string' ? payload.old.comment_id : null
     const visibleCommentIds = new Set(
       wishes.value.flatMap((wish) => wish.comments.map((comment) => comment.id)),
     )
 
-    if (!nextCommentId && !previousCommentId) {
-      scheduleRealtimeSync('留言图片')
-      return
-    }
-
-    if ((nextCommentId && visibleCommentIds.has(nextCommentId)) || (previousCommentId && visibleCommentIds.has(previousCommentId))) {
+    if (shouldSyncForCommentImageRealtimeEvent(payload, visibleCommentIds)) {
       scheduleRealtimeSync('留言图片')
     }
   }
 
   function handleThreadImageRealtimeEvent(payload: { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null }) {
-    const nextThreadId = typeof payload.new?.thread_id === 'string' ? payload.new.thread_id : null
-    const previousThreadId = typeof payload.old?.thread_id === 'string' ? payload.old.thread_id : null
     const visibleThreadIds = new Set(wishThreads.value.map((thread) => thread.id))
 
-    if (!nextThreadId && !previousThreadId) {
-      scheduleRealtimeSync('手账图片')
-      return
-    }
-
-    if ((nextThreadId && visibleThreadIds.has(nextThreadId)) || (previousThreadId && visibleThreadIds.has(previousThreadId))) {
+    if (shouldSyncForThreadImageRealtimeEvent(payload, visibleThreadIds)) {
       scheduleRealtimeSync('手账图片')
     }
   }
 
   function teardownRealtimeSubscription() {
-    clearRealtimeSyncTimer()
-
-    if (supabase && realtimeChannel) {
-      void supabase.removeChannel(realtimeChannel)
-    }
-
-    realtimeChannel = null
-    subscribedSpaceId = null
-    realtimeStatus.value = 'idle'
+    void teardownRealtimeSubscriptionModule(realtimeSyncController, {
+      supabase,
+      onStatusChange: (status) => {
+        realtimeStatus.value = status
+      },
+    })
   }
 
   function setupRealtimeSubscription(spaceId: string) {
@@ -2611,15 +1634,15 @@ export const useWishStore = defineStore('wishes', () => {
       return
     }
 
-    if (realtimeChannel && subscribedSpaceId === spaceId) {
+    if (realtimeSyncController.channel && realtimeSyncController.subscribedSpaceId === spaceId) {
       return
     }
 
     teardownRealtimeSubscription()
     realtimeStatus.value = 'connecting'
-    subscribedSpaceId = spaceId
+    realtimeSyncController.subscribedSpaceId = spaceId
 
-    realtimeChannel = supabase
+    realtimeSyncController.channel = supabase
       .channel(`wish-space-${spaceId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wishes', filter: `space_id=eq.${spaceId}` }, () => {
         scheduleRealtimeSync('愿望')
@@ -2679,356 +1702,27 @@ export const useWishStore = defineStore('wishes', () => {
     isLoading.value = true
 
     try {
-      const { data: wishRows, error: wishError } = await supabase
-        .from('wishes')
-        .select('id, space_id, owner_id, title, category, note, priority, scope, status, is_starred, due_date, progress_mode, progress_current, progress_target, progress_unit, completed_at, created_at, updated_at')
-        .eq('space_id', spaceId)
-        .order('updated_at', { ascending: false })
+      const fetched = await fetchWishCloudRows(supabase, spaceId, {
+        isWishThreadFeatureMissing,
+        onWarningMessage: (message) => {
+          syncMessage.value = message
+        },
+      })
 
-      if (wishError) {
-        syncMessage.value = `云端愿望同步失败：${wishError.message}`
+      if (!fetched.ok) {
+        syncMessage.value = fetched.message
         return false
       }
 
-      const wishIds = ((wishRows ?? []) as WishRow[]).map((wish) => wish.id)
-      let wishCoinRows: WishCoinRow[] = []
-      let rewardPoolItemRows: RewardPoolItemRow[] = []
-      let rewardClaimRows: RewardClaimRow[] = []
-      let commentRows: WishCommentRow[] = []
-      let commentImageRows: WishCommentImageRow[] = []
-      let threadRows: WishThreadRow[] = []
-      let threadImageRows: WishThreadImageRow[] = []
-      let threadReactionRows: ThreadReactionRecord[] = []
-      let monthlySnapshotRows: MonthlyJournalSnapshotRow[] = []
-      let hasUnifiedThreadData = false
-      let imageRows: WishImageRow[] = []
-      let stepRows: WishStepRow[] = []
-      let imageUrlMap = new Map<string, string>()
-      let commentImageUrlMap = new Map<string, string>()
+      const composed = composeWishCloudState(fetched.data)
 
-      const { data: rewardPoolItemData, error: rewardPoolItemError } = await supabase
-        .from('reward_pool_items')
-        .select('id, space_id, owner_id, tier, title, note, star_coin_cost, is_archived, created_at, updated_at')
-        .eq('space_id', spaceId)
-        .order('updated_at', { ascending: false })
-
-      if (rewardPoolItemError) {
-        if (rewardPoolItemError.code !== '42P01' && !/reward_pool_items/i.test(rewardPoolItemError.message)) {
-          syncMessage.value = `云端奖励池同步失败：${rewardPoolItemError.message}`
-          return false
-        }
-      } else {
-        rewardPoolItemRows = (rewardPoolItemData ?? []) as RewardPoolItemRow[]
-      }
-
-      const { data: rewardClaimData, error: rewardClaimError } = await supabase
-        .from('reward_claims')
-          .select('id, space_id, owner_id, reward_item_id, source_wish_id, source_step_id, claim_kind, quantity, title_snapshot, note_snapshot, star_coin_delta, created_at')
-        .eq('space_id', spaceId)
-        .order('created_at', { ascending: false })
-
-      if (rewardClaimError) {
-        if (rewardClaimError.code !== '42P01' && !/reward_claims/i.test(rewardClaimError.message)) {
-          syncMessage.value = `云端领奖记录同步失败：${rewardClaimError.message}`
-          return false
-        }
-      } else {
-        rewardClaimRows = (rewardClaimData ?? []) as RewardClaimRow[]
-      }
-
-      const { error: ensureMonthlySnapshotsError } = await supabase.rpc('ensure_monthly_journal_snapshots', {
-        target_space_id: spaceId,
-      })
-
-      if (ensureMonthlySnapshotsError && !isWishThreadFeatureMissing(ensureMonthlySnapshotsError.message)) {
-        syncMessage.value = `云端月刊补冻结失败：${ensureMonthlySnapshotsError.message}`
-      }
-
-      const { data: threadData, error: threadError } = await supabase
-        .from('wish_threads')
-        .select('id, space_id, wish_id, actor_id, event_kind, message_text, meta, created_at, updated_at')
-        .eq('space_id', spaceId)
-        .order('created_at', { ascending: true })
-
-      if (threadError) {
-        if (threadError.code !== '42P01' && !/wish_threads/i.test(threadError.message)) {
-          syncMessage.value = `云端手账同步失败：${threadError.message}`
-          return false
-        }
-      } else {
-        hasUnifiedThreadData = true
-        threadRows = (threadData ?? []) as WishThreadRow[]
-
-        const { data: reactionData, error: reactionError } = await supabase
-          .from('thread_reactions')
-          .select('id, space_id, target_thread_id, actor_id, emoji, created_at')
-          .eq('space_id', spaceId)
-          .order('created_at', { ascending: true })
-
-        if (reactionError) {
-          if (reactionError.code !== '42P01' && !/thread_reactions/i.test(reactionError.message)) {
-            syncMessage.value = `云端表情回应同步失败：${reactionError.message}`
-            return false
-          }
-        } else {
-          threadReactionRows = ((reactionData ?? []) as ThreadReactionRow[]).map((reaction) =>
-            createThreadReactionRecord({
-              actorId: reaction.actor_id,
-              createdAt: reaction.created_at,
-              emoji: reaction.emoji,
-              id: reaction.id,
-              spaceId: reaction.space_id,
-              targetThreadId: reaction.target_thread_id,
-            }),
-          )
-        }
-
-        const threadIds = threadRows.map((thread) => thread.id)
-
-        if (threadIds.length) {
-          const { data: threadImageData, error: threadImageError } = await supabase
-            .from('wish_thread_images')
-            .select('id, thread_id, created_by, storage_path, file_name, mime_type, size_bytes, sort_order, created_at')
-            .in('thread_id', threadIds)
-            .order('sort_order', { ascending: true })
-            .order('created_at', { ascending: true })
-
-          if (threadImageError) {
-            if (threadImageError.code !== '42P01' && !/wish_thread_images/i.test(threadImageError.message)) {
-              syncMessage.value = `云端手账图片同步失败：${threadImageError.message}`
-              return false
-            }
-          } else {
-            threadImageRows = (threadImageData ?? []) as WishThreadImageRow[]
-
-            if (threadImageRows.length) {
-              const { data: signedThreadImageUrls, error: signedThreadImageUrlError } = await supabase.storage
-                .from(WISH_COMMENT_IMAGE_BUCKET)
-                .createSignedUrls(threadImageRows.map((image) => image.storage_path), 60 * 60)
-
-              if (signedThreadImageUrlError) {
-                syncMessage.value = `云端手账图片链接生成失败：${signedThreadImageUrlError.message}`
-              } else {
-                const commentImageUrlEntries: Array<[string, string]> = []
-
-                for (const item of signedThreadImageUrls ?? []) {
-                  if (item.path && item.signedUrl) {
-                    commentImageUrlEntries.push([item.path, item.signedUrl])
-                  }
-                }
-
-                commentImageUrlMap = new Map<string, string>(commentImageUrlEntries)
-              }
-            }
-          }
-        }
-
-        const { data: snapshotData, error: snapshotError } = await supabase
-          .from('monthly_journal_snapshots')
-          .select('id, space_id, month_key, snapshot_status, cover_title, cover_subtitle, narrative_blocks, metrics_snapshot, source_refs, created_at, created_by')
-          .eq('space_id', spaceId)
-          .order('month_key', { ascending: false })
-
-        if (snapshotError) {
-          if (snapshotError.code !== '42P01' && !/monthly_journal_snapshots/i.test(snapshotError.message)) {
-            syncMessage.value = `云端月刊同步失败：${snapshotError.message}`
-            return false
-          }
-        } else {
-          monthlySnapshotRows = (snapshotData ?? []) as MonthlyJournalSnapshotRow[]
-        }
-      }
-
-      if (wishIds.length) {
-        const { data: wishCoinData, error: wishCoinError } = await supabase
-          .from('wish_coins')
-          .select('id, space_id, wish_id, voter_id, cycle_key, amount, created_at')
-          .eq('space_id', spaceId)
-          .order('created_at', { ascending: false })
-
-        if (wishCoinError) {
-          if (wishCoinError.code !== '42P01' && !/wish_coins/i.test(wishCoinError.message)) {
-            syncMessage.value = `云端愿望币同步失败：${wishCoinError.message}`
-            return false
-          }
-        } else {
-          wishCoinRows = (wishCoinData ?? []) as WishCoinRow[]
-        }
-
-        if (hasUnifiedThreadData) {
-          commentRows = buildCommentRowsFromThreadEntries(
-            threadRows.map((thread) =>
-              createWishThreadEntry({
-                actorId: thread.actor_id,
-                createdAt: thread.created_at,
-                eventKind: thread.event_kind,
-                id: thread.id,
-                messageText: thread.message_text,
-                meta: isPlainRecord(thread.meta) ? thread.meta : {},
-                spaceId: thread.space_id,
-                updatedAt: thread.updated_at,
-                wishId: thread.wish_id,
-              }),
-            ),
-          )
-          commentImageRows = threadImageRows.map((image) => ({
-            comment_id: image.thread_id,
-            created_at: image.created_at,
-            created_by: image.created_by,
-            file_name: image.file_name,
-            id: image.id,
-            mime_type: image.mime_type,
-            size_bytes: image.size_bytes,
-            sort_order: image.sort_order,
-            storage_path: image.storage_path,
-          }))
-        } else {
-          const { data, error: commentError } = await supabase
-            .from('wish_comments')
-            .select('id, wish_id, author_id, body, created_at')
-            .in('wish_id', wishIds)
-            .order('created_at', { ascending: false })
-
-          if (commentError) {
-            syncMessage.value = `云端留言同步失败：${commentError.message}`
-            return false
-          }
-
-          commentRows = (data ?? []) as WishCommentRow[]
-
-          const commentIds = commentRows.map((comment) => comment.id)
-
-          if (commentIds.length) {
-            const { data: commentImageData, error: commentImageError } = await supabase
-              .from('wish_comment_images')
-              .select('id, comment_id, created_by, storage_path, file_name, mime_type, size_bytes, sort_order, created_at')
-              .in('comment_id', commentIds)
-              .order('sort_order', { ascending: true })
-              .order('created_at', { ascending: true })
-
-            if (commentImageError) {
-              syncMessage.value = `云端留言图片同步失败：${commentImageError.message}`
-              return false
-            }
-
-            commentImageRows = (commentImageData ?? []) as WishCommentImageRow[]
-
-            if (commentImageRows.length) {
-              const { data: signedCommentImageUrls, error: signedCommentImageUrlError } = await supabase.storage
-                .from(WISH_COMMENT_IMAGE_BUCKET)
-                .createSignedUrls(commentImageRows.map((image) => image.storage_path), 60 * 60)
-
-              if (signedCommentImageUrlError) {
-                syncMessage.value = `云端留言图片链接生成失败：${signedCommentImageUrlError.message}`
-              } else {
-                const commentImageUrlEntries: Array<[string, string]> = []
-
-                for (const item of signedCommentImageUrls ?? []) {
-                  if (item.path && item.signedUrl) {
-                    commentImageUrlEntries.push([item.path, item.signedUrl])
-                  }
-                }
-
-                commentImageUrlMap = new Map<string, string>(commentImageUrlEntries)
-              }
-            }
-          }
-        }
-
-        const { data: stepData, error: stepError } = await supabase
-          .from('wish_steps')
-          .select('id, wish_id, title, is_done, sort_order, created_at, updated_at')
-          .in('wish_id', wishIds)
-          .order('sort_order', { ascending: true })
-          .order('created_at', { ascending: true })
-
-        if (stepError) {
-          syncMessage.value = `云端步骤同步失败：${stepError.message}`
-          return false
-        }
-
-        stepRows = (stepData ?? []) as WishStepRow[]
-
-        const { data: imageData, error: imageError } = await supabase
-          .from('wish_images')
-          .select('id, wish_id, created_by, storage_path, file_name, mime_type, note, size_bytes, sort_order, created_at')
-          .in('wish_id', wishIds)
-          .order('sort_order', { ascending: true })
-          .order('created_at', { ascending: true })
-
-        if (imageError) {
-          syncMessage.value = `云端图片同步失败：${imageError.message}`
-          return false
-        }
-
-        imageRows = (imageData ?? []) as WishImageRow[]
-
-        if (imageRows.length) {
-          const { data: signedImageUrls, error: signedImageUrlError } = await supabase.storage
-            .from(WISH_IMAGE_BUCKET)
-            .createSignedUrls(imageRows.map((image) => image.storage_path), 60 * 60)
-
-          if (signedImageUrlError) {
-            syncMessage.value = `云端图片链接生成失败：${signedImageUrlError.message}`
-          } else {
-            const imageUrlEntries: Array<[string, string]> = []
-
-            for (const item of signedImageUrls ?? []) {
-              if (item.path && item.signedUrl) {
-                imageUrlEntries.push([item.path, item.signedUrl])
-              }
-            }
-
-            imageUrlMap = new Map<string, string>(imageUrlEntries)
-          }
-        }
-      }
-
-      const nextRewardPoolItems = rewardPoolItemRows.map((row) => createRewardPoolItemFromRow(row))
-      const nextRewardClaims = rewardClaimRows.map((row) => createRewardClaimFromRow(row))
-      const nextWishCoins = wishCoinRows.map((coin) =>
-        createWishCoinRecord({
-          amount: coin.amount,
-          createdAt: coin.created_at,
-          cycleKey: coin.cycle_key,
-          id: coin.id,
-          voterId: coin.voter_id,
-          wishId: coin.wish_id,
-        }),
-      )
-      const nextWishes = ((wishRows ?? []) as WishRow[]).map((wish) =>
-        createWishRecordFromRow(wish, wishCoinRows, commentRows, commentImageRows, imageRows, stepRows, imageUrlMap, commentImageUrlMap),
-      )
-      const nextWishThreads = hasUnifiedThreadData
-        ? buildWishThreadEntriesFromRows(threadRows, threadImageRows, threadReactionRows, commentImageUrlMap)
-        : buildDerivedWishThreadEntries(nextWishes, nextWishCoins, nextRewardClaims, threadReactionRows)
-      const nextMonthlySnapshots = monthlySnapshotRows.map((snapshot) =>
-        createMonthlyJournalSnapshotRecord({
-          coverSubtitle: snapshot.cover_subtitle,
-          coverTitle: snapshot.cover_title,
-          createdAt: snapshot.created_at,
-          createdBy: snapshot.created_by,
-          id: snapshot.id,
-          metricsSnapshot: isPlainRecord(snapshot.metrics_snapshot) ? snapshot.metrics_snapshot : {},
-          monthKey: snapshot.month_key,
-          narrativeBlocks: Array.isArray(snapshot.narrative_blocks)
-            ? snapshot.narrative_blocks.filter(isPlainRecord)
-            : [],
-          snapshotStatus: snapshot.snapshot_status,
-          sourceRefs: Array.isArray(snapshot.source_refs)
-            ? snapshot.source_refs.filter(isPlainRecord)
-            : [],
-          spaceId: snapshot.space_id,
-        }),
-      )
-
-      rewardPoolItems.value = nextRewardPoolItems
-      rewardClaims.value = nextRewardClaims
-      wishCoins.value = nextWishCoins
-      wishes.value = nextWishes
-      threadReactions.value = threadReactionRows
-      wishThreads.value = nextWishThreads
-      monthlyJournalSnapshots.value = nextMonthlySnapshots
+      rewardPoolItems.value = composed.rewardPoolItems
+      rewardClaims.value = composed.rewardClaims
+      wishCoins.value = composed.wishCoins
+      wishes.value = composed.wishes
+      threadReactions.value = composed.threadReactions
+      wishThreads.value = composed.wishThreads
+      monthlyJournalSnapshots.value = composed.monthlyJournalSnapshots
       lastLoadedSpaceId.value = spaceId
       syncMessage.value = '当前显示的是 Supabase 云端愿望数据。'
       return true
@@ -3041,26 +1735,20 @@ export const useWishStore = defineStore('wishes', () => {
     mutate: () => Promise<{ error: { message: string } | null }>,
     successMessage: string,
   ) {
-    if (!supabase || !isUsingCloudWishes.value || !authStore.currentSpaceId) {
-      return false
-    }
-
-    isLoading.value = true
-
-    try {
-      const { error } = await mutate()
-
-      if (error) {
-        syncMessage.value = `云端写入失败：${error.message}`
-        return false
-      }
-
-      await syncFromSupabase(authStore.currentSpaceId)
-      syncMessage.value = successMessage
-      return true
-    } finally {
-      isLoading.value = false
-    }
+    return runCloudMutationModule({
+      supabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      currentSpaceId: authStore.currentSpaceId,
+      onLoadingChange: (value) => {
+        isLoading.value = value
+      },
+      onSyncMessage: (message) => {
+        syncMessage.value = message
+      },
+      mutate,
+      successMessage,
+      syncFromSupabase,
+    })
   }
 
   async function addWish(draft: WishDraft, initialStepTitles: string[] = []) {
@@ -3069,72 +1757,27 @@ export const useWishStore = defineStore('wishes', () => {
       : []
 
     if (supabase && isUsingCloudWishes.value && authStore.currentSpaceId) {
-      const client = supabase
       const ownerId = authStore.currentMemberId || authStore.currentMember?.id || draft.ownerId
-
-      isLoading.value = true
-
-      try {
-        const { data, error } = await client
-          .from('wishes')
-          .insert({
-            category: draft.category.trim(),
-            due_date: draft.dueDate || null,
-            note: draft.note.trim(),
-            owner_id: ownerId,
-            priority: draft.priority,
-            progress_current: draft.progressCurrent,
-            progress_mode: draft.progressMode,
-            progress_target: draft.progressTarget,
-            progress_unit: draft.progressUnit.trim(),
-            scope: draft.scope,
-            space_id: authStore.currentSpaceId,
-            title: draft.title.trim(),
-          })
-          .select('id')
-          .single()
-
-        if (error) {
-          syncMessage.value = `云端写入失败：${error.message}`
-          return null
-        }
-
-        let successMessage = normalizedStepTitles.length
-          ? `愿望和 ${normalizedStepTitles.length} 个初始步骤已写入 Supabase。`
-          : '愿望已写入 Supabase。'
-
-        if (data?.id && normalizedStepTitles.length) {
-          const { error: stepError } = await client.from('wish_steps').insert(
-            normalizedStepTitles.map((title, index) => ({
-              is_done: false,
-              sort_order: index + 1,
-              title,
-              wish_id: data.id,
-            })),
-          )
-
-          if (stepError) {
-            successMessage = `愿望已写入，但初始步骤同步失败：${stepError.message}`
-          }
-        }
-
-        await syncFromSupabase(authStore.currentSpaceId)
-        syncMessage.value = successMessage
-        return data?.id ?? null
-      } finally {
-        isLoading.value = false
-      }
+      return addWishCloud({
+        supabase,
+        currentSpaceId: authStore.currentSpaceId,
+        ownerId,
+        draft,
+        initialStepTitles: normalizedStepTitles,
+        onLoadingChange: (value) => {
+          isLoading.value = value
+        },
+        onSyncMessage: (message) => {
+          syncMessage.value = message
+        },
+        syncFromSupabase,
+      })
     }
 
-    const createdWish = createWishRecord({
-      ...draft,
-      steps: normalizedStepTitles.map((title) => createWishStep({ title })),
-    })
-    wishes.value.unshift(createdWish)
-    syncMessage.value = normalizedStepTitles.length
-      ? `愿望和 ${normalizedStepTitles.length} 个初始步骤已保存到本地。`
-      : '愿望已保存到本地。'
-    return createdWish.id
+    const created = addWishLocal(draft, normalizedStepTitles)
+    wishes.value.unshift(created.wish)
+    syncMessage.value = created.message
+    return created.wish.id
   }
 
   async function updateWish(id: string, draft: WishDraft) {
@@ -3174,12 +1817,7 @@ export const useWishStore = defineStore('wishes', () => {
         return wish
       }
 
-      return touchWish(
-        createWishRecord({
-          ...wish,
-          ...draft,
-        }),
-      )
+      return updateWishLocal(wish, draft, touchWish)
     })
 
     return true
@@ -3195,7 +1833,7 @@ export const useWishStore = defineStore('wishes', () => {
       )
     }
 
-    wishes.value = wishes.value.filter((wish) => wish.id !== id)
+    wishes.value = deleteWishLocal(id, wishes.value)
     wishCoins.value = wishCoins.value.filter((coin) => coin.wishId !== id)
     rewardClaims.value = rewardClaims.value.map((claim) => {
       if (claim.sourceWishId !== id) {
@@ -3217,64 +1855,25 @@ export const useWishStore = defineStore('wishes', () => {
     note?: string
     starCoinCost?: number
   }): Promise<RewardActionResult> {
-    const memberId = getCurrentMemberId()
-    const normalizedTitle = input.title.trim()
-    const normalizedNote = input.note?.trim() ?? ''
-    const normalizedCost = input.tier === 'premium'
-      ? Math.max(0, Math.round(Number(input.starCoinCost ?? 0) || 0))
-      : 0
+    const result = await addRewardPoolItemWrite({
+      supabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      currentSpaceId: authStore.currentSpaceId,
+      memberId: getCurrentMemberId(),
+      input,
+      onLoadingChange: (value) => {
+        isLoading.value = value
+      },
+      onResult: (result) => rewardResult(result.ok, result.message),
+      syncFromSupabase,
+    })
 
-    if (!memberId) {
-      return rewardResult(false, '当前会话缺少领奖身份，请先切换到具体成员。')
+    if ('localItem' in result) {
+      rewardPoolItems.value.unshift(result.localItem)
+      return result.result
     }
 
-    if (!normalizedTitle) {
-      return rewardResult(false, '先写下这条奖励是什么。')
-    }
-
-    if (supabase && isUsingCloudWishes.value && authStore.currentSpaceId) {
-      const client = supabase
-
-      isLoading.value = true
-
-      try {
-        const { error } = await client.from('reward_pool_items').insert({
-          is_archived: false,
-          note: normalizedNote,
-          owner_id: memberId,
-          space_id: authStore.currentSpaceId,
-          star_coin_cost: normalizedCost,
-          tier: input.tier,
-          title: normalizedTitle,
-        })
-
-        if (error) {
-          return rewardResult(
-            false,
-            isRewardFeatureMissing(error.message)
-              ? `奖励池写入失败：${error.message}。如果你刚更新前端，请先执行新的 Supabase 奖励 migration。`
-              : `奖励池写入失败：${error.message}`,
-          )
-        }
-
-        await syncFromSupabase(authStore.currentSpaceId)
-        return rewardResult(true, `已把「${normalizedTitle}」放进你的${input.tier === 'premium' ? '高档' : '日常'}奖励池。`)
-      } finally {
-        isLoading.value = false
-      }
-    }
-
-    rewardPoolItems.value.unshift(
-      createRewardPoolItem({
-        note: normalizedNote,
-        ownerId: memberId,
-        starCoinCost: normalizedCost,
-        tier: input.tier,
-        title: normalizedTitle,
-      }),
-    )
-
-    return rewardResult(true, `已把「${normalizedTitle}」放进你的${input.tier === 'premium' ? '高档' : '日常'}奖励池。`)
+    return result
   }
 
   async function updateRewardPoolItem(
@@ -3285,166 +1884,77 @@ export const useWishStore = defineStore('wishes', () => {
       starCoinCost?: number
     },
   ): Promise<RewardActionResult> {
-    const memberId = getCurrentMemberId()
-    const item = rewardPoolItems.value.find((entry) => entry.id === itemId)
+    const result = await updateRewardPoolItemWrite({
+      supabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      currentSpaceId: authStore.currentSpaceId,
+      memberId: getCurrentMemberId(),
+      item: rewardPoolItems.value.find((entry) => entry.id === itemId),
+      itemId,
+      updates,
+      onLoadingChange: (value) => {
+        isLoading.value = value
+      },
+      onResult: (result) => rewardResult(result.ok, result.message),
+      syncFromSupabase,
+    })
 
-    if (!memberId || !item || item.ownerId !== memberId) {
-      return rewardResult(false, '只能修改你自己的奖励池条目。')
+    if ('nextItem' in result) {
+      rewardPoolItems.value = rewardPoolItems.value.map((entry) => entry.id === itemId ? result.nextItem : entry)
+      return result.result
     }
 
-    const nextTitle = typeof updates.title === 'string' ? updates.title.trim() : item.title
-    const nextNote = typeof updates.note === 'string' ? updates.note.trim() : item.note
-    const nextCost = item.tier === 'premium'
-      ? Math.max(0, Math.round(Number(updates.starCoinCost ?? item.starCoinCost) || 0))
-      : 0
-
-    if (!nextTitle) {
-      return rewardResult(false, '奖励名称不能为空。')
-    }
-
-    if (supabase && isUsingCloudWishes.value && authStore.currentSpaceId) {
-      const client = supabase
-
-      isLoading.value = true
-
-      try {
-        const { error } = await client
-          .from('reward_pool_items')
-          .update({
-            note: nextNote,
-            star_coin_cost: nextCost,
-            title: nextTitle,
-          })
-          .eq('id', itemId)
-
-        if (error) {
-          return rewardResult(
-            false,
-            isRewardFeatureMissing(error.message)
-              ? `奖励池更新失败：${error.message}。如果你刚更新前端，请先执行新的 Supabase 奖励 migration。`
-              : `奖励池更新失败：${error.message}`,
-          )
-        }
-
-        await syncFromSupabase(authStore.currentSpaceId)
-        return rewardResult(true, `已更新「${nextTitle}」。`)
-      } finally {
-        isLoading.value = false
-      }
-    }
-
-    item.title = nextTitle
-    item.note = nextNote
-    item.starCoinCost = nextCost
-    item.updatedAt = new Date().toISOString()
-    return rewardResult(true, `已更新「${nextTitle}」。`)
+    return result
   }
 
   async function archiveRewardPoolItem(itemId: string): Promise<RewardActionResult> {
-    const memberId = getCurrentMemberId()
-    const item = rewardPoolItems.value.find((entry) => entry.id === itemId)
+    const result = await archiveRewardPoolItemWrite({
+      supabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      currentSpaceId: authStore.currentSpaceId,
+      memberId: getCurrentMemberId(),
+      item: rewardPoolItems.value.find((entry) => entry.id === itemId),
+      itemId,
+      onLoadingChange: (value) => {
+        isLoading.value = value
+      },
+      onResult: (result) => rewardResult(result.ok, result.message),
+      syncFromSupabase,
+    })
 
-    if (!memberId || !item || item.ownerId !== memberId) {
-      return rewardResult(false, '只能整理你自己的奖励池条目。')
+    if ('nextItem' in result) {
+      rewardPoolItems.value = rewardPoolItems.value.map((entry) => entry.id === itemId ? result.nextItem : entry)
+      return result.result
     }
 
-    if (supabase && isUsingCloudWishes.value && authStore.currentSpaceId) {
-      const client = supabase
-
-      isLoading.value = true
-
-      try {
-        const { error } = await client
-          .from('reward_pool_items')
-          .update({ is_archived: true })
-          .eq('id', itemId)
-
-        if (error) {
-          return rewardResult(
-            false,
-            isRewardFeatureMissing(error.message)
-              ? `奖励池整理失败：${error.message}。如果你刚更新前端，请先执行新的 Supabase 奖励 migration。`
-              : `奖励池整理失败：${error.message}`,
-          )
-        }
-
-        await syncFromSupabase(authStore.currentSpaceId)
-        return rewardResult(true, `已把「${item.title}」收进已领取档案。`)
-      } finally {
-        isLoading.value = false
-      }
-    }
-
-    item.isArchived = true
-    item.updatedAt = new Date().toISOString()
-    return rewardResult(true, `已把「${item.title}」收进已领取档案。`)
+    return result
   }
 
   async function completeWishWithReward(wishId: string, rewardItemId: string): Promise<RewardActionResult> {
-    const wish = findById(wishId)
-    const memberId = getCurrentMemberId()
-    const rewardItem = rewardPoolItems.value.find((item) => item.id === rewardItemId)
+    const result = await completeWishWithRewardWrite({
+      supabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      currentSpaceId: authStore.currentSpaceId,
+      wish: findById(wishId),
+      wishId,
+      memberId: getCurrentMemberId(),
+      rewardItem: rewardPoolItems.value.find((item) => item.id === rewardItemId),
+      rewardItemId,
+      hasWishRewardClaim: hasWishRewardClaim(wishId),
+      onLoadingChange: (value) => {
+        isLoading.value = value
+      },
+      onResult: rewardResult,
+      syncFromSupabase,
+    })
 
-    if (!wish || !memberId) {
-      return rewardResult(false, '当前没有可完成的愿望。')
+    if (result && typeof result === 'object' && 'localWish' in result) {
+      wishes.value = wishes.value.map((wish) => wish.id === wishId ? result.localWish : wish)
+      rewardClaims.value.unshift(result.localClaim)
+      return result.result
     }
 
-    if (wish.status === 'done') {
-      return rewardResult(false, '这个愿望已经完成了。')
-    }
-
-    if (hasWishRewardClaim(wishId)) {
-      return rewardResult(false, '这条愿望的完成奖励已经领过了。')
-    }
-
-    if (!rewardItem || rewardItem.ownerId !== memberId || rewardItem.tier !== 'premium' || rewardItem.isArchived) {
-      return rewardResult(false, '请从你自己的高档奖励池里挑一个奖励。')
-    }
-
-    if (supabase && isUsingCloudWishes.value && authStore.currentSpaceId) {
-      const client = supabase
-
-      isLoading.value = true
-
-      try {
-        const { error } = await client.rpc('complete_wish_with_reward', {
-          target_reward_item_id: rewardItemId,
-          target_wish_id: wishId,
-        })
-
-        if (error) {
-          return rewardResult(
-            false,
-            isRewardFeatureMissing(error.message)
-              ? `愿望领奖失败：${error.message}。如果你刚更新前端，请先执行新的 Supabase 奖励 migration。`
-              : `愿望领奖失败：${error.message}`,
-          )
-        }
-
-        await syncFromSupabase(authStore.currentSpaceId)
-        return rewardResult(true, `这条愿望已经完成，也接住了「${rewardItem.title}」。`)
-      } finally {
-        isLoading.value = false
-      }
-    }
-
-    const now = new Date().toISOString()
-    wish.status = 'done'
-    wish.completedAt = now
-    wish.updatedAt = now
-    rewardClaims.value.unshift(
-      createRewardClaimRecord({
-        claimKind: 'wish_reward',
-        createdAt: now,
-        noteSnapshot: rewardItem.note,
-        ownerId: memberId,
-        rewardItemId: rewardItem.id,
-        sourceWishId: wishId,
-        starCoinDelta: 0,
-        titleSnapshot: rewardItem.title,
-      }),
-    )
-    return rewardResult(true, `这条愿望已经完成，也接住了「${rewardItem.title}」。`)
+    return result
   }
 
   async function claimCompletedStepReward(
@@ -3456,81 +1966,32 @@ export const useWishStore = defineStore('wishes', () => {
     },
   ): Promise<RewardActionResult> {
     const wish = findById(wishId)
-    const step = wish?.steps.find((item) => item.id === stepId)
-    const memberId = getCurrentMemberId()
-    const claimStarCoin = selection.claimStarCoin === true
-    const rewardItem = selection.rewardItemId ? rewardPoolItems.value.find((item) => item.id === selection.rewardItemId) : null
+    const result = await claimCompletedStepRewardWrite({
+      supabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      currentSpaceId: authStore.currentSpaceId,
+      wish,
+      wishId,
+      stepId,
+      step: wish?.steps.find((item) => item.id === stepId),
+      memberId: getCurrentMemberId(),
+      claimStarCoin: selection.claimStarCoin === true,
+      rewardItem: selection.rewardItemId ? rewardPoolItems.value.find((item) => item.id === selection.rewardItemId) ?? null : null,
+      hasStepRewardClaim: hasStepRewardClaim(stepId),
+      stepCompletionStarCoinReward: STEP_COMPLETION_STAR_COIN_REWARD,
+      onLoadingChange: (value) => {
+        isLoading.value = value
+      },
+      onResult: rewardResult,
+      syncFromSupabase,
+    })
 
-    if (!wish || !step || wish.progressMode !== 'steps' || !memberId) {
-      return rewardResult(false, '当前没有可领取的小奖励。')
+    if (result && typeof result === 'object' && 'localClaim' in result) {
+      rewardClaims.value.unshift(result.localClaim)
+      return result.result
     }
 
-    if (!step.isDone) {
-      return rewardResult(false, '先把这个步骤完成，再来空间页领奖。')
-    }
-
-    if (hasStepRewardClaim(stepId)) {
-      return rewardResult(false, '这个步骤的小奖励已经领过了。')
-    }
-
-    if (!claimStarCoin && (!rewardItem || rewardItem.ownerId !== memberId || rewardItem.tier !== 'daily' || rewardItem.isArchived)) {
-      return rewardResult(false, '请从你自己的日常奖励池里挑一个奖励，或者改存星星币。')
-    }
-
-    if (supabase && isUsingCloudWishes.value && authStore.currentSpaceId) {
-      const client = supabase
-
-      isLoading.value = true
-
-      try {
-        const { error } = await client.rpc('claim_completed_step_reward', {
-          claim_star_coin: claimStarCoin,
-          target_reward_item_id: rewardItem?.id ?? null,
-          target_step_id: stepId,
-          target_wish_id: wishId,
-        })
-
-        if (error) {
-          return rewardResult(
-            false,
-            isRewardFeatureMissing(error.message)
-              ? `步骤领奖失败：${error.message}。如果你刚更新前端，请先执行新的 Supabase 奖励 migration。`
-              : `步骤领奖失败：${error.message}`,
-          )
-        }
-
-        await syncFromSupabase(authStore.currentSpaceId)
-        return rewardResult(
-          true,
-          claimStarCoin
-            ? `这个步骤的小奖励已经存成 ${STEP_COMPLETION_STAR_COIN_REWARD} 枚星星币。`
-            : `这个步骤的小奖励已经接住「${rewardItem?.title ?? ''}」。`,
-        )
-      } finally {
-        isLoading.value = false
-      }
-    }
-
-    rewardClaims.value.unshift(
-      createRewardClaimRecord({
-        claimKind: claimStarCoin ? 'star_coin' : 'step_reward',
-        noteSnapshot: claimStarCoin ? '完成一个小步骤后，在空间页把这次奖励存成了 1 枚星星币。' : rewardItem?.note ?? '',
-        ownerId: memberId,
-        quantity: 1,
-        rewardItemId: claimStarCoin ? null : rewardItem?.id ?? null,
-        sourceStepId: stepId,
-        sourceWishId: wishId,
-        starCoinDelta: claimStarCoin ? STEP_COMPLETION_STAR_COIN_REWARD : 0,
-        titleSnapshot: claimStarCoin ? `${STEP_COMPLETION_STAR_COIN_REWARD} 枚星星币` : rewardItem?.title ?? '',
-      }),
-    )
-
-    return rewardResult(
-      true,
-      claimStarCoin
-        ? `这个步骤的小奖励已经存成 ${STEP_COMPLETION_STAR_COIN_REWARD} 枚星星币。`
-        : `这个步骤的小奖励已经接住「${rewardItem?.title ?? ''}」。`,
-    )
+    return result
   }
 
   async function claimCountProgressReward(
@@ -3541,229 +2002,103 @@ export const useWishStore = defineStore('wishes', () => {
       claimStarCoin?: boolean
     },
   ): Promise<RewardActionResult> {
-    const wish = findById(wishId)
-    const memberId = getCurrentMemberId()
-    const claimStarCoin = selection.claimStarCoin === true
-    const rewardItem = selection.rewardItemId ? rewardPoolItems.value.find((item) => item.id === selection.rewardItemId) : null
-    const quantity = Math.max(1, Math.trunc(Number(selection.quantity) || 0))
-    const claimedUnits = countRewardClaimedUnitsByWish.value.get(wishId) ?? 0
-    const target = wish ? Math.max(1, wish.progressTarget) : 0
-    const current = wish ? Math.min(wish.progressCurrent, target) : 0
-    const pendingUnits = Math.max(current - claimedUnits, 0)
+    const result = await claimCountProgressRewardWrite({
+      supabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      currentSpaceId: authStore.currentSpaceId,
+      wish: findById(wishId),
+      wishId,
+      memberId: getCurrentMemberId(),
+      claimStarCoin: selection.claimStarCoin === true,
+      rewardItem: selection.rewardItemId ? rewardPoolItems.value.find((item) => item.id === selection.rewardItemId) ?? null : null,
+      quantity: Math.max(1, Math.trunc(Number(selection.quantity) || 0)),
+      claimedUnits: countRewardClaimedUnitsByWish.value.get(wishId) ?? 0,
+      onLoadingChange: (value) => {
+        isLoading.value = value
+      },
+      onResult: rewardResult,
+      syncFromSupabase,
+    })
 
-    if (!wish || wish.progressMode !== 'count' || !memberId) {
-      return rewardResult(false, '当前没有可领取的数字进度奖励。')
+    if (result && typeof result === 'object' && 'localClaim' in result) {
+      rewardClaims.value.unshift(result.localClaim)
+      return result.result
     }
 
-    if (pendingUnits <= 0) {
-      return rewardResult(false, '这条数字进度暂时没有待领取的小奖励。')
-    }
-
-    if (quantity > pendingUnits) {
-      return rewardResult(false, `这条数字进度现在只剩 ${pendingUnits} 点待领取。`)
-    }
-
-    if (!claimStarCoin && (!rewardItem || rewardItem.ownerId !== memberId || rewardItem.tier !== 'daily' || rewardItem.isArchived)) {
-      return rewardResult(false, '请从你自己的日常奖励池里挑一个奖励，或者改存星星币。')
-    }
-
-    if (supabase && isUsingCloudWishes.value && authStore.currentSpaceId) {
-      const client = supabase
-
-      isLoading.value = true
-
-      try {
-        const { error } = await client.rpc('claim_count_progress_reward', {
-          claim_quantity: quantity,
-          claim_star_coin: claimStarCoin,
-          target_reward_item_id: rewardItem?.id ?? null,
-          target_wish_id: wishId,
-        })
-
-        if (error) {
-          return rewardResult(
-            false,
-            isRewardFeatureMissing(error.message)
-              ? `数字进度领奖失败：${error.message}。如果你刚更新前端，请先执行新的 Supabase 奖励 migration。`
-              : `数字进度领奖失败：${error.message}`,
-          )
-        }
-
-        await syncFromSupabase(authStore.currentSpaceId)
-        return rewardResult(
-          true,
-          claimStarCoin
-            ? `这 ${quantity} 点数字进度已经存成 ${quantity} 枚星星币。`
-            : `这 ${quantity} 点数字进度已经接住「${rewardItem?.title ?? ''}」。`,
-        )
-      } finally {
-        isLoading.value = false
-      }
-    }
-
-    rewardClaims.value.unshift(
-      createRewardClaimRecord({
-        claimKind: claimStarCoin ? 'star_coin' : 'count_reward',
-        noteSnapshot: claimStarCoin ? `数字进度往前推进了 ${quantity} 点，在空间页把这次奖励存成了 ${quantity} 枚星星币。` : rewardItem?.note ?? '',
-        ownerId: memberId,
-        quantity,
-        rewardItemId: claimStarCoin ? null : rewardItem?.id ?? null,
-        sourceWishId: wishId,
-        starCoinDelta: claimStarCoin ? quantity : 0,
-        titleSnapshot: claimStarCoin ? `${quantity} 枚星星币` : rewardItem?.title ?? '',
-      }),
-    )
-
-    return rewardResult(
-      true,
-      claimStarCoin
-        ? `这 ${quantity} 点数字进度已经存成 ${quantity} 枚星星币。`
-        : `这 ${quantity} 点数字进度已经接住「${rewardItem?.title ?? ''}」。`,
-    )
+    return result
   }
 
   async function redeemPremiumReward(rewardItemId: string): Promise<RewardActionResult> {
     const memberId = getCurrentMemberId()
     const rewardItem = rewardPoolItems.value.find((item) => item.id === rewardItemId)
+    const result = await redeemPremiumRewardWrite({
+      supabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      currentSpaceId: authStore.currentSpaceId,
+      memberId,
+      rewardItem,
+      rewardItemId,
+      currentBalance: memberId ? getMemberStarCoinBalance(memberId) : 0,
+      onLoadingChange: (value) => {
+        isLoading.value = value
+      },
+      onResult: (result) => rewardResult(result.ok, result.message),
+      syncFromSupabase,
+    })
 
-    if (!memberId || !rewardItem || rewardItem.ownerId !== memberId || rewardItem.tier !== 'premium' || rewardItem.isArchived) {
-      return rewardResult(false, '只能兑换你自己的高档奖励。')
+    if ('localClaim' in result) {
+      rewardClaims.value.unshift(result.localClaim)
+      return result.result
     }
 
-    if (rewardItem.starCoinCost <= 0) {
-      return rewardResult(false, '这条高档奖励还没有设置星星币价格。')
-    }
-
-    if (getMemberStarCoinBalance(memberId) < rewardItem.starCoinCost) {
-      return rewardResult(false, `还差 ${rewardItem.starCoinCost - getMemberStarCoinBalance(memberId)} 枚星星币。`)
-    }
-
-    if (supabase && isUsingCloudWishes.value && authStore.currentSpaceId) {
-      const client = supabase
-
-      isLoading.value = true
-
-      try {
-        const { error } = await client.rpc('redeem_premium_reward', {
-          target_reward_item_id: rewardItemId,
-        })
-
-        if (error) {
-          return rewardResult(
-            false,
-            isRewardFeatureMissing(error.message)
-              ? `高档奖励兑换失败：${error.message}。如果你刚更新前端，请先执行新的 Supabase 奖励 migration。`
-              : `高档奖励兑换失败：${error.message}`,
-          )
-        }
-
-        await syncFromSupabase(authStore.currentSpaceId)
-        return rewardResult(true, `已用 ${rewardItem.starCoinCost} 枚星星币兑换「${rewardItem.title}」。`)
-      } finally {
-        isLoading.value = false
-      }
-    }
-
-    rewardClaims.value.unshift(
-      createRewardClaimRecord({
-        claimKind: 'premium_redeem',
-        noteSnapshot: rewardItem.note,
-        ownerId: memberId,
-        quantity: 1,
-        rewardItemId: rewardItem.id,
-        starCoinDelta: -rewardItem.starCoinCost,
-        titleSnapshot: rewardItem.title,
-      }),
-    )
-
-    return rewardResult(true, `已用 ${rewardItem.starCoinCost} 枚星星币兑换「${rewardItem.title}」。`)
+    return result
   }
 
   async function toggleDone(id: string) {
-    const wish = findById(id)
+    const result = await toggleDoneWrite({
+      supabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      currentSpaceId: authStore.currentSpaceId,
+      wish: findById(id),
+      wishId: id,
+      runCloudMutation,
+    })
 
-    if (!wish) {
-      return false
+    if (result && typeof result === 'object' && 'localWish' in result) {
+      wishes.value = wishes.value.map((wish) => wish.id === id ? result.localWish : wish)
+      return true
     }
 
-    if (supabase && isUsingCloudWishes.value) {
-      const client = supabase
-
-      return runCloudMutation(
-        async () =>
-          client
-            .from('wishes')
-            .update({
-              completed_at: wish.status === 'done' ? null : new Date().toISOString(),
-              status: wish.status === 'done' ? 'active' : 'done',
-            })
-            .eq('id', id),
-        '愿望状态已同步到 Supabase。',
-      )
-    }
-
-    const now = new Date().toISOString()
-    wish.status = wish.status === 'done' ? 'active' : 'done'
-    wish.completedAt = wish.status === 'done' ? now : null
-    wish.updatedAt = now
-    return true
+    return result
   }
 
   async function castWishCoin(id: string) {
-    const wish = findById(id)
-    const memberId = authStore.currentMemberId || authStore.currentMember?.id
+    const result = await castWishCoinWrite({
+      supabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      currentSpaceId: authStore.currentSpaceId,
+      wish: findById(id),
+      wishId: id,
+      memberId: authStore.currentMemberId || authStore.currentMember?.id,
+      currentMemberRemainingCoins: currentMemberRemainingCoins.value,
+      currentWishCoinCycleKey: currentWishCoinCycle.value.key,
+      onLoadingChange: (value) => {
+        isLoading.value = value
+      },
+      onSyncMessage: (value) => {
+        syncMessage.value = value
+      },
+      syncFromSupabase,
+    })
 
-    if (!wish || !memberId) {
-      return false
+    if (result && typeof result === 'object' && 'localCoin' in result) {
+      wishCoins.value.unshift(result.localCoin)
+      wishes.value = wishes.value.map((wish) => wish.id === id ? result.localWish : wish)
+      syncMessage.value = result.message
+      return true
     }
 
-    if (wish.status === 'done') {
-      syncMessage.value = '这个愿望已经实现了，不需要再为它投币。'
-      return false
-    }
-
-    if (currentMemberRemainingCoins.value <= 0) {
-      syncMessage.value = '这周分给你的 3 枚愿望币已经投完了。'
-      return false
-    }
-
-    if (supabase && isUsingCloudWishes.value) {
-      const client = supabase
-
-      isLoading.value = true
-
-      try {
-        const { error } = await client.rpc('cast_wish_coin', {
-          target_wish_id: id,
-        })
-
-        if (error) {
-          syncMessage.value = /cast_wish_coin|wish_coins/i.test(error.message)
-            ? `投币失败：${error.message}。如果你刚更新前端，请先执行新的 Supabase 愿望币 migration。`
-            : `投币失败：${error.message}`
-          return false
-        }
-
-        await syncFromSupabase(authStore.currentSpaceId)
-        syncMessage.value = '已为这个愿望投出 1 枚愿望币。'
-        return true
-      } finally {
-        isLoading.value = false
-      }
-    }
-
-    wishCoins.value.unshift(
-      createWishCoinRecord({
-        cycleKey: currentWishCoinCycle.value.key,
-        voterId: memberId,
-        wishId: id,
-      }),
-    )
-    wish.starred = true
-    syncMessage.value = currentMemberRemainingCoins.value === 0
-      ? '已投出这周最后 1 枚愿望币。'
-      : '已为这个愿望投出 1 枚愿望币。'
-    return true
+    return result
   }
 
   async function toggleStar(id: string) {
@@ -3772,35 +2107,26 @@ export const useWishStore = defineStore('wishes', () => {
 
   async function setWishCountProgress(id: string, nextCurrent: number) {
     const wish = findById(id)
+    const normalizedCurrent = wish ? Math.min(normalizeProgressNumber(nextCurrent), Math.max(1, wish.progressTarget)) : 0
+    const result = await setWishCountProgressWrite({
+      supabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      wish,
+      wishId: id,
+      normalizedCurrent,
+      runCloudMutation,
+      onSyncMessage: (value) => {
+        syncMessage.value = value
+      },
+    })
 
-    if (!wish || wish.progressMode !== 'count') {
-      return false
-    }
-
-    const normalizedCurrent = Math.min(normalizeProgressNumber(nextCurrent), Math.max(1, wish.progressTarget))
-
-    if (normalizedCurrent === wish.progressCurrent) {
-      syncMessage.value = normalizedCurrent >= Math.max(1, wish.progressTarget) ? '已经走到这个阶段的终点了。' : '进度没有变化。'
+    if (result && typeof result === 'object' && 'localWish' in result) {
+      wishes.value = wishes.value.map((entry) => entry.id === id ? result.localWish : entry)
+      syncMessage.value = result.message
       return true
     }
 
-    if (supabase && isUsingCloudWishes.value) {
-      const client = supabase
-
-      return runCloudMutation(
-        async () =>
-          client
-            .from('wishes')
-            .update({ progress_current: normalizedCurrent })
-            .eq('id', id),
-        '进度已同步到 Supabase。',
-      )
-    }
-
-    wish.progressCurrent = normalizedCurrent
-    wish.updatedAt = new Date().toISOString()
-    syncMessage.value = '已更新当前进度。'
-    return true
+    return result
   }
 
   async function incrementWishCountProgress(id: string, delta = 1) {
@@ -3814,387 +2140,176 @@ export const useWishStore = defineStore('wishes', () => {
   }
 
   async function addWishStep(wishId: string, title: string) {
-    const wish = findById(wishId)
-    const normalizedTitle = title.trim()
+    const result = await addWishStepWrite({
+      supabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      wish: findById(wishId),
+      wishId,
+      normalizedTitle: title.trim(),
+      runCloudMutation,
+      onSyncMessage: (value) => {
+        syncMessage.value = value
+      },
+    })
 
-    if (!wish || wish.progressMode !== 'steps') {
-      return false
+    if (result && typeof result === 'object' && 'localWish' in result) {
+      wishes.value = wishes.value.map((wish) => wish.id === wishId ? result.localWish : wish)
+      syncMessage.value = result.message
+      return true
     }
 
-    if (!normalizedTitle) {
-      syncMessage.value = '先写下这个小步骤是什么。'
-      return false
-    }
-
-    if (supabase && isUsingCloudWishes.value) {
-      const client = supabase
-
-      return runCloudMutation(
-        async () =>
-          client.from('wish_steps').insert({
-            is_done: false,
-            sort_order: wish.steps.length + 1,
-            title: normalizedTitle,
-            wish_id: wishId,
-          }),
-        '小步骤已同步到 Supabase。',
-      )
-    }
-
-    wish.steps.push(createWishStep({ title: normalizedTitle }))
-    wish.updatedAt = new Date().toISOString()
-    syncMessage.value = '已添加一个小步骤。'
-    return true
+    return result
   }
 
   async function toggleWishStep(wishId: string, stepId: string) {
     const wish = findById(wishId)
-    const step = wish?.steps.find((item) => item.id === stepId)
+    const result = await toggleWishStepWrite({
+      supabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      wish,
+      wishId,
+      stepId,
+      step: wish?.steps.find((item) => item.id === stepId),
+      runCloudMutation,
+    })
 
-    if (!wish || !step || wish.progressMode !== 'steps') {
-      return false
+    if (result && typeof result === 'object' && 'localWish' in result) {
+      wishes.value = wishes.value.map((entry) => entry.id === wishId ? result.localWish : entry)
+      syncMessage.value = result.message
+      return true
     }
 
-    const nextDone = !step.isDone
-
-    if (supabase && isUsingCloudWishes.value) {
-      const client = supabase
-
-      return runCloudMutation(
-        async () =>
-          client
-            .from('wish_steps')
-            .update({ is_done: nextDone })
-            .eq('id', stepId)
-            .eq('wish_id', wishId),
-        nextDone ? '已完成一个小步骤。' : '这个步骤已经放回路上。',
-      )
-    }
-
-    step.isDone = nextDone
-    step.updatedAt = new Date().toISOString()
-    wish.updatedAt = new Date().toISOString()
-    syncMessage.value = nextDone ? '已完成一个小步骤。' : '这个步骤已经放回路上。'
-    return true
+    return result
   }
 
   async function deleteWishStep(wishId: string, stepId: string) {
-    const wish = findById(wishId)
-    const nextSteps = wish?.steps.filter((step) => step.id !== stepId) ?? []
+    const result = await deleteWishStepWrite({
+      supabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      wish: findById(wishId),
+      wishId,
+      stepId,
+      runCloudMutation,
+    })
 
-    if (!wish || nextSteps.length === wish.steps.length || wish.progressMode !== 'steps') {
-      return false
+    if (result && typeof result === 'object' && 'localWish' in result) {
+      wishes.value = wishes.value.map((entry) => entry.id === wishId ? result.localWish : entry)
+      syncMessage.value = result.message
+      return true
     }
 
-    if (supabase && isUsingCloudWishes.value) {
-      const client = supabase
-
-      return runCloudMutation(
-        async () =>
-          client
-            .from('wish_steps')
-            .delete()
-            .eq('id', stepId)
-            .eq('wish_id', wishId),
-        '已删除这个小步骤。',
-      )
-    }
-
-    wish.steps = nextSteps
-    wish.updatedAt = new Date().toISOString()
-    syncMessage.value = '已删除这个小步骤。'
-    return true
+    return result
   }
 
   async function addComment(wishId: string, authorId: string, message: string, files: File[] = []): Promise<WishActionResult> {
-    const wish = findById(wishId)
-    const normalizedMessage = message.trim()
+    const activeSupabase = supabase
 
-    if (!wish) {
-      return {
-        message: '没有找到对应的愿望，暂时不能发送留言。',
-        ok: false,
+    const result = await addCommentWrite({
+      supabase: activeSupabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      currentSpaceId: authStore.currentSpaceId,
+      wish: findById(wishId),
+      wishId,
+      authorId: authStore.currentMemberId || authorId,
+      message,
+      files,
+      uploadCommentImages: (commentId, nextAuthorId, nextFiles) =>
+        uploadCommentImagesWrite({
+          supabase: activeSupabase!,
+          imageBucket: WISH_COMMENT_IMAGE_BUCKET,
+          commentId,
+          authorId: nextAuthorId,
+          files: nextFiles,
+          createStoragePath: createWishCommentImageStoragePath,
+          prepareUpload: prepareWishImageUpload,
+          isAllowedType: (mimeType) => WISH_IMAGE_ALLOWED_TYPES.has(mimeType),
+          sourceMaxBytes: WISH_IMAGE_SOURCE_MAX_BYTES,
+          uploadMaxBytes: WISH_IMAGE_MAX_BYTES,
+        }),
+      onLoadingChange: (value) => {
+        isLoading.value = value
+      },
+      onSyncMessage: (value) => {
+        syncMessage.value = value
+      },
+      syncFromSupabase,
+    })
+
+    if ('localComment' in result) {
+      const wish = findById(wishId)
+
+      if (wish && result.localComment) {
+        wish.comments.unshift(result.localComment)
+        wish.updatedAt = new Date().toISOString()
+        syncMessage.value = '留言已保存到本地。'
       }
     }
 
-    if (!normalizedMessage) {
-      return {
-        message: '留言内容不能为空。',
-        ok: false,
-      }
-    }
-
-    if (files.length && (!supabase || !isUsingCloudWishes.value || !authStore.currentSpaceId)) {
-      return {
-        message: '留言图片仅在已连接的 Supabase 云端空间中可用。',
-        ok: false,
-      }
-    }
-
-    if (supabase && isUsingCloudWishes.value) {
-      const client = supabase
-      const nextAuthorId = authStore.currentMemberId || authorId
-
-      isLoading.value = true
-
-      try {
-        const { data: insertedComment, error: commentError } = await client
-          .from('wish_comments')
-          .insert({
-            author_id: nextAuthorId,
-            body: normalizedMessage,
-            wish_id: wishId,
-          })
-          .select('id')
-          .single()
-
-        if (commentError || !insertedComment?.id) {
-          syncMessage.value = `云端写入失败：${commentError?.message ?? '留言创建失败。'}`
-
-          return {
-            message: syncMessage.value || '留言发送失败，请稍后重试。',
-            ok: false,
-          }
-        }
-
-        let uploadedCount = 0
-        let compressedCount = 0
-        const skippedFiles: string[] = []
-        const failedFiles: string[] = []
-        let nextSortOrder = 0
-
-        for (const file of files) {
-          const normalizedType = file.type.trim().toLowerCase()
-
-          if (!WISH_IMAGE_ALLOWED_TYPES.has(normalizedType) || file.size > WISH_IMAGE_SOURCE_MAX_BYTES) {
-            skippedFiles.push(file.name)
-            continue
-          }
-
-          const preparedUpload = await prepareWishImageUpload(file)
-          const uploadFile = preparedUpload.file
-          const uploadType = uploadFile.type.trim().toLowerCase()
-
-          if (!WISH_IMAGE_ALLOWED_TYPES.has(uploadType) || uploadFile.size > WISH_IMAGE_MAX_BYTES) {
-            skippedFiles.push(file.name)
-            continue
-          }
-
-          nextSortOrder += 1
-          const storagePath = createWishCommentImageStoragePath(insertedComment.id, nextAuthorId, uploadFile.name, uploadType)
-
-          const { error: uploadError } = await client.storage.from(WISH_COMMENT_IMAGE_BUCKET).upload(storagePath, uploadFile, {
-            cacheControl: '3600',
-            contentType: uploadType,
-            upsert: false,
-          })
-
-          if (uploadError) {
-            nextSortOrder -= 1
-            failedFiles.push(file.name)
-            continue
-          }
-
-          const { error: rowError } = await client.from('wish_comment_images').insert({
-            comment_id: insertedComment.id,
-            created_by: nextAuthorId,
-            file_name: uploadFile.name.trim() || 'image',
-            mime_type: uploadType,
-            size_bytes: uploadFile.size,
-            sort_order: nextSortOrder,
-            storage_path: storagePath,
-          })
-
-          if (rowError) {
-            nextSortOrder -= 1
-            failedFiles.push(file.name)
-            await client.storage.from(WISH_COMMENT_IMAGE_BUCKET).remove([storagePath])
-            continue
-          }
-
-          uploadedCount += 1
-
-          if (preparedUpload.compressed) {
-            compressedCount += 1
-          }
-        }
-
-        await syncFromSupabase(authStore.currentSpaceId)
-
-        if (!files.length) {
-          syncMessage.value = '留言已同步到 Supabase。'
-
-          return {
-            message: '这句近况已经送出。',
-            ok: true,
-          }
-        }
-
-        if (uploadedCount === files.length && !failedFiles.length && !skippedFiles.length) {
-          syncMessage.value = compressedCount
-            ? `留言和 ${uploadedCount} 张图片已同步到 Supabase，其中 ${compressedCount} 张已自动压缩。`
-            : `留言和 ${uploadedCount} 张图片已同步到 Supabase。`
-
-          return {
-            message: '这句近况和图片已经送出。',
-            ok: true,
-          }
-        }
-
-        syncMessage.value = `这句近况已经送出；${uploadedCount} 张图片上传成功${compressedCount ? `，其中 ${compressedCount} 张已自动压缩` : ''}${failedFiles.length ? `；${failedFiles.length} 张失败` : ''}${skippedFiles.length ? `；${skippedFiles.length} 张因格式或大小限制被跳过` : ''}。`
-
-        return {
-          message: syncMessage.value,
-          ok: true,
-        }
-      } finally {
-        isLoading.value = false
-      }
-    }
-
-    wish.comments.unshift(
-      createWishComment({
-        authorId,
-        message: normalizedMessage,
-      }),
-    )
-    wish.updatedAt = new Date().toISOString()
-    syncMessage.value = '留言已保存到本地。'
-
-    return {
-      message: '这句近况已经记下。',
-      ok: true,
-    }
+    return result
   }
 
   async function updateComment(wishId: string, commentId: string, nextMessage: string): Promise<WishActionResult> {
-    const wish = findById(wishId)
-    const normalizedMessage = nextMessage.trim()
-    const currentMemberId = getCurrentMemberId()
-    const comment = wish?.comments.find((entry) => entry.id === commentId)
+    const result = await updateCommentWrite({
+      supabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      currentSpaceId: authStore.currentSpaceId,
+      wishId,
+      commentId,
+      currentMemberId: getCurrentMemberId(),
+      wish: findById(wishId),
+      onLoadingChange: (value) => {
+        isLoading.value = value
+      },
+      onSyncMessage: (value) => {
+        syncMessage.value = value
+      },
+      syncFromSupabase,
+      nextMessage,
+    })
 
-    if (!wish || !comment || !currentMemberId) {
-      return {
-        message: '当前没有可编辑的留言。',
-        ok: false,
-      }
-    }
+    if ('updatedMessage' in result) {
+      const wish = findById(wishId)
+      const comment = wish?.comments.find((entry) => entry.id === commentId)
 
-    if (comment.authorId !== currentMemberId) {
-      return {
-        message: '只能编辑自己写下的留言。',
-        ok: false,
-      }
-    }
-
-    if (!normalizedMessage) {
-      return {
-        message: '留言内容不能为空。',
-        ok: false,
-      }
-    }
-
-    if (supabase && isUsingCloudWishes.value) {
-      isLoading.value = true
-
-      try {
-        const { error } = await supabase
-          .from('wish_comments')
-          .update({ body: normalizedMessage })
-          .eq('id', commentId)
-          .eq('wish_id', wishId)
-
-        if (error) {
-          const message = `留言编辑失败：${error.message}`
-          syncMessage.value = message
-
-          return {
-            message,
-            ok: false,
-          }
-        }
-
-        await syncFromSupabase(authStore.currentSpaceId)
+      if (wish && comment && result.updatedMessage) {
+        comment.message = result.updatedMessage
+        wish.updatedAt = new Date().toISOString()
         syncMessage.value = '留言已更新。'
-
-        return {
-          message: '这句留言已经改好了。',
-          ok: true,
-        }
-      } finally {
-        isLoading.value = false
       }
     }
 
-    comment.message = normalizedMessage
-    wish.updatedAt = new Date().toISOString()
-    syncMessage.value = '留言已更新。'
-
-    return {
-      message: '这句留言已经改好了。',
-      ok: true,
-    }
+    return result
   }
 
   async function deleteComment(wishId: string, commentId: string): Promise<WishActionResult> {
-    const wish = findById(wishId)
-    const currentMemberId = getCurrentMemberId()
-    const comment = wish?.comments.find((entry) => entry.id === commentId)
+    const result = await deleteCommentWrite({
+      supabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      currentSpaceId: authStore.currentSpaceId,
+      wishId,
+      commentId,
+      currentMemberId: getCurrentMemberId(),
+      wish: findById(wishId),
+      onLoadingChange: (value) => {
+        isLoading.value = value
+      },
+      onSyncMessage: (value) => {
+        syncMessage.value = value
+      },
+      syncFromSupabase,
+    })
 
-    if (!wish || !comment || !currentMemberId) {
-      return {
-        message: '当前没有可删除的留言。',
-        ok: false,
-      }
-    }
+    if ('deletedCommentId' in result) {
+      const wish = findById(wishId)
 
-    if (comment.authorId !== currentMemberId) {
-      return {
-        message: '只能删除自己写下的留言。',
-        ok: false,
-      }
-    }
-
-    if (supabase && isUsingCloudWishes.value) {
-      isLoading.value = true
-
-      try {
-        const { error } = await supabase
-          .from('wish_comments')
-          .delete()
-          .eq('id', commentId)
-          .eq('wish_id', wishId)
-
-        if (error) {
-          const message = `留言删除失败：${error.message}`
-          syncMessage.value = message
-
-          return {
-            message,
-            ok: false,
-          }
-        }
-
-        await syncFromSupabase(authStore.currentSpaceId)
+      if (wish) {
+        wish.comments = wish.comments.filter((entry) => entry.id !== result.deletedCommentId)
+        wish.updatedAt = new Date().toISOString()
         syncMessage.value = '留言已删除。'
-
-        return {
-          message: '这句留言已经移走了。',
-          ok: true,
-        }
-      } finally {
-        isLoading.value = false
       }
     }
 
-    wish.comments = wish.comments.filter((entry) => entry.id !== commentId)
-    wish.updatedAt = new Date().toISOString()
-    syncMessage.value = '留言已删除。'
-
-    return {
-      message: '这句留言已经移走了。',
-      ok: true,
-    }
+    return result
   }
 
   async function toggleThreadReaction(threadId: string, emoji: string): Promise<WishActionResult> {
@@ -4292,346 +2407,167 @@ export const useWishStore = defineStore('wishes', () => {
   }
 
   async function uploadWishImages(wishId: string, files: File[]) {
-    const wish = findById(wishId)
-
-    if (!wish || !files.length) {
-      return false
-    }
-
-    if (wish.images.length >= WISH_MAX_IMAGE_COUNT_PER_WISH) {
-      syncMessage.value = '当前详情页只保留 1 张封面图；先删除旧图后再上传新图。'
-      return false
-    }
-
-    if (!supabase || !isUsingCloudWishes.value || !authStore.currentSpaceId) {
-      syncMessage.value = '图片上传仅在已连接的 Supabase 云端空间中可用。'
-      return false
-    }
-
-    const uploaderId = authStore.currentMemberId || authStore.currentMember?.id
-
-    if (!uploaderId) {
-      syncMessage.value = '当前会话缺少上传身份，请重新登录后再试。'
-      return false
-    }
-
-    isLoading.value = true
-
-    let uploadedCount = 0
-    let compressedCount = 0
-    const skippedFiles: string[] = []
-    const failedFiles: string[] = []
-    let nextSortOrder = wish.images.length
-
-    try {
-      for (const file of files.slice(0, WISH_MAX_IMAGE_COUNT_PER_WISH)) {
-        const normalizedType = file.type.trim().toLowerCase()
-
-        if (!WISH_IMAGE_ALLOWED_TYPES.has(normalizedType) || file.size > WISH_IMAGE_SOURCE_MAX_BYTES) {
-          skippedFiles.push(file.name)
-          continue
-        }
-
-        const preparedUpload = await prepareWishImageUpload(file)
-        const uploadFile = preparedUpload.file
-        const uploadType = uploadFile.type.trim().toLowerCase()
-
-        if (!WISH_IMAGE_ALLOWED_TYPES.has(uploadType) || uploadFile.size > WISH_IMAGE_MAX_BYTES) {
-          skippedFiles.push(file.name)
-          continue
-        }
-
-        nextSortOrder += 1
-        const storagePath = createWishImageStoragePath(wishId, uploaderId, uploadFile.name, uploadType)
-
-        const { error: uploadError } = await supabase.storage.from(WISH_IMAGE_BUCKET).upload(storagePath, uploadFile, {
-          cacheControl: '3600',
-          contentType: uploadType,
-          upsert: false,
-        })
-
-        if (uploadError) {
-          nextSortOrder -= 1
-          failedFiles.push(file.name)
-          continue
-        }
-
-        const { error: rowError } = await supabase.from('wish_images').insert({
-          created_by: uploaderId,
-          file_name: uploadFile.name.trim() || 'image',
-          mime_type: uploadType,
-          size_bytes: uploadFile.size,
-          sort_order: nextSortOrder,
-          storage_path: storagePath,
-          wish_id: wishId,
-        })
-
-        if (rowError) {
-          nextSortOrder -= 1
-          failedFiles.push(file.name)
-          await supabase.storage.from(WISH_IMAGE_BUCKET).remove([storagePath])
-          continue
-        }
-
-        uploadedCount += 1
-
-        if (preparedUpload.compressed) {
-          compressedCount += 1
-        }
-      }
-
-      if (uploadedCount) {
-        await syncFromSupabase(authStore.currentSpaceId)
-      }
-
-      if (uploadedCount && !failedFiles.length && !skippedFiles.length) {
-        syncMessage.value = compressedCount
-          ? `已上传 ${uploadedCount} 张图片到 Supabase，其中 ${compressedCount} 张已自动压缩。`
-          : `已上传 ${uploadedCount} 张图片到 Supabase。`
-        return true
-      }
-
-      if (uploadedCount) {
-        syncMessage.value = `已上传 ${uploadedCount} 张图片${compressedCount ? `，其中 ${compressedCount} 张已自动压缩` : ''}；${failedFiles.length} 张失败，${skippedFiles.length} 张因格式或大小限制被跳过。`
-        return true
-      }
-
-      syncMessage.value = failedFiles.length || skippedFiles.length
-        ? `没有图片成功上传。${failedFiles.length ? ` 失败 ${failedFiles.length} 张。` : ''}${skippedFiles.length ? ` 跳过 ${skippedFiles.length} 张。` : ''}`
-        : '没有检测到可上传的图片。'
-      return false
-    } finally {
-      isLoading.value = false
-    }
+    return uploadWishImagesWrite({
+      supabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      currentSpaceId: authStore.currentSpaceId,
+      wish: findById(wishId),
+      wishId,
+      uploaderId: authStore.currentMemberId || authStore.currentMember?.id,
+      files,
+      maxImageCountPerWish: WISH_MAX_IMAGE_COUNT_PER_WISH,
+      onLoadingChange: (value) => {
+        isLoading.value = value
+      },
+      onSyncMessage: (value) => {
+        syncMessage.value = value
+      },
+      syncFromSupabase,
+      createStoragePath: createWishImageStoragePath,
+      prepareUpload: prepareWishImageUpload,
+      isAllowedType: (mimeType) => WISH_IMAGE_ALLOWED_TYPES.has(mimeType),
+      sourceMaxBytes: WISH_IMAGE_SOURCE_MAX_BYTES,
+      uploadMaxBytes: WISH_IMAGE_MAX_BYTES,
+      imageBucket: WISH_IMAGE_BUCKET,
+    })
   }
 
   async function deleteWishImage(wishId: string, imageId: string) {
     const wish = findById(wishId)
-    const image = wish?.images.find((item) => item.id === imageId)
-
-    if (!wish || !image) {
-      return false
-    }
-
-    if (!supabase || !isUsingCloudWishes.value || !authStore.currentSpaceId) {
-      syncMessage.value = '图片删除仅在已连接的 Supabase 云端空间中可用。'
-      return false
-    }
-
-    isLoading.value = true
-
-    try {
-      const { error: storageError } = await supabase.storage.from(WISH_IMAGE_BUCKET).remove([image.storagePath])
-
-      if (storageError) {
-        syncMessage.value = `云端图片删除失败：${storageError.message}`
-        return false
-      }
-
-      const { error: rowError } = await supabase.from('wish_images').delete().eq('id', imageId)
-
-      if (rowError) {
-        syncMessage.value = `图片记录删除失败：${rowError.message}`
-        return false
-      }
-
-      await syncFromSupabase(authStore.currentSpaceId)
-      syncMessage.value = '图片已从 Supabase 删除。'
-      return true
-    } finally {
-      isLoading.value = false
-    }
+    return deleteWishImageWrite({
+      supabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      currentSpaceId: authStore.currentSpaceId,
+      imageBucket: WISH_IMAGE_BUCKET,
+      image: wish?.images.find((item) => item.id === imageId),
+      onLoadingChange: (value) => {
+        isLoading.value = value
+      },
+      onSyncMessage: (value) => {
+        syncMessage.value = value
+      },
+      syncFromSupabase,
+    })
   }
 
   async function deleteWishImages(wishId: string, imageIds: string[]) {
-    const wish = findById(wishId)
-    const uniqueImageIds = [...new Set(imageIds)]
-    const selectedImages = wish?.images.filter((image) => uniqueImageIds.includes(image.id)) ?? []
+    const result = await deleteWishImagesWrite({
+      supabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      currentSpaceId: authStore.currentSpaceId,
+      currentMemberId: authStore.currentMemberId,
+      imageBucket: WISH_IMAGE_BUCKET,
+      wish: findById(wishId),
+      wishId,
+      imageIds,
+      onLoadingChange: (value) => {
+        isLoading.value = value
+      },
+      onSyncMessage: (value) => {
+        syncMessage.value = value
+      },
+      syncFromSupabase,
+    })
 
-    if (!wish || !selectedImages.length) {
-      return false
-    }
-
-    if (!supabase || !isUsingCloudWishes.value || !authStore.currentSpaceId) {
-      const selectedIdSet = new Set(uniqueImageIds)
-      wish.images = wish.images.filter((image) => !selectedIdSet.has(image.id))
-      wish.updatedAt = new Date().toISOString()
-      syncMessage.value = `已删除 ${selectedImages.length} 张图片。`
+    if (result && typeof result === 'object' && 'localImages' in result) {
+      const wish = findById(wishId)
+      if (wish) {
+        wish.images = result.localImages
+        wish.updatedAt = new Date().toISOString()
+        syncMessage.value = result.message
+      }
       return true
     }
 
-    const currentMemberId = authStore.currentMemberId
-    const deletableImages = selectedImages.filter((image) => image.createdBy === currentMemberId)
-    const blockedCount = selectedImages.length - deletableImages.length
-
-    if (!deletableImages.length) {
-      syncMessage.value = '选中的图片都不是当前账号上传，暂时不能删除。'
-      return false
-    }
-
-    isLoading.value = true
-
-    try {
-      const { error: storageError } = await supabase.storage
-        .from(WISH_IMAGE_BUCKET)
-        .remove(deletableImages.map((image) => image.storagePath))
-
-      if (storageError) {
-        syncMessage.value = `批量删除图片失败：${storageError.message}`
-        return false
-      }
-
-      const { error: rowError } = await supabase
-        .from('wish_images')
-        .delete()
-        .eq('wish_id', wishId)
-        .in('id', deletableImages.map((image) => image.id))
-
-      if (rowError) {
-        syncMessage.value = `批量删除图片记录失败：${rowError.message}`
-        return false
-      }
-
-      await syncFromSupabase(authStore.currentSpaceId)
-      syncMessage.value = blockedCount
-        ? `已删除 ${deletableImages.length} 张图片；${blockedCount} 张不是当前账号上传，未删除。`
-        : `已删除 ${deletableImages.length} 张图片。`
-      return true
-    } finally {
-      isLoading.value = false
-    }
+    return result
   }
 
   async function updateWishImageNote(wishId: string, imageId: string, nextNote: string) {
-    const wish = findById(wishId)
-    const image = wish?.images.find((item) => item.id === imageId)
-    const normalizedNote = nextNote.trim()
+    const result = await updateWishImageNoteWrite({
+      supabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      currentSpaceId: authStore.currentSpaceId,
+      wish: findById(wishId),
+      imageId,
+      nextNote,
+      onSyncMessage: (value) => {
+        syncMessage.value = value
+      },
+      runCloudMutation,
+    })
 
-    if (!wish || !image) {
-      return false
-    }
-
-    if (normalizedNote.length > 240) {
-      syncMessage.value = '图片备注最多 240 个字。'
-      return false
-    }
-
-    if (!supabase || !isUsingCloudWishes.value || !authStore.currentSpaceId) {
-      image.note = normalizedNote
-      wish.updatedAt = new Date().toISOString()
-      syncMessage.value = normalizedNote ? '图片备注已保存。' : '图片备注已清空。'
+    if (result && typeof result === 'object' && 'localNote' in result) {
+      const wish = findById(wishId)
+      const image = wish?.images.find((item) => item.id === imageId)
+      if (wish && image) {
+        image.note = result.localNote
+        wish.updatedAt = new Date().toISOString()
+        syncMessage.value = result.message
+      }
       return true
     }
 
-    const client = supabase
-
-    return runCloudMutation(
-      async () =>
-        client.rpc('update_wish_image_note', {
-          next_note: normalizedNote,
-          target_image_id: imageId,
-          target_wish_id: wishId,
-        }),
-      normalizedNote ? '图片备注已保存。' : '图片备注已清空。',
-    )
+    return result
   }
 
   async function setWishCoverImage(wishId: string, imageId: string) {
-    const wish = findById(wishId)
-    const imageIndex = wish?.images.findIndex((item) => item.id === imageId) ?? -1
+    const result = await setWishCoverImageWrite({
+      supabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      currentSpaceId: authStore.currentSpaceId,
+      wish: findById(wishId),
+      imageId,
+      onLoadingChange: (value) => {
+        isLoading.value = value
+      },
+      onSyncMessage: (value) => {
+        syncMessage.value = value
+      },
+      syncFromSupabase,
+    })
 
-    if (!wish || imageIndex < 0) {
-      return false
-    }
-
-    if (imageIndex === 0) {
-      syncMessage.value = '当前图片已经是首图。'
-      return true
-    }
-
-    if (!supabase || !isUsingCloudWishes.value || !authStore.currentSpaceId) {
-      const [coverImage] = wish.images.splice(imageIndex, 1)
-
-      if (!coverImage) {
-        return false
+    if (result && typeof result === 'object' && 'localImages' in result) {
+      const wish = findById(wishId)
+      if (wish) {
+        wish.images = result.localImages
+        wish.updatedAt = new Date().toISOString()
+        syncMessage.value = result.message
       }
-
-      wish.images.unshift(coverImage)
-      wish.updatedAt = new Date().toISOString()
-      syncMessage.value = '已将当前图片设为首图。'
       return true
     }
 
-    isLoading.value = true
-
-    try {
-      const { error } = await supabase.rpc('set_wish_image_cover', {
-        target_image_id: imageId,
-        target_wish_id: wishId,
-      })
-
-      if (error) {
-        syncMessage.value = `首图更新失败：${error.message}`
-        return false
-      }
-
-      await syncFromSupabase(authStore.currentSpaceId)
-      syncMessage.value = '已将当前图片设为首图。'
-      return true
-    } finally {
-      isLoading.value = false
-    }
+    return result
   }
 
   async function reorderWishImages(wishId: string, orderedImageIds: string[]) {
-    const wish = findById(wishId)
+    const result = await reorderWishImagesWrite({
+      supabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      currentSpaceId: authStore.currentSpaceId,
+      wish: findById(wishId),
+      wishId,
+      orderedImageIds,
+      reorderImagesByIds,
+      onLoadingChange: (value) => {
+        isLoading.value = value
+      },
+      onSyncMessage: (value) => {
+        syncMessage.value = value
+      },
+      syncFromSupabase,
+    })
 
-    if (!wish || !orderedImageIds.length) {
-      return false
-    }
-
-    const originalImages = [...wish.images]
-    const reorderedImages = reorderImagesByIds(originalImages, orderedImageIds)
-
-    if (!reorderedImages) {
-      syncMessage.value = '图片排序失败：排序结果不完整。'
-      return false
-    }
-
-    const isSameOrder = reorderedImages.every((image, index) => image.id === originalImages[index]?.id)
-
-    if (isSameOrder) {
-      return true
-    }
-
-    wish.images = reorderedImages
-
-    if (!supabase || !isUsingCloudWishes.value || !authStore.currentSpaceId) {
-      wish.updatedAt = new Date().toISOString()
-      syncMessage.value = '已更新图片顺序。'
-      return true
-    }
-
-    isLoading.value = true
-
-    try {
-      const { error } = await supabase.rpc('set_wish_image_order', {
-        ordered_image_ids: orderedImageIds,
-        target_wish_id: wishId,
-      })
-
-      if (error) {
-        wish.images = originalImages
-        syncMessage.value = `图片排序失败：${error.message}`
-        return false
+    if (result && typeof result === 'object' && 'localImages' in result) {
+      const wish = findById(wishId)
+      if (wish) {
+        wish.images = result.localImages
+        wish.updatedAt = new Date().toISOString()
+        syncMessage.value = result.message
       }
-
-      await syncFromSupabase(authStore.currentSpaceId)
-      syncMessage.value = '已更新图片顺序。'
       return true
-    } finally {
-      isLoading.value = false
     }
+
+    return result
   }
 
   function resetToSeed() {

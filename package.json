@@ -11,6 +11,7 @@
     "test:compose-detail": "npm run build && playwright test tests/visual-screenshots.spec.ts --grep \"compose|wish-detail|space\" && playwright test tests/compose-detail-acceptance.spec.ts",
     "test:home-list": "npm run build && playwright test tests/visual-screenshots.spec.ts --grep \"home|list\" && playwright test tests/home-list-acceptance.spec.ts",
     "test:screenshots": "npm run build && playwright test tests/visual-screenshots.spec.ts",
+    "test:unit": "vitest run",
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
@@ -27,6 +28,7 @@
     "@vue/tsconfig": "^0.9.1",
     "typescript": "~6.0.2",
     "vite": "^8.0.10",
+    "vitest": "^4.1.8",
     "vue-tsc": "^3.2.7"
   }
 }
