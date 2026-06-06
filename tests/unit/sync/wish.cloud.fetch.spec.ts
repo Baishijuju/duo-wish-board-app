@@ -20,6 +20,7 @@ describe('wish.cloud.fetch', () => {
     }
 
     const result = await fetchWishCloudRows(supabase as never, 'space-1', {
+      capabilities: null,
       isWishThreadFeatureMissing: () => false,
       onWarningMessage: vi.fn(),
     })
@@ -28,5 +29,36 @@ describe('wish.cloud.fetch', () => {
     if (!result.ok) {
       expect(result.message).toContain('云端愿望同步失败')
     }
+  })
+
+  it('uses reduced wish select when progress capability is known missing', async () => {
+    const select = vi.fn().mockReturnValue({
+      eq: () => ({
+        order: vi.fn().mockResolvedValue({ data: [], error: null }),
+      }),
+    })
+    const supabase = {
+      from: vi.fn(() => ({ select })),
+    }
+
+    await fetchWishCloudRows(supabase as never, 'space-1', {
+      capabilities: {
+        hasBoundSpaceMemberships: false,
+        hasMonthlySnapshotBackfill: false,
+        hasMonthlySnapshots: false,
+        hasRewardPools: false,
+        hasUnifiedThreads: false,
+        hasWishCoins: false,
+        hasWishCommentImages: false,
+        hasWishImageCover: false,
+        hasWishImageNote: false,
+        hasWishImageOrder: false,
+        hasWishProgress: false,
+      },
+      isWishThreadFeatureMissing: () => false,
+      onWarningMessage: vi.fn(),
+    })
+
+    expect(select).toHaveBeenCalledWith('id, space_id, owner_id, title, category, note, priority, scope, status, is_starred, due_date, completed_at, created_at, updated_at')
   })
 })

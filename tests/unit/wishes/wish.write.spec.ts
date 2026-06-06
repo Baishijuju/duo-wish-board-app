@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { addWishLocal, deleteWishLocal, runCloudMutation, updateWishLocal } from '../../../src/modules/wishes/wish.write'
+import { addWishCloud, addWishLocal, deleteWishLocal, runCloudMutation, updateWishLocal } from '../../../src/modules/wishes/wish.write'
 
 describe('wish.write', () => {
   it('adds a local wish with normalized initial steps', () => {
@@ -97,5 +97,48 @@ describe('wish.write', () => {
     expect(result).toBe(true)
     expect(syncFromSupabase).toHaveBeenCalledWith('space-1')
     expect(onSyncMessage).toHaveBeenLastCalledWith('同步成功')
+  })
+
+  it('omits progress fields when progress capability is unavailable', async () => {
+    const insert = vi.fn().mockReturnValue({
+      select: () => ({
+        single: vi.fn().mockResolvedValue({ data: { id: 'wish-1' }, error: null }),
+      }),
+    })
+
+    const supabase = {
+      from: vi.fn(() => ({ insert })),
+    }
+
+    await addWishCloud({
+      supabase: supabase as never,
+      currentSpaceId: 'space-1',
+      ownerId: 'member-a',
+      includeProgressFields: false,
+      draft: {
+        title: '旅行',
+        category: '生活',
+        priority: 'high',
+        dueDate: '',
+        note: '记一下',
+        ownerId: 'member-a',
+        scope: 'shared',
+        progressMode: 'steps',
+        progressCurrent: 2,
+        progressTarget: 3,
+        progressUnit: '次',
+      },
+      initialStepTitles: [],
+      onLoadingChange: vi.fn(),
+      onSyncMessage: vi.fn(),
+      syncFromSupabase: vi.fn().mockResolvedValue(true),
+    })
+
+    expect(insert).toHaveBeenCalledWith(expect.not.objectContaining({
+      progress_current: expect.anything(),
+      progress_mode: expect.anything(),
+      progress_target: expect.anything(),
+      progress_unit: expect.anything(),
+    }))
   })
 })

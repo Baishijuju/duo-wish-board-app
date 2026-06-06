@@ -281,6 +281,7 @@ export async function castWishCoinWrite(options: {
   memberId: string | null | undefined
   currentMemberRemainingCoins: number
   currentWishCoinCycleKey: string
+  allowsLegacyCapabilityFallback: boolean
   onLoadingChange: (value: boolean) => void
   onSyncMessage: (message: string) => void
   syncFromSupabase: (spaceId: string) => Promise<boolean>
@@ -307,7 +308,7 @@ export async function castWishCoinWrite(options: {
       })
 
       if (error) {
-        options.onSyncMessage(/cast_wish_coin|wish_coins/i.test(error.message)
+        options.onSyncMessage(options.allowsLegacyCapabilityFallback && /cast_wish_coin|wish_coins/i.test(error.message)
           ? `投币失败：${error.message}。如果你刚更新前端，请先执行新的 Supabase 愿望币 migration。`
           : `投币失败：${error.message}`)
         return false

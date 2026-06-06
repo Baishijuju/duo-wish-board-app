@@ -38,6 +38,7 @@ export interface WishRowLike {
   completed_at: string | null
   created_at: string
   updated_at: string
+  [key: string]: unknown
 }
 
 export interface WishCommentRowLike {
@@ -123,6 +124,10 @@ export function createWishRecordFromRow(
   imageUrlMap: Map<string, string>,
   commentImageUrlMap: Map<string, string>,
 ) {
+  const normalizedProgressMode = row.progress_mode === 'count' || row.progress_mode === 'steps' || row.progress_mode === 'none'
+    ? row.progress_mode
+    : 'none'
+
   return createWishRecord({
     id: row.id,
     title: row.title,
@@ -134,10 +139,10 @@ export function createWishRecordFromRow(
     scope: row.scope,
     status: row.status,
     starred: row.is_starred || coinRows.some((coin) => coin.wish_id === row.id),
-    progressMode: row.progress_mode ?? 'none',
-    progressCurrent: row.progress_current ?? 0,
-    progressTarget: row.progress_target ?? 0,
-    progressUnit: row.progress_unit ?? '',
+    progressMode: normalizedProgressMode,
+    progressCurrent: typeof row.progress_current === 'number' ? row.progress_current : 0,
+    progressTarget: typeof row.progress_target === 'number' ? row.progress_target : 0,
+    progressUnit: typeof row.progress_unit === 'string' ? row.progress_unit : '',
     completedAt: row.completed_at,
     steps: stepRows
       .filter((step) => step.wish_id === row.id)

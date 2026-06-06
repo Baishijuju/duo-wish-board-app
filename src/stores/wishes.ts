@@ -12,6 +12,7 @@ import {
   createLocalMonthlyJournalSnapshot as createLocalMonthlyJournalSnapshotModule,
   ensureLocalMonthlySnapshots as ensureLocalMonthlySnapshotsModule,
 } from '../modules/journal/journal.projection.local'
+import { toggleThreadReactionWrite } from '../modules/journal/journal.reaction.write'
 import {
   shouldSyncForCommentImageRealtimeEvent,
   shouldSyncForThreadImageRealtimeEvent,
@@ -1570,8 +1571,24 @@ export const useWishStore = defineStore('wishes', () => {
     return { ok, message }
   }
 
+  function hasCapability(key: Parameters<typeof authStore.hasCapability>[0]) {
+    return authStore.hasCapability(key)
+  }
+
+  function isCapabilityKnownMissing(key: Parameters<typeof authStore.isCapabilityKnownMissing>[0]) {
+    return authStore.isCapabilityKnownMissing(key)
+  }
+
+  function getCapabilityHint(key: Parameters<typeof authStore.getCapabilityHint>[0]) {
+    return authStore.getCapabilityHint(key)
+  }
+
   function isWishThreadFeatureMissing(message: string) {
     return isWishThreadFeatureMissingModule(message)
+  }
+
+  function getKnownCapabilityMessage(key: Parameters<typeof authStore.getCapabilityHint>[0]) {
+    return isCapabilityKnownMissing(key) ? getCapabilityHint(key) : null
   }
 
   function scheduleRealtimeSync(reason: string) {
@@ -1647,36 +1664,60 @@ export const useWishStore = defineStore('wishes', () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wishes', filter: `space_id=eq.${spaceId}` }, () => {
         scheduleRealtimeSync('愿望')
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wish_threads', filter: `space_id=eq.${spaceId}` }, () => {
-        scheduleRealtimeSync('愿望手账')
-      })
+
+    if (!authStore.hasKnownCapabilities || hasCapability('hasUnifiedThreads')) {
+      realtimeSyncController.channel = realtimeSyncController.channel
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wish_threads', filter: `space_id=eq.${spaceId}` }, () => {
+          scheduleRealtimeSync('愿望手账')
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wish_thread_images' }, (payload) => {
+          handleThreadImageRealtimeEvent(payload as { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null })
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'thread_reactions', filter: `space_id=eq.${spaceId}` }, () => {
+          scheduleRealtimeSync('表情回应')
+        })
+    }
+
+    realtimeSyncController.channel = realtimeSyncController.channel
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wish_comments' }, (payload) => {
         handleCommentRealtimeEvent(payload as { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null })
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wish_images' }, (payload) => {
         handleImageRealtimeEvent(payload as { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null })
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wish_thread_images' }, (payload) => {
-        handleThreadImageRealtimeEvent(payload as { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null })
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wish_coins', filter: `space_id=eq.${spaceId}` }, () => {
-        scheduleRealtimeSync('愿望币')
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'thread_reactions', filter: `space_id=eq.${spaceId}` }, () => {
-        scheduleRealtimeSync('表情回应')
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reward_pool_items', filter: `space_id=eq.${spaceId}` }, () => {
-        scheduleRealtimeSync('奖励池')
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reward_claims', filter: `space_id=eq.${spaceId}` }, () => {
-        scheduleRealtimeSync('领奖记录')
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'monthly_journal_snapshots', filter: `space_id=eq.${spaceId}` }, () => {
-        scheduleRealtimeSync('月刊快照')
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wish_comment_images' }, (payload) => {
-        handleCommentImageRealtimeEvent(payload as { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null })
-      })
+
+    if (!authStore.hasKnownCapabilities || hasCapability('hasWishCoins')) {
+      realtimeSyncController.channel = realtimeSyncController.channel
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wish_coins', filter: `space_id=eq.${spaceId}` }, () => {
+          scheduleRealtimeSync('愿望币')
+        })
+    }
+
+    if (!authStore.hasKnownCapabilities || hasCapability('hasRewardPools')) {
+      realtimeSyncController.channel = realtimeSyncController.channel
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'reward_pool_items', filter: `space_id=eq.${spaceId}` }, () => {
+          scheduleRealtimeSync('奖励池')
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'reward_claims', filter: `space_id=eq.${spaceId}` }, () => {
+          scheduleRealtimeSync('领奖记录')
+        })
+    }
+
+    if (!authStore.hasKnownCapabilities || hasCapability('hasMonthlySnapshots')) {
+      realtimeSyncController.channel = realtimeSyncController.channel
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'monthly_journal_snapshots', filter: `space_id=eq.${spaceId}` }, () => {
+          scheduleRealtimeSync('月刊快照')
+        })
+    }
+
+    if (!authStore.hasKnownCapabilities || hasCapability('hasWishCommentImages')) {
+      realtimeSyncController.channel = realtimeSyncController.channel
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wish_comment_images' }, (payload) => {
+          handleCommentImageRealtimeEvent(payload as { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null })
+        })
+    }
+
+    realtimeSyncController.channel = realtimeSyncController.channel
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           realtimeStatus.value = 'subscribed'
@@ -1699,10 +1740,15 @@ export const useWishStore = defineStore('wishes', () => {
       return false
     }
 
+    if (authStore.appCapabilitiesStatus === 'idle' || authStore.appCapabilitiesStatus === 'error') {
+      await authStore.refreshAppCapabilities()
+    }
+
     isLoading.value = true
 
     try {
       const fetched = await fetchWishCloudRows(supabase, spaceId, {
+        capabilities: authStore.hasKnownCapabilities ? authStore.appCapabilities : null,
         isWishThreadFeatureMissing,
         onWarningMessage: (message) => {
           syncMessage.value = message
@@ -1756,12 +1802,20 @@ export const useWishStore = defineStore('wishes', () => {
       ? initialStepTitles.map((title) => title.trim()).filter((title) => !!title)
       : []
 
+    const progressCapabilityMessage = getKnownCapabilityMessage('hasWishProgress')
+
+    if (progressCapabilityMessage && (draft.progressMode !== 'none' || normalizedStepTitles.length)) {
+      syncMessage.value = progressCapabilityMessage
+      return null
+    }
+
     if (supabase && isUsingCloudWishes.value && authStore.currentSpaceId) {
       const ownerId = authStore.currentMemberId || authStore.currentMember?.id || draft.ownerId
       return addWishCloud({
         supabase,
         currentSpaceId: authStore.currentSpaceId,
         ownerId,
+        includeProgressFields: !isCapabilityKnownMissing('hasWishProgress'),
         draft,
         initialStepTitles: normalizedStepTitles,
         onLoadingChange: (value) => {
@@ -1787,26 +1841,38 @@ export const useWishStore = defineStore('wishes', () => {
       return false
     }
 
+    const progressCapabilityMessage = getKnownCapabilityMessage('hasWishProgress')
+
+    if (progressCapabilityMessage && (draft.progressMode !== 'none' || existingWish.progressMode !== 'none')) {
+      syncMessage.value = progressCapabilityMessage
+      return false
+    }
+
     if (supabase && isUsingCloudWishes.value) {
       const client = supabase
+      const updatePayload = {
+        category: draft.category.trim(),
+        due_date: draft.dueDate || null,
+        note: draft.note.trim(),
+        owner_id: existingWish.ownerId,
+        priority: draft.priority,
+        scope: draft.scope,
+        title: draft.title.trim(),
+        ...(!isCapabilityKnownMissing('hasWishProgress')
+          ? {
+              progress_current: draft.progressCurrent,
+              progress_mode: draft.progressMode,
+              progress_target: draft.progressTarget,
+              progress_unit: draft.progressUnit.trim(),
+            }
+          : {}),
+      }
 
       return runCloudMutation(
         async () =>
           client
             .from('wishes')
-            .update({
-              category: draft.category.trim(),
-              due_date: draft.dueDate || null,
-              note: draft.note.trim(),
-              owner_id: existingWish.ownerId,
-              priority: draft.priority,
-              progress_current: draft.progressCurrent,
-              progress_mode: draft.progressMode,
-              progress_target: draft.progressTarget,
-              progress_unit: draft.progressUnit.trim(),
-              scope: draft.scope,
-              title: draft.title.trim(),
-            })
+            .update(updatePayload)
             .eq('id', id),
         '愿望修改已同步到 Supabase。',
       )
@@ -1855,6 +1921,12 @@ export const useWishStore = defineStore('wishes', () => {
     note?: string
     starCoinCost?: number
   }): Promise<RewardActionResult> {
+    const rewardCapabilityMessage = getKnownCapabilityMessage('hasRewardPools')
+
+    if (rewardCapabilityMessage) {
+      return rewardResult(false, rewardCapabilityMessage)
+    }
+
     const result = await addRewardPoolItemWrite({
       supabase,
       isUsingCloudWishes: isUsingCloudWishes.value,
@@ -1884,6 +1956,17 @@ export const useWishStore = defineStore('wishes', () => {
       starCoinCost?: number
     },
   ): Promise<RewardActionResult> {
+    const rewardCapabilityMessage = getKnownCapabilityMessage('hasRewardPools')
+    const progressCapabilityMessage = getKnownCapabilityMessage('hasWishProgress')
+
+    if (rewardCapabilityMessage) {
+      return rewardResult(false, rewardCapabilityMessage)
+    }
+
+    if (progressCapabilityMessage) {
+      return rewardResult(false, progressCapabilityMessage)
+    }
+
     const result = await updateRewardPoolItemWrite({
       supabase,
       isUsingCloudWishes: isUsingCloudWishes.value,
@@ -1908,6 +1991,12 @@ export const useWishStore = defineStore('wishes', () => {
   }
 
   async function archiveRewardPoolItem(itemId: string): Promise<RewardActionResult> {
+    const rewardCapabilityMessage = getKnownCapabilityMessage('hasRewardPools')
+
+    if (rewardCapabilityMessage) {
+      return rewardResult(false, rewardCapabilityMessage)
+    }
+
     const result = await archiveRewardPoolItemWrite({
       supabase,
       isUsingCloudWishes: isUsingCloudWishes.value,
@@ -1931,6 +2020,12 @@ export const useWishStore = defineStore('wishes', () => {
   }
 
   async function completeWishWithReward(wishId: string, rewardItemId: string): Promise<RewardActionResult> {
+    const rewardCapabilityMessage = getKnownCapabilityMessage('hasRewardPools')
+
+    if (rewardCapabilityMessage) {
+      return rewardResult(false, rewardCapabilityMessage)
+    }
+
     const result = await completeWishWithRewardWrite({
       supabase,
       isUsingCloudWishes: isUsingCloudWishes.value,
@@ -1965,6 +2060,17 @@ export const useWishStore = defineStore('wishes', () => {
       claimStarCoin?: boolean
     },
   ): Promise<RewardActionResult> {
+    const rewardCapabilityMessage = getKnownCapabilityMessage('hasRewardPools')
+    const progressCapabilityMessage = getKnownCapabilityMessage('hasWishProgress')
+
+    if (rewardCapabilityMessage) {
+      return rewardResult(false, rewardCapabilityMessage)
+    }
+
+    if (progressCapabilityMessage) {
+      return rewardResult(false, progressCapabilityMessage)
+    }
+
     const wish = findById(wishId)
     const result = await claimCompletedStepRewardWrite({
       supabase,
@@ -2002,6 +2108,12 @@ export const useWishStore = defineStore('wishes', () => {
       claimStarCoin?: boolean
     },
   ): Promise<RewardActionResult> {
+    const rewardCapabilityMessage = getKnownCapabilityMessage('hasRewardPools')
+
+    if (rewardCapabilityMessage) {
+      return rewardResult(false, rewardCapabilityMessage)
+    }
+
     const result = await claimCountProgressRewardWrite({
       supabase,
       isUsingCloudWishes: isUsingCloudWishes.value,
@@ -2029,6 +2141,12 @@ export const useWishStore = defineStore('wishes', () => {
   }
 
   async function redeemPremiumReward(rewardItemId: string): Promise<RewardActionResult> {
+    const rewardCapabilityMessage = getKnownCapabilityMessage('hasRewardPools')
+
+    if (rewardCapabilityMessage) {
+      return rewardResult(false, rewardCapabilityMessage)
+    }
+
     const memberId = getCurrentMemberId()
     const rewardItem = rewardPoolItems.value.find((item) => item.id === rewardItemId)
     const result = await redeemPremiumRewardWrite({
@@ -2073,6 +2191,13 @@ export const useWishStore = defineStore('wishes', () => {
   }
 
   async function castWishCoin(id: string) {
+    const wishCoinCapabilityMessage = getKnownCapabilityMessage('hasWishCoins')
+
+    if (wishCoinCapabilityMessage) {
+      syncMessage.value = wishCoinCapabilityMessage
+      return false
+    }
+
     const result = await castWishCoinWrite({
       supabase,
       isUsingCloudWishes: isUsingCloudWishes.value,
@@ -2082,6 +2207,7 @@ export const useWishStore = defineStore('wishes', () => {
       memberId: authStore.currentMemberId || authStore.currentMember?.id,
       currentMemberRemainingCoins: currentMemberRemainingCoins.value,
       currentWishCoinCycleKey: currentWishCoinCycle.value.key,
+      allowsLegacyCapabilityFallback: !authStore.hasKnownCapabilities,
       onLoadingChange: (value) => {
         isLoading.value = value
       },
@@ -2106,6 +2232,13 @@ export const useWishStore = defineStore('wishes', () => {
   }
 
   async function setWishCountProgress(id: string, nextCurrent: number) {
+    const progressCapabilityMessage = getKnownCapabilityMessage('hasWishProgress')
+
+    if (progressCapabilityMessage) {
+      syncMessage.value = progressCapabilityMessage
+      return false
+    }
+
     const wish = findById(id)
     const normalizedCurrent = wish ? Math.min(normalizeProgressNumber(nextCurrent), Math.max(1, wish.progressTarget)) : 0
     const result = await setWishCountProgressWrite({
@@ -2140,6 +2273,13 @@ export const useWishStore = defineStore('wishes', () => {
   }
 
   async function addWishStep(wishId: string, title: string) {
+    const progressCapabilityMessage = getKnownCapabilityMessage('hasWishProgress')
+
+    if (progressCapabilityMessage) {
+      syncMessage.value = progressCapabilityMessage
+      return false
+    }
+
     const result = await addWishStepWrite({
       supabase,
       isUsingCloudWishes: isUsingCloudWishes.value,
@@ -2162,6 +2302,13 @@ export const useWishStore = defineStore('wishes', () => {
   }
 
   async function toggleWishStep(wishId: string, stepId: string) {
+    const progressCapabilityMessage = getKnownCapabilityMessage('hasWishProgress')
+
+    if (progressCapabilityMessage) {
+      syncMessage.value = progressCapabilityMessage
+      return false
+    }
+
     const wish = findById(wishId)
     const result = await toggleWishStepWrite({
       supabase,
@@ -2183,6 +2330,13 @@ export const useWishStore = defineStore('wishes', () => {
   }
 
   async function deleteWishStep(wishId: string, stepId: string) {
+    const progressCapabilityMessage = getKnownCapabilityMessage('hasWishProgress')
+
+    if (progressCapabilityMessage) {
+      syncMessage.value = progressCapabilityMessage
+      return false
+    }
+
     const result = await deleteWishStepWrite({
       supabase,
       isUsingCloudWishes: isUsingCloudWishes.value,
@@ -2203,6 +2357,15 @@ export const useWishStore = defineStore('wishes', () => {
 
   async function addComment(wishId: string, authorId: string, message: string, files: File[] = []): Promise<WishActionResult> {
     const activeSupabase = supabase
+
+    if (files.length) {
+      const commentImageCapabilityMessage = getKnownCapabilityMessage('hasWishCommentImages')
+
+      if (commentImageCapabilityMessage) {
+        syncMessage.value = commentImageCapabilityMessage
+        return { ok: false, message: commentImageCapabilityMessage }
+      }
+    }
 
     const result = await addCommentWrite({
       supabase: activeSupabase,
@@ -2313,23 +2476,16 @@ export const useWishStore = defineStore('wishes', () => {
   }
 
   async function toggleThreadReaction(threadId: string, emoji: string): Promise<WishActionResult> {
+    const threadCapabilityMessage = getKnownCapabilityMessage('hasUnifiedThreads')
+
+    if (threadCapabilityMessage) {
+      syncMessage.value = threadCapabilityMessage
+      return { ok: false, message: threadCapabilityMessage }
+    }
+
     const thread = wishThreads.value.find((entry) => entry.id === threadId)
     const memberId = getCurrentMemberId()
     const normalizedEmoji = emoji.trim()
-
-    if (!thread || !memberId) {
-      return {
-        message: '当前没有可以回应的手账记录。',
-        ok: false,
-      }
-    }
-
-    if (!normalizedEmoji) {
-      return {
-        message: '先选一个表情再回应。',
-        ok: false,
-      }
-    }
 
     const existingReaction = threadReactions.value.find(
       (reaction) => reaction.targetThreadId === threadId && reaction.actorId === memberId && reaction.emoji === normalizedEmoji,
@@ -2338,72 +2494,38 @@ export const useWishStore = defineStore('wishes', () => {
       (reaction) => reaction.targetThreadId === threadId && reaction.actorId === memberId,
     ).length
 
-    if (!existingReaction && existingMemberReactionCount >= MAX_THREAD_REACTIONS_PER_MEMBER) {
-      return {
-        message: `同一条记录里，每位成员最多保留 ${MAX_THREAD_REACTIONS_PER_MEMBER} 个表情回应。`,
-        ok: false,
-      }
+    const result = await toggleThreadReactionWrite({
+      supabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      currentSpaceId: authStore.currentSpaceId,
+      thread,
+      threadId,
+      memberId,
+      normalizedEmoji,
+      existingReaction,
+      existingMemberReactionCount,
+      maxPerMember: MAX_THREAD_REACTIONS_PER_MEMBER,
+      allowsLegacyCapabilityFallback: !authStore.hasKnownCapabilities,
+      isWishThreadFeatureMissing,
+      onLoadingChange: (value) => {
+        isLoading.value = value
+      },
+      onSyncMessage: (value) => {
+        syncMessage.value = value
+      },
+      syncFromSupabase,
+    })
+
+    if ('nextReactions' in result) {
+      threadReactions.value = result.removedReactionId
+        ? threadReactions.value.filter((reaction) => reaction.id !== result.removedReactionId)
+        : [...result.nextReactions, ...threadReactions.value]
+
+      refreshLocalActivityState()
+      syncMessage.value = result.message
     }
 
-    const successMessage = existingReaction ? '已取消这个表情回应。' : '已留下这个表情回应。'
-
-    if (supabase && isUsingCloudWishes.value && authStore.currentSpaceId) {
-      isLoading.value = true
-
-      try {
-        const { error } = existingReaction
-          ? await supabase.from('thread_reactions').delete().eq('id', existingReaction.id)
-          : await supabase.from('thread_reactions').insert({
-            actor_id: memberId,
-            emoji: normalizedEmoji,
-            space_id: authStore.currentSpaceId,
-            target_thread_id: threadId,
-          })
-
-        if (error) {
-          const nextMessage = isWishThreadFeatureMissing(error.message)
-            ? `表情回应失败：${error.message}。如果你刚更新前端，请先执行新的 Supabase 手账 migration。`
-            : `表情回应失败：${error.message}`
-
-          syncMessage.value = nextMessage
-
-          return {
-            message: nextMessage,
-            ok: false,
-          }
-        }
-
-        await syncFromSupabase(authStore.currentSpaceId)
-        syncMessage.value = successMessage
-
-        return {
-          message: successMessage,
-          ok: true,
-        }
-      } finally {
-        isLoading.value = false
-      }
-    }
-
-    threadReactions.value = existingReaction
-      ? threadReactions.value.filter((reaction) => reaction.id !== existingReaction.id)
-      : [
-        createThreadReactionRecord({
-          actorId: memberId,
-          emoji: normalizedEmoji,
-          spaceId: thread.spaceId,
-          targetThreadId: threadId,
-        }),
-        ...threadReactions.value,
-      ]
-
-    refreshLocalActivityState()
-    syncMessage.value = successMessage
-
-    return {
-      message: successMessage,
-      ok: true,
-    }
+    return result
   }
 
   async function uploadWishImages(wishId: string, files: File[]) {
@@ -2483,6 +2605,13 @@ export const useWishStore = defineStore('wishes', () => {
   }
 
   async function updateWishImageNote(wishId: string, imageId: string, nextNote: string) {
+    const imageNoteCapabilityMessage = getKnownCapabilityMessage('hasWishImageNote')
+
+    if (imageNoteCapabilityMessage) {
+      syncMessage.value = imageNoteCapabilityMessage
+      return false
+    }
+
     const result = await updateWishImageNoteWrite({
       supabase,
       isUsingCloudWishes: isUsingCloudWishes.value,
@@ -2511,6 +2640,13 @@ export const useWishStore = defineStore('wishes', () => {
   }
 
   async function setWishCoverImage(wishId: string, imageId: string) {
+    const imageCoverCapabilityMessage = getKnownCapabilityMessage('hasWishImageCover')
+
+    if (imageCoverCapabilityMessage) {
+      syncMessage.value = imageCoverCapabilityMessage
+      return false
+    }
+
     const result = await setWishCoverImageWrite({
       supabase,
       isUsingCloudWishes: isUsingCloudWishes.value,
@@ -2540,6 +2676,13 @@ export const useWishStore = defineStore('wishes', () => {
   }
 
   async function reorderWishImages(wishId: string, orderedImageIds: string[]) {
+    const imageOrderCapabilityMessage = getKnownCapabilityMessage('hasWishImageOrder')
+
+    if (imageOrderCapabilityMessage) {
+      syncMessage.value = imageOrderCapabilityMessage
+      return false
+    }
+
     const result = await reorderWishImagesWrite({
       supabase,
       isUsingCloudWishes: isUsingCloudWishes.value,

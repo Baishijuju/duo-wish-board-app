@@ -14,12 +14,46 @@
 - [202604270008_reorder_wish_images.sql](migrations/202604270008_reorder_wish_images.sql)
 - [202604270009_wish_image_notes.sql](migrations/202604270009_wish_image_notes.sql)
 - [202604290010_make_personal_space_idempotent.sql](migrations/202604290010_make_personal_space_idempotent.sql)
+- [202604290011_bind_space_emails.sql](migrations/202604290011_bind_space_emails.sql)
+- [202605020001_wish_progress_and_steps.sql](migrations/202605020001_wish_progress_and_steps.sql)
+- [202605020002_wish_comment_images.sql](migrations/202605020002_wish_comment_images.sql)
+- [202605020003_wish_coins.sql](migrations/202605020003_wish_coins.sql)
+- [202605030001_reward_pools_and_claims.sql](migrations/202605030001_reward_pools_and_claims.sql)
+- [202605030002_fix_reward_claim_kind_casts.sql](migrations/202605030002_fix_reward_claim_kind_casts.sql)
+- [202605030003_wish_threads_and_monthly_snapshots.sql](migrations/202605030003_wish_threads_and_monthly_snapshots.sql)
+- [202605120001_repair_space_bootstrap.sql](migrations/202605120001_repair_space_bootstrap.sql)
+- [202605120002_backfill_owner_memberships.sql](migrations/202605120002_backfill_owner_memberships.sql)
+- [202605190001_space_small_rewards.sql](migrations/202605190001_space_small_rewards.sql)
+- [202606060001_app_capabilities_contract.sql](migrations/202606060001_app_capabilities_contract.sql)
 
 ## 建议应用方式
 
 1. 打开 Supabase 项目的 SQL Editor。
 2. 按文件名顺序执行 migration 文件中的 SQL。
 3. 回到前端，把 `joinSpaceByInvite` 和愿望 store 逐步替换成真实查询和 RPC。
+
+## 契约清单
+
+当前前端真实依赖的 Supabase 契约，已经整理在 [CONTRACT.md](CONTRACT.md)。
+
+如果你后面继续扩功能或排查“为什么这个环境能跑、另一个环境不能跑”，请优先对照这份文档，而不是只看页面报错。
+
+### 推荐新增：显式 capability 契约
+
+如果你准备继续维护这套联网版，建议补执行 [202606060001_app_capabilities_contract.sql](migrations/202606060001_app_capabilities_contract.sql)。
+
+这条 migration 会新增 `public.get_app_capabilities()`，让前端能够显式判断：
+
+- 当前环境有没有邮箱绑定能力
+- 有没有愿望进度能力
+- 有没有留言图片能力
+- 有没有愿望币能力
+- 有没有奖励池能力
+- 有没有统一手账链路能力
+- 有没有月刊快照能力
+- 有没有图片备注 / 设首图 / 排序能力
+
+这样后面前端就不必继续长期依赖“报错字符串匹配”来推断后端能力。
 
 如果前端已经出现 `permission denied for table space_members` 或 `42501`，说明前 3 条 migration 已经不够，还要补执行 [202604260004_grant_authenticated_access.sql](migrations/202604260004_grant_authenticated_access.sql)。这不是邮箱登录问题，而是数据库没有把 `authenticated` 角色授权给业务表。
 

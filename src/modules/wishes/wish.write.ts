@@ -41,6 +41,7 @@ export async function addWishCloud(
     supabase: SupabaseClient
     currentSpaceId: string
     ownerId: string
+    includeProgressFields: boolean
     draft: WishDraft
     initialStepTitles: string[]
     onLoadingChange: (isLoading: boolean) => void
@@ -51,22 +52,28 @@ export async function addWishCloud(
   options.onLoadingChange(true)
 
   try {
+    const insertPayload = {
+      category: options.draft.category.trim(),
+      due_date: options.draft.dueDate || null,
+      note: options.draft.note.trim(),
+      owner_id: options.ownerId,
+      priority: options.draft.priority,
+      scope: options.draft.scope,
+      space_id: options.currentSpaceId,
+      title: options.draft.title.trim(),
+      ...(options.includeProgressFields
+        ? {
+            progress_current: options.draft.progressCurrent,
+            progress_mode: options.draft.progressMode,
+            progress_target: options.draft.progressTarget,
+            progress_unit: options.draft.progressUnit.trim(),
+          }
+        : {}),
+    }
+
     const { data, error } = await options.supabase
       .from('wishes')
-      .insert({
-        category: options.draft.category.trim(),
-        due_date: options.draft.dueDate || null,
-        note: options.draft.note.trim(),
-        owner_id: options.ownerId,
-        priority: options.draft.priority,
-        progress_current: options.draft.progressCurrent,
-        progress_mode: options.draft.progressMode,
-        progress_target: options.draft.progressTarget,
-        progress_unit: options.draft.progressUnit.trim(),
-        scope: options.draft.scope,
-        space_id: options.currentSpaceId,
-        title: options.draft.title.trim(),
-      })
+      .insert(insertPayload)
       .select('id')
       .single()
 

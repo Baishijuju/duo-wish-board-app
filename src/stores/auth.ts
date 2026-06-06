@@ -22,6 +22,14 @@ import {
   formatUnknownError as formatUnknownErrorModule,
   normalizeOtpToken as normalizeOtpTokenModule,
 } from '../modules/auth/auth.session'
+import {
+  createDefaultAppCapabilities,
+  fetchAppCapabilities,
+  getCapabilityMissingMessage,
+  isBoundSpaceMembershipFeatureMissing,
+  type AppCapabilities,
+  type AppCapabilityKey,
+} from '../modules/sync/capabilities'
 
 export type MemberRole = 'owner' | 'member'
 export type SessionState = 'anonymous' | 'magic-link-sent' | 'authenticated'
@@ -73,6 +81,8 @@ export interface AuthActionResult {
   message: string
   mode: 'mock' | 'supabase'
 }
+
+export type AppCapabilitiesStatus = 'idle' | 'loading' | 'ready' | 'fallback' | 'error'
 
 function formatAuthError(prefix: string, error: { code?: string; message: string }) {
   return formatAuthErrorModule(prefix, error)
@@ -160,6 +170,9 @@ export const useAuthStore = defineStore('auth', () => {
   const activeSession = ref<Session | null>(null)
   const authCallbackMessage = ref('')
   const isRefreshingSpace = ref(false)
+  const appCapabilities = ref<AppCapabilities>(createDefaultAppCapabilities())
+  const appCapabilitiesStatus = ref<AppCapabilitiesStatus>('idle')
+  const appCapabilitiesMessage = ref('')
 
   const currentMember = computed(() => {
     return members.value.find((member) => member.id === currentMemberId.value) ?? members.value[0]
@@ -171,6 +184,7 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => sessionState.value === 'authenticated')
   const usesSupabaseSpace = computed(() => dataMode.value === 'supabase' && isAuthenticated.value)
   const canSwitchMembers = computed(() => !usesSupabaseSpace.value)
+  const hasKnownCapabilities = computed(() => appCapabilitiesStatus.value === 'ready')
   const sessionSummary = computed(() => {
     if (authCallbackMessage.value) {
       return authCallbackMessage.value
@@ -198,6 +212,48 @@ export const useAuthStore = defineStore('auth', () => {
 
     const matchedMember = members.value.find((member) => member.email.toLowerCase() === sessionEmail.value.toLowerCase())
     currentMemberId.value = matchedMember?.id ?? members.value[0]?.id ?? ''
+  }
+
+  function resetAppCapabilities(status: AppCapabilitiesStatus = 'idle', message = '') {
+    appCapabilities.value = createDefaultAppCapabilities()
+    appCapabilitiesStatus.value = status
+    appCapabilitiesMessage.value = message
+  }
+
+  function hasCapability(key: AppCapabilityKey) {
+    return appCapabilities.value[key]
+  }
+
+  function isCapabilityKnownMissing(key: AppCapabilityKey) {
+    return hasKnownCapabilities.value && !hasCapability(key)
+  }
+
+  function getCapabilityHint(key: AppCapabilityKey) {
+    return getCapabilityMissingMessage(key)
+  }
+
+  async function refreshAppCapabilities() {
+    if (!supabase || !activeSession.value || !isAuthenticated.value) {
+      resetAppCapabilities('idle')
+      return false
+    }
+
+    appCapabilitiesStatus.value = 'loading'
+    appCapabilitiesMessage.value = ''
+
+    const result = await fetchAppCapabilities(supabase)
+
+    if (result.ok) {
+      appCapabilities.value = result.capabilities
+      appCapabilitiesStatus.value = 'ready'
+      appCapabilitiesMessage.value = ''
+      return true
+    }
+
+    appCapabilities.value = createDefaultAppCapabilities()
+    appCapabilitiesStatus.value = result.reason === 'unsupported' ? 'fallback' : 'error'
+    appCapabilitiesMessage.value = result.message
+    return false
   }
 
   function applyMemberFromEmail(email: string) {
@@ -323,6 +379,10 @@ export const useAuthStore = defineStore('auth', () => {
       return
     }
 
+    if (isCapabilityKnownMissing('hasBoundSpaceMemberships')) {
+      return
+    }
+
     const { error } = await supabase.rpc('ensure_bound_space_memberships', {
       email_input: normalizedEmail,
     })
@@ -331,7 +391,7 @@ export const useAuthStore = defineStore('auth', () => {
       return
     }
 
-    if (error.code === '42883' || /ensure_bound_space_memberships/i.test(error.message)) {
+    if (!hasKnownCapabilities.value && isBoundSpaceMembershipFeatureMissing(error.message)) {
       return
     }
 
@@ -346,6 +406,7 @@ export const useAuthStore = defineStore('auth', () => {
     isRefreshingSpace.value = true
 
     try {
+      await refreshAppCapabilities()
       await ensureBoundSpacesForSession(session)
 
       let memberships = await listMemberships(session.user.id)
@@ -426,6 +487,8 @@ export const useAuthStore = defineStore('auth', () => {
 
       return
     }
+
+    resetAppCapabilities('idle')
 
     if (sessionState.value !== 'magic-link-sent') {
       sessionState.value = 'anonymous'
@@ -745,6 +808,14 @@ export const useAuthStore = defineStore('auth', () => {
       }
     }
 
+    if (isCapabilityKnownMissing('hasBoundSpaceMemberships')) {
+      return {
+        ok: false,
+        message: getCapabilityHint('hasBoundSpaceMemberships'),
+        mode: 'supabase',
+      }
+    }
+
     if (currentMember.value?.role !== 'owner') {
       return {
         ok: false,
@@ -761,6 +832,14 @@ export const useAuthStore = defineStore('auth', () => {
     })
 
     if (error) {
+      if (!hasKnownCapabilities.value && isBoundSpaceMembershipFeatureMissing(error.message)) {
+        return {
+          ok: false,
+          message: getCapabilityHint('hasBoundSpaceMemberships'),
+          mode: 'supabase',
+        }
+      }
+
       return {
         ok: false,
         message: `固定邮箱失败：${error.message}`,
@@ -841,16 +920,24 @@ export const useAuthStore = defineStore('auth', () => {
     currentMember,
     currentMemberId,
     currentSpaceId,
+    appCapabilities,
+    appCapabilitiesMessage,
+    appCapabilitiesStatus,
     dataMode,
     bindEmailToCurrentSpace,
+    getCapabilityHint,
+    hasCapability,
+    hasKnownCapabilities,
     initializeAuthSession,
     inviteCode,
     isAuthenticated,
+    isCapabilityKnownMissing,
     isRefreshingSpace,
     joinSpaceByInvite,
     joinedSpaceAt,
     lastMagicLinkSentAt,
     members,
+    refreshAppCapabilities,
     requestMagicLink,
     verifyEmailOtp,
     canSwitchMembers,
