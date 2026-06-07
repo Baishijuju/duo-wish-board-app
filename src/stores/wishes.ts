@@ -1813,6 +1813,7 @@ export const useWishStore = defineStore('wishes', () => {
   async function runCloudMutation(
     mutate: () => Promise<{ error: { message: string } | null }>,
     successMessage: string,
+    options: { syncAfterWrite?: boolean } = {},
   ) {
     return runCloudMutationModule({
       supabase,
@@ -1826,8 +1827,25 @@ export const useWishStore = defineStore('wishes', () => {
       },
       mutate,
       successMessage,
+      syncAfterWrite: options.syncAfterWrite,
       syncFromSupabase,
     })
+  }
+
+  function replaceWish(nextWish: WishRecord) {
+    wishes.value = wishes.value.map((entry) => entry.id === nextWish.id ? nextWish : entry)
+  }
+
+  function cloneWishRecord(wish: WishRecord): WishRecord {
+    return {
+      ...wish,
+      steps: wish.steps.map((step) => ({ ...step })),
+      comments: wish.comments.map((comment) => ({
+        ...comment,
+        images: comment.images.map((image) => ({ ...image })),
+      })),
+      images: wish.images.map((image) => ({ ...image })),
+    }
   }
 
   async function addWish(draft: WishDraft, initialStepTitles: string[] = []) {
@@ -2274,6 +2292,35 @@ export const useWishStore = defineStore('wishes', () => {
 
     const wish = findById(id)
     const normalizedCurrent = wish ? Math.min(normalizeProgressNumber(nextCurrent), Math.max(1, wish.progressTarget)) : 0
+
+    if (wish && wish.progressMode === 'count' && normalizedCurrent !== wish.progressCurrent && supabase && isUsingCloudWishes.value) {
+      const previousWish = cloneWishRecord(wish)
+      replaceWish({
+        ...wish,
+        progressCurrent: normalizedCurrent,
+        updatedAt: new Date().toISOString(),
+      })
+      syncMessage.value = '进度已先更新，正在同步云端。'
+
+      const synced = await setWishCountProgressWrite({
+        supabase,
+        isUsingCloudWishes: true,
+        wish,
+        wishId: id,
+        normalizedCurrent,
+        runCloudMutation,
+        onSyncMessage: (value) => {
+          syncMessage.value = value
+        },
+      })
+
+      if (!synced) {
+        replaceWish(previousWish)
+      }
+
+      return synced
+    }
+
     const result = await setWishCountProgressWrite({
       supabase,
       isUsingCloudWishes: isUsingCloudWishes.value,
@@ -2343,13 +2390,42 @@ export const useWishStore = defineStore('wishes', () => {
     }
 
     const wish = findById(wishId)
+    const step = wish?.steps.find((item) => item.id === stepId)
+
+    if (wish && step && wish.progressMode === 'steps' && supabase && isUsingCloudWishes.value) {
+      const previousWish = cloneWishRecord(wish)
+      const nextDone = !step.isDone
+      replaceWish({
+        ...wish,
+        steps: wish.steps.map((entry) => entry.id === stepId ? { ...entry, isDone: nextDone, updatedAt: new Date().toISOString() } : entry),
+        updatedAt: new Date().toISOString(),
+      })
+      syncMessage.value = nextDone ? '步骤已先标记完成，正在同步云端。' : '步骤已先放回路上，正在同步云端。'
+
+      const synced = await toggleWishStepWrite({
+        supabase,
+        isUsingCloudWishes: true,
+        wish,
+        wishId,
+        stepId,
+        step,
+        runCloudMutation,
+      })
+
+      if (!synced) {
+        replaceWish(previousWish)
+      }
+
+      return synced
+    }
+
     const result = await toggleWishStepWrite({
       supabase,
       isUsingCloudWishes: isUsingCloudWishes.value,
       wish,
       wishId,
       stepId,
-      step: wish?.steps.find((item) => item.id === stepId),
+      step,
       runCloudMutation,
     })
 
@@ -2526,6 +2602,68 @@ export const useWishStore = defineStore('wishes', () => {
     const existingMemberReactionCount = threadReactions.value.filter(
       (reaction) => reaction.targetThreadId === threadId && reaction.actorId === memberId,
     ).length
+
+    if (
+      supabase
+      && isUsingCloudWishes.value
+      && authStore.currentSpaceId
+      && thread
+      && memberId
+      && normalizedEmoji
+      && (existingReaction || existingMemberReactionCount < MAX_THREAD_REACTIONS_PER_MEMBER)
+    ) {
+      const previousReactions = threadReactions.value
+      const optimisticReaction = existingReaction
+        ? null
+        : createThreadReactionRecord({
+            actorId: memberId,
+            emoji: normalizedEmoji,
+            spaceId: authStore.currentSpaceId,
+            targetThreadId: threadId,
+          })
+
+      threadReactions.value = existingReaction
+        ? threadReactions.value.filter((reaction) => reaction.id !== existingReaction.id)
+        : [optimisticReaction!, ...threadReactions.value]
+      refreshLocalActivityState()
+      syncMessage.value = existingReaction ? '表情回应已先收起，正在同步云端。' : '表情回应已先留下，正在同步云端。'
+
+      const result = await toggleThreadReactionWrite({
+        supabase,
+        isUsingCloudWishes: true,
+        currentSpaceId: authStore.currentSpaceId,
+        thread,
+        threadId,
+        memberId,
+        normalizedEmoji,
+        existingReaction,
+        existingMemberReactionCount,
+        maxPerMember: MAX_THREAD_REACTIONS_PER_MEMBER,
+        allowsLegacyCapabilityFallback: !authStore.hasKnownCapabilities,
+        isWishThreadFeatureMissing,
+        onLoadingChange: (value) => {
+          isLoading.value = value
+        },
+        onSyncMessage: (value) => {
+          syncMessage.value = value
+        },
+        syncAfterWrite: false,
+        syncFromSupabase,
+      })
+
+      if (!result.ok) {
+        threadReactions.value = previousReactions
+        refreshLocalActivityState()
+        return result
+      }
+
+      if ('nextReactions' in result && optimisticReaction && result.nextReactions[0]) {
+        threadReactions.value = threadReactions.value.map((reaction) => reaction.id === optimisticReaction.id ? result.nextReactions[0]! : reaction)
+        refreshLocalActivityState()
+      }
+
+      return result
+    }
 
     const result = await toggleThreadReactionWrite({
       supabase,

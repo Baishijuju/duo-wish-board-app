@@ -241,7 +241,7 @@ export async function toggleDoneWrite(options: {
   currentSpaceId: string | null | undefined
   wish: WishRecord | undefined
   wishId: string
-  runCloudMutation: (mutate: () => Promise<{ error: { message: string } | null }>, successMessage: string) => Promise<boolean>
+  runCloudMutation: (mutate: () => Promise<{ error: { message: string } | null }>, successMessage: string, options?: { syncAfterWrite?: boolean }) => Promise<boolean>
 }) {
   if (!options.wish) {
     return false
@@ -344,7 +344,7 @@ export async function setWishCountProgressWrite(options: {
   wish: WishRecord | undefined
   wishId: string
   normalizedCurrent: number
-  runCloudMutation: (mutate: () => Promise<{ error: { message: string } | null }>, successMessage: string) => Promise<boolean>
+  runCloudMutation: (mutate: () => Promise<{ error: { message: string } | null }>, successMessage: string, options?: { syncAfterWrite?: boolean }) => Promise<boolean>
   onSyncMessage: (message: string) => void
 }) {
   if (!options.wish || options.wish.progressMode !== 'count') {
@@ -364,6 +364,7 @@ export async function setWishCountProgressWrite(options: {
           .update({ progress_current: options.normalizedCurrent })
           .eq('id', options.wishId),
       '进度已同步到 Supabase。',
+      { syncAfterWrite: false },
     )
   }
 
@@ -383,7 +384,7 @@ export async function addWishStepWrite(options: {
   wish: WishRecord | undefined
   wishId: string
   normalizedTitle: string
-  runCloudMutation: (mutate: () => Promise<{ error: { message: string } | null }>, successMessage: string) => Promise<boolean>
+  runCloudMutation: (mutate: () => Promise<{ error: { message: string } | null }>, successMessage: string, options?: { syncAfterWrite?: boolean }) => Promise<boolean>
   onSyncMessage: (message: string) => void
 }) {
   if (!options.wish || options.wish.progressMode !== 'steps') {
@@ -427,7 +428,7 @@ export async function toggleWishStepWrite(options: {
   wishId: string
   stepId: string
   step: WishRecord['steps'][number] | undefined
-  runCloudMutation: (mutate: () => Promise<{ error: { message: string } | null }>, successMessage: string) => Promise<boolean>
+  runCloudMutation: (mutate: () => Promise<{ error: { message: string } | null }>, successMessage: string, options?: { syncAfterWrite?: boolean }) => Promise<boolean>
 }) {
   if (!options.wish || !options.step || options.wish.progressMode !== 'steps') {
     return false
@@ -444,6 +445,7 @@ export async function toggleWishStepWrite(options: {
           .eq('id', options.stepId)
           .eq('wish_id', options.wishId),
       nextDone ? '已完成一个小步骤。' : '这个步骤已经放回路上。',
+      { syncAfterWrite: false },
     )
   }
 

@@ -99,6 +99,28 @@ describe('wish.write', () => {
     expect(onSyncMessage).toHaveBeenLastCalledWith('同步成功')
   })
 
+  it('can run cloud mutation without an immediate full refresh', async () => {
+    const onLoadingChange = vi.fn()
+    const onSyncMessage = vi.fn()
+    const syncFromSupabase = vi.fn().mockResolvedValue(true)
+
+    const result = await runCloudMutation({
+      supabase: {} as never,
+      isUsingCloudWishes: true,
+      currentSpaceId: 'space-1',
+      onLoadingChange,
+      onSyncMessage,
+      mutate: async () => ({ error: null }),
+      successMessage: '轻量同步成功',
+      syncAfterWrite: false,
+      syncFromSupabase,
+    })
+
+    expect(result).toBe(true)
+    expect(syncFromSupabase).not.toHaveBeenCalled()
+    expect(onSyncMessage).toHaveBeenLastCalledWith('轻量同步成功')
+  })
+
   it('omits progress fields when progress capability is unavailable', async () => {
     const insert = vi.fn().mockReturnValue({
       select: () => ({

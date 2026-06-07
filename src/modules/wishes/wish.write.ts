@@ -11,6 +11,7 @@ export async function runCloudMutation(
     onSyncMessage: (message: string) => void
     mutate: () => Promise<{ error: { message: string } | null }>
     successMessage: string
+    syncAfterWrite?: boolean
     syncFromSupabase: (spaceId: string) => Promise<boolean>
   },
 ) {
@@ -28,7 +29,10 @@ export async function runCloudMutation(
       return false
     }
 
-    await options.syncFromSupabase(options.currentSpaceId)
+    if (options.syncAfterWrite ?? true) {
+      await options.syncFromSupabase(options.currentSpaceId)
+    }
+
     options.onSyncMessage(options.successMessage)
     return true
   } finally {

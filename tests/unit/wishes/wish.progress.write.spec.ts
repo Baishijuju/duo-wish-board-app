@@ -118,6 +118,23 @@ describe('wish.progress.write', () => {
     expect(result && typeof result === 'object' && 'localWish' in result).toBe(true)
   })
 
+  it('updates cloud count progress without forcing an immediate full refresh', async () => {
+    const runCloudMutation = vi.fn().mockResolvedValue(true)
+
+    const result = await setWishCountProgressWrite({
+      supabase: {} as never,
+      isUsingCloudWishes: true,
+      wish: { id: 'wish-1', progressMode: 'count', progressTarget: 5, progressCurrent: 1 } as never,
+      wishId: 'wish-1',
+      normalizedCurrent: 3,
+      runCloudMutation,
+      onSyncMessage: vi.fn(),
+    })
+
+    expect(result).toBe(true)
+    expect(runCloudMutation).toHaveBeenCalledWith(expect.any(Function), '进度已同步到 Supabase。', { syncAfterWrite: false })
+  })
+
   it('adds, toggles and deletes local steps', async () => {
     const baseWish = {
       id: 'wish-1',
@@ -157,5 +174,22 @@ describe('wish.progress.write', () => {
       runCloudMutation: vi.fn(),
     })
     expect(deleteResult && typeof deleteResult === 'object' && 'localWish' in deleteResult).toBe(true)
+  })
+
+  it('toggles cloud steps without forcing an immediate full refresh', async () => {
+    const runCloudMutation = vi.fn().mockResolvedValue(true)
+
+    const result = await toggleWishStepWrite({
+      supabase: {} as never,
+      isUsingCloudWishes: true,
+      wish: { id: 'wish-1', progressMode: 'steps', steps: [{ id: 'step-1', isDone: false }] } as never,
+      wishId: 'wish-1',
+      stepId: 'step-1',
+      step: { id: 'step-1', isDone: false } as never,
+      runCloudMutation,
+    })
+
+    expect(result).toBe(true)
+    expect(runCloudMutation).toHaveBeenCalledWith(expect.any(Function), '已完成一个小步骤。', { syncAfterWrite: false })
   })
 })

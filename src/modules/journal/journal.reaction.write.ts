@@ -26,6 +26,7 @@ export async function toggleThreadReactionWrite(options: {
   isWishThreadFeatureMissing: (message: string) => boolean
   onLoadingChange: (value: boolean) => void
   onSyncMessage: (message: string) => void
+  syncAfterWrite?: boolean
   syncFromSupabase: (spaceId: string) => Promise<boolean>
 }): Promise<ToggleThreadReactionWriteResult> {
   if (!options.thread || !options.memberId) {
@@ -46,14 +47,16 @@ export async function toggleThreadReactionWrite(options: {
     options.onLoadingChange(true)
 
     try {
-      const { error } = options.existingReaction
+      const mutationResult = options.existingReaction
         ? await options.supabase.from('thread_reactions').delete().eq('id', options.existingReaction.id)
         : await options.supabase.from('thread_reactions').insert({
           actor_id: options.memberId,
           emoji: options.normalizedEmoji,
           space_id: options.currentSpaceId,
           target_thread_id: options.threadId,
-        })
+        }).select('id, created_at').single()
+
+      const error = mutationResult.error
 
       if (error) {
         const nextMessage = options.allowsLegacyCapabilityFallback && options.isWishThreadFeatureMissing(error.message)
@@ -64,9 +67,28 @@ export async function toggleThreadReactionWrite(options: {
         return { ok: false, message: nextMessage } satisfies WishActionResult
       }
 
-      await options.syncFromSupabase(options.currentSpaceId)
+      if (options.syncAfterWrite ?? true) {
+        await options.syncFromSupabase(options.currentSpaceId)
+      }
+
       options.onSyncMessage(successMessage)
-      return { ok: true, message: successMessage } satisfies WishActionResult
+      return {
+        ok: true,
+        message: successMessage,
+        nextReactions: options.existingReaction
+          ? []
+          : [
+              createThreadReactionRecord({
+                id: 'data' in mutationResult && mutationResult.data?.id ? mutationResult.data.id : undefined,
+                actorId: options.memberId,
+                createdAt: 'data' in mutationResult && mutationResult.data?.created_at ? mutationResult.data.created_at : undefined,
+                emoji: options.normalizedEmoji,
+                spaceId: options.currentSpaceId,
+                targetThreadId: options.threadId,
+              }),
+            ],
+        removedReactionId: options.existingReaction?.id ?? null,
+      }
     } finally {
       options.onLoadingChange(false)
     }

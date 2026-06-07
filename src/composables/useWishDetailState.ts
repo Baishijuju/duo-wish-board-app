@@ -751,11 +751,11 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     if (gainedUnits > 0 && shouldRecordCountProgressLog.value) {
       const actorId = authStore.currentMemberId || authStore.currentMember?.id || ''
       if (actorId) {
-        await wishStore.addComment(
+        void wishStore.addComment(
           selectedWish.value.id,
           actorId,
           `数字进度往前推进了 ${gainedUnits} 点（现在 ${nextCurrent}/${selectedWish.value.progressTarget}${selectedWish.value.progressUnit ? ` ${selectedWish.value.progressUnit}` : ''}）。`,
-        )
+        ).catch(() => undefined)
       }
     }
 
@@ -790,11 +790,11 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     if (gainedUnits > 0 && shouldRecordCountProgressLog.value) {
       const actorId = authStore.currentMemberId || authStore.currentMember?.id || ''
       if (actorId) {
-        await wishStore.addComment(
+        void wishStore.addComment(
           selectedWish.value.id,
           actorId,
           `数字进度改到了 ${nextCurrent}/${selectedWish.value.progressTarget}${selectedWish.value.progressUnit ? ` ${selectedWish.value.progressUnit}` : ''}，本次新增 ${gainedUnits} 点。`,
-        )
+        ).catch(() => undefined)
       }
     }
 
