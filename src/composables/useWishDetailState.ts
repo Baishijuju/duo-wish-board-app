@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, onMounted, ref, toValue, watch, type MaybeRefOrGetter } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, toValue, watch, type MaybeRefOrGetter } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { DRAGON_BALL_COIN_TARGET, type WishImage, type WishThreadEntry, useWishStore } from '../stores/wishes'
@@ -41,6 +41,8 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
   const commentImageInputVersion = ref(0)
   const pendingThreadReactionKeys = ref<string[]>([])
   const expandedThreadReactionIds = ref<string[]>([])
+  const activeReactionPickerThreadId = ref<string | null>(null)
+  const activeReactionPickerTriggerId = ref<string | null>(null)
   const isUploadingImages = ref(false)
   const isReorderingImages = ref(false)
   const isSelectingImages = ref(false)
@@ -59,6 +61,8 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
   const pendingWishRewardSelectionId = ref('')
   const rewardFeedback = ref('')
   const rewardFeedbackTone = ref<'success' | 'danger'>('success')
+  const stepRewardFeedbackTargetId = ref('')
+  const isCountProgressFeedback = ref(false)
   const isSubmittingReward = ref(false)
   const shouldRecordCountProgressLog = ref(false)
 
@@ -106,12 +110,12 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
   })
 
   const FEATURED_THREAD_REACTION_OPTIONS = ['❤️', '😂', '😮', '🔥', '🎉', '✨']
-  const EXTENDED_THREAD_REACTION_OPTIONS = [
+  const EXTENDED_THREAD_REACTION_OPTIONS = Array.from(new Set([
     '👍', '👎', '👌', '👏', '🙌', '🤝', '🫶',
     '😊', '😄', '😌', '🥰', '😍', '🤗', '🥳',
     '🥹', '🥺', '😭', '😮', '🤯', '😡', '😴',
     '💪', '🙏', '💯', '💖', '🌟', '✨', '🍀',
-  ]
+  ])).filter((emoji) => !FEATURED_THREAD_REACTION_OPTIONS.includes(emoji))
   const THREAD_REACTION_OPTIONS = [...FEATURED_THREAD_REACTION_OPTIONS, ...EXTENDED_THREAD_REACTION_OPTIONS]
   const THREAD_REACTION_LABELS: Record<string, string> = {
     '❤️': '喜欢',
@@ -191,18 +195,25 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     () => {
       closeRewardDialog(false)
       cancelEditingThreadComment()
+      rewardFeedback.value = ''
+      stepRewardFeedbackTargetId.value = ''
+      isCountProgressFeedback.value = false
       expandedThreadReactionIds.value = []
       pendingThreadReactionKeys.value = []
+      closeThreadReactionPicker(false)
     },
   )
 
-  watch(previewImageId, (imageId) => {
-    if (typeof document === 'undefined') {
-      return
-    }
+  watch(
+    () => !!previewImageId.value || !!activeReactionPickerThreadId.value,
+    (shouldLockScroll) => {
+      if (typeof document === 'undefined') {
+        return
+      }
 
-    document.body.style.overflow = imageId ? 'hidden' : ''
-  })
+      document.body.style.overflow = shouldLockScroll ? 'hidden' : ''
+    },
+  )
 
   watch(
     () => `${selectedWish.value?.id ?? ''}|${selectedWish.value?.progressMode ?? 'none'}|${selectedWish.value?.progressCurrent ?? 0}`,
@@ -353,6 +364,10 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
       .map((reaction) => reaction.emoji)
   }
 
+  function getThreadReactionRemainingCount(thread: WishThreadEntry) {
+    return Math.max(0, 3 - getThreadMemberReactionEmojis(thread).length)
+  }
+
   function canAddThreadReaction(thread: WishThreadEntry, emoji: string) {
     if (isThreadReactionActive(thread, emoji)) {
       return true
@@ -377,6 +392,38 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     expandedThreadReactionIds.value = isThreadReactionExpanded(threadId)
       ? expandedThreadReactionIds.value.filter((id) => id !== threadId)
       : [...expandedThreadReactionIds.value, threadId]
+  }
+
+  const activeReactionPickerThread = computed(() => {
+    if (!activeReactionPickerThreadId.value) {
+      return null
+    }
+
+    return wishJournalEntries.value.find((thread) => thread.id === activeReactionPickerThreadId.value) ?? null
+  })
+
+  function isThreadReactionPickerOpen(threadId: string) {
+    return activeReactionPickerThreadId.value === threadId
+  }
+
+  function openThreadReactionPicker(threadId: string, triggerId?: string) {
+    activeReactionPickerThreadId.value = threadId
+    activeReactionPickerTriggerId.value = triggerId ?? null
+  }
+
+  function closeThreadReactionPicker(restoreFocus = true) {
+    const triggerId = activeReactionPickerTriggerId.value
+
+    activeReactionPickerThreadId.value = null
+    activeReactionPickerTriggerId.value = null
+
+    if (!restoreFocus || !triggerId || typeof document === 'undefined') {
+      return
+    }
+
+    void nextTick(() => {
+      document.getElementById(triggerId)?.focus()
+    })
   }
 
   function getOverflowThreadReactions(thread: WishThreadEntry) {
@@ -493,9 +540,11 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     return createdBy === authStore.currentMemberId
   }
 
-  function setRewardFeedback(message: string, tone: 'success' | 'danger' = 'success') {
+  function setRewardFeedback(message: string, tone: 'success' | 'danger' = 'success', stepId = '', source: 'global' | 'count' = 'global') {
     rewardFeedback.value = message
     rewardFeedbackTone.value = tone
+    stepRewardFeedbackTargetId.value = stepId
+    isCountProgressFeedback.value = source === 'count'
   }
 
   function closeRewardDialog(clearFeedback = true) {
@@ -504,6 +553,8 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
 
     if (clearFeedback) {
       rewardFeedback.value = ''
+      stepRewardFeedbackTargetId.value = ''
+      isCountProgressFeedback.value = false
     }
   }
 
@@ -690,7 +741,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     const updated = await wishStore.incrementWishCountProgress(selectedWish.value.id, delta)
 
     if (!updated) {
-      setRewardFeedback(wishStore.syncMessage || '数字进度暂时没有更新。', 'danger')
+      setRewardFeedback(wishStore.syncMessage || '数字进度暂时没有更新。', 'danger', '', 'count')
       return
     }
 
@@ -715,6 +766,8 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
           ? '数字进度已经往回调整，空间页里的待领取数量也会跟着收住。'
           : '数字进度已经更新。',
       'success',
+      '',
+      'count',
     )
   }
 
@@ -727,7 +780,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     const updated = await wishStore.setWishCountProgress(selectedWish.value.id, countProgressDraft.value)
 
     if (!updated) {
-      setRewardFeedback(wishStore.syncMessage || '数字进度暂时没有更新。', 'danger')
+      setRewardFeedback(wishStore.syncMessage || '数字进度暂时没有更新。', 'danger', '', 'count')
       return
     }
 
@@ -752,6 +805,8 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
           ? '数字进度已经重新校正，空间页里的待领取数量也会跟着收住。'
           : '数字进度已经更新。',
       'success',
+      '',
+      'count',
     )
   }
 
@@ -832,6 +887,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
           ? '这个步骤重新记成完成了；小奖励不会重复发，但推进会继续记下。'
           : '这个步骤已经记成完成了，小奖励先去空间页接住就好。',
         'success',
+        stepId,
       )
       return
     }
@@ -841,6 +897,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
         ? '这个步骤已经放回路上；之前领过的小奖励会保留。'
         : '这个步骤已经放回路上，空间页里对应的小奖励也会先收住。',
       'success',
+      stepId,
     )
   }
 
@@ -1043,7 +1100,12 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     }
   }
 
-  function handlePreviewKeydown(event: KeyboardEvent) {
+  function handleDetailKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape' && activeReactionPickerThreadId.value) {
+      closeThreadReactionPicker()
+      return
+    }
+
     if (!previewImage.value) {
       return
     }
@@ -1065,13 +1127,13 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
 
   onMounted(() => {
     if (typeof window !== 'undefined') {
-      window.addEventListener('keydown', handlePreviewKeydown)
+      window.addEventListener('keydown', handleDetailKeydown)
     }
   })
 
   onBeforeUnmount(() => {
     if (typeof window !== 'undefined') {
-      window.removeEventListener('keydown', handlePreviewKeydown)
+      window.removeEventListener('keydown', handleDetailKeydown)
     }
 
     if (typeof document !== 'undefined') {
@@ -1083,6 +1145,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     EXTENDED_THREAD_REACTION_OPTIONS,
     FEATURED_THREAD_REACTION_OPTIONS,
     THREAD_REACTION_OPTIONS,
+    activeReactionPickerThread,
     activeThreadReactionKey,
     adjustCountProgress,
     authStore,
@@ -1098,6 +1161,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     canRetryComment,
     clearCommentImageFiles,
     closeImagePreview,
+    closeThreadReactionPicker,
     closeRewardDialog,
     coinProgressPercent,
     coinSnapshot,
@@ -1133,6 +1197,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     getThreadReactionCount,
     getThreadReactionLabel,
     getThreadReactionOverflowLabel,
+    getThreadReactionRemainingCount,
     getWishActionLabel,
     hasActiveOverflowThreadReaction,
     handleCommentImageSelection,
@@ -1144,6 +1209,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     handleWishCompletionAction,
     imageNoteDraft,
     isCommentThread,
+    isCountProgressFeedback,
     isCoverImage,
     isDraggedImage,
     isDropTargetImage,
@@ -1158,11 +1224,13 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     isSubmittingReward,
     isThreadReactionActive,
     isThreadReactionExpanded,
+    isThreadReactionPickerOpen,
     isThreadReactionRowPending,
     isTogglingThreadReaction,
     isUploadingImages,
     lightboxImages,
     openImagePreview,
+    openThreadReactionPicker,
     pendingCompletionKind,
     pendingWishRewardSelectionId,
     previewImage,
@@ -1183,6 +1251,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     startEditingImageNote,
     startEditingThreadComment,
     stepDraft,
+    stepRewardFeedbackTargetId,
     stepPreview,
     submitComment,
     submitWishStep,

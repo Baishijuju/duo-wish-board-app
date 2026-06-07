@@ -14,7 +14,10 @@ const priorityLabels = {
 const MOBILE_THREAD_PREVIEW_COUNT = 3
 
 const {
+  EXTENDED_THREAD_REACTION_OPTIONS,
+  FEATURED_THREAD_REACTION_OPTIONS,
   THREAD_REACTION_OPTIONS,
+  activeReactionPickerThread,
   adjustCountProgress,
   authStore,
   canAddThreadReaction,
@@ -28,9 +31,8 @@ const {
   canRetryComment,
   clearCommentImageFiles,
   closeImagePreview,
+  closeThreadReactionPicker,
   closeRewardDialog,
-  coinLead,
-  coinProgressPercent,
   coinSnapshot,
   commentFeedback,
   commentFeedbackTone,
@@ -62,13 +64,15 @@ const {
   getThreadHeadline,
   getThreadMemberReactionEmojis,
   getThreadReactionCount,
-  getWishActionLabel,
+  getThreadReactionLabel,
+  getThreadReactionRemainingCount,
   hasActiveOverflowThreadReaction,
   handleCommentImageSelection,
   handleImageSelection,
   handleWishCompletionAction,
   imageNoteDraft,
   isCommentThread,
+  isCountProgressFeedback,
   isCoverImage,
   isEditingThreadComment,
   isSavingImageNote,
@@ -77,11 +81,13 @@ const {
   isSubmittingReward,
   isThreadReactionActive,
   isThreadReactionExpanded,
+  isThreadReactionPickerOpen,
   isThreadReactionRowPending,
   isTogglingThreadReaction,
   isUploadingImages,
   lightboxImages,
   openImagePreview,
+  openThreadReactionPicker,
   pendingCompletionKind,
   pendingWishRewardSelectionId,
   previewImage,
@@ -93,7 +99,6 @@ const {
   retryComment,
   rewardFeedback,
   rewardFeedbackTone,
-  rewardHeadline,
   saveCountProgress,
   saveImageNote,
   saveThreadComment,
@@ -103,6 +108,7 @@ const {
   startEditingThreadComment,
   stepDraft,
   stepPreview,
+  stepRewardFeedbackTargetId,
   submitComment,
   submitWishStep,
   threadFeedback,
@@ -111,7 +117,6 @@ const {
   toggleThreadReaction,
   toggleWishStep,
   wishJournalEntries,
-  wishRewardClaim,
   wishStore,
 } = useWishDetailPageState()
 
@@ -165,6 +170,16 @@ const mobileStorySummary = computed(() => {
   }
 
   return '先写一句近况，后面的推进、投币和记录都会继续接在这一页。'
+})
+const canShowProgressCompletionAction = computed(() => {
+  const progress = progressSnapshot.value
+
+  return Boolean(
+    selectedWish.value
+      && selectedWish.value.status !== 'done'
+      && (progress?.mode === 'count' || progress?.mode === 'steps')
+      && progress.isReady,
+  )
 })
 const isDeleteWishConfirming = ref(false)
 const isDeletingWish = ref(false)
@@ -228,6 +243,19 @@ async function confirmDeleteWish() {
             <span v-for="chip in detailTags.slice(0, 3)" :key="chip" class="detail-atelier-chip">{{ chip }}</span>
           </div>
 
+          <div class="detail-atelier-hero-summary-grid">
+            <article class="detail-atelier-summary-card detail-atelier-summary-card-featured">
+              <span>愿望币</span>
+              <strong>{{ coinSnapshot?.total ?? 0 }} / {{ DRAGON_BALL_COIN_TARGET }}</strong>
+              <p>{{ getCoinStatusLabel() }}</p>
+            </article>
+            <article class="detail-atelier-summary-card">
+              <span>星星币</span>
+              <strong>{{ currentMemberStarCoins }} 枚</strong>
+              <p>高档奖励 {{ currentMemberPremiumRewards.length }} 项</p>
+            </article>
+          </div>
+
           <div class="detail-atelier-mobile-glance detail-atelier-mobile-only">
             <button
               v-if="coverImageUrl && coverImageEntry"
@@ -268,12 +296,7 @@ async function confirmDeleteWish() {
             </div>
           </div>
 
-          <details class="detail-atelier-mobile-more detail-atelier-mobile-only">
-            <summary class="detail-atelier-mobile-more-summary">
-              <span>更多信息</span>
-              <strong>写下的人、标签和创建时间</strong>
-            </summary>
-
+          <div class="detail-atelier-mobile-more detail-atelier-mobile-only detail-atelier-mobile-info-card">
             <div class="detail-atelier-meta-grid detail-atelier-mobile-meta-grid">
               <div class="detail-atelier-meta-item">
                 <span class="detail-atelier-meta-label">写下的人</span>
@@ -292,27 +315,9 @@ async function confirmDeleteWish() {
                 <strong>{{ formatBeijingDateTime(selectedWish.createdAt) }}</strong>
               </div>
             </div>
-          </details>
-
-          <div class="detail-atelier-action-row">
-            <div class="detail-atelier-action-copy">
-              <span>先把这条愿望稳稳放在手边</span>
-              <p>投币、完成和手账记录都会接在这一页。</p>
-            </div>
-            <div class="detail-atelier-inline-buttons detail-atelier-action-buttons">
-              <button
-                class="detail-atelier-primary"
-                type="button"
-                :disabled="selectedWish.status === 'done' || wishStore.currentMemberRemainingCoins <= 0"
-                @click="void wishStore.castWishCoin(selectedWish.id)"
-              >
-                {{ selectedWish.status === 'done' ? '愿望已实现' : wishStore.currentMemberRemainingCoins > 0 ? '投 1 币' : '本周已投完' }}
-              </button>
-              <button class="detail-atelier-secondary detail-atelier-secondary-action" type="button" @click="void handleWishCompletionAction()">{{ getWishActionLabel() }}</button>
-            </div>
           </div>
 
-          <p v-if="rewardFeedback && !pendingCompletionKind" :class="['detail-atelier-feedback', rewardFeedbackTone]" role="status" aria-live="polite">{{ rewardFeedback }}</p>
+          <p v-if="rewardFeedback && !pendingCompletionKind && !stepRewardFeedbackTargetId && !isCountProgressFeedback" :class="['detail-atelier-feedback', rewardFeedbackTone]" role="status" aria-live="polite">{{ rewardFeedback }}</p>
         </article>
 
         <article class="page-card detail-atelier-cover-card detail-atelier-desktop-only">
@@ -329,6 +334,119 @@ async function confirmDeleteWish() {
         </article>
       </section>
 
+      <section class="detail-atelier-overview-grid">
+        <article id="progress" class="page-card detail-atelier-overview-card detail-atelier-progress-anchor">
+          <div class="detail-atelier-section-head">
+            <div class="detail-atelier-section-copy">
+              <p class="detail-atelier-kicker">推进痕迹</p>
+              <h2>这条愿望正走到哪里</h2>
+            </div>
+            <span class="detail-atelier-badge">{{ progressSnapshot?.label || '还没开始' }}</span>
+          </div>
+
+          <p class="detail-atelier-support">{{ progressLead }}</p>
+
+          <div class="detail-atelier-meter-card">
+            <div class="detail-atelier-meter-head">
+              <strong>{{ progressSnapshot?.mode === 'steps' ? '步骤进度' : progressSnapshot?.mode === 'count' ? '数字进度' : '进度记录' }}</strong>
+              <span>{{ progressSnapshot?.percent ?? 0 }}%</span>
+            </div>
+            <div class="detail-atelier-progress-track" :aria-label="`当前进度 ${progressSnapshot?.label || '未设置'}`">
+              <div class="detail-atelier-progress-fill" :style="{ width: `${progressSnapshot?.percent ?? 0}%` }"></div>
+            </div>
+          </div>
+
+          <div v-if="progressSnapshot?.mode === 'count'" class="detail-atelier-progress-stack">
+            <div class="detail-atelier-progress-quick-action">
+              <div class="detail-atelier-progress-quick-copy">
+                <strong>先让它继续往前一点</strong>
+                <p>每往前一点，小奖励都会先被空间页接住。</p>
+              </div>
+              <button class="detail-atelier-primary detail-atelier-progress-primary" type="button" @click="void adjustCountProgress(1)">
+                +1{{ selectedWish.progressUnit ? ` ${selectedWish.progressUnit}` : '' }}
+              </button>
+              <p v-if="rewardFeedback && isCountProgressFeedback" :class="['detail-atelier-feedback', 'detail-atelier-step-feedback', 'detail-atelier-progress-feedback', rewardFeedbackTone]" role="status" aria-live="polite">{{ rewardFeedback }}</p>
+            </div>
+          </div>
+
+          <div v-else-if="progressSnapshot?.mode === 'steps'" class="detail-atelier-progress-stack">
+            <div v-if="selectedWish.steps.length" class="detail-atelier-step-list detail-atelier-desktop-only">
+              <article v-for="step in selectedWish.steps" :key="step.id" :class="['detail-atelier-step-card', { done: step.isDone }]">
+                <button class="detail-atelier-secondary detail-atelier-step-toggle" type="button" @click="void toggleWishStep(step.id)">{{ getStepActionLabel(step.id, step.isDone) }}</button>
+                <div class="detail-atelier-step-copy">
+                  <strong>{{ step.title }}</strong>
+                  <div v-if="wishStore.getStepRewardClaim(step.id)" class="detail-atelier-chip-row compact">
+                    <span class="detail-atelier-chip">{{ getClaimToneLabel(wishStore.getStepRewardClaim(step.id)?.claimKind || '') }}</span>
+                    <span class="detail-atelier-chip">{{ wishStore.getStepRewardClaim(step.id)?.titleSnapshot }}</span>
+                  </div>
+                  <p>{{ getStepStatusCopy(step.id, step.isDone) }}</p>
+                </div>
+                <p v-if="rewardFeedback && stepRewardFeedbackTargetId === step.id" :class="['detail-atelier-feedback', 'detail-atelier-step-feedback', rewardFeedbackTone]" role="status" aria-live="polite">{{ rewardFeedback }}</p>
+              </article>
+            </div>
+
+            <div v-if="selectedWish.steps.length" class="detail-atelier-mobile-progress-glance detail-atelier-mobile-only">
+              <article class="detail-atelier-summary-card detail-atelier-summary-card-featured">
+                <span>正在推进</span>
+                <strong>{{ mobilePrimaryStep?.title || '还没有下一步' }}</strong>
+                <p>{{ mobileNextPendingStep ? '先把眼前这一步走完。' : '这条步骤愿望已经全部走完。' }}</p>
+              </article>
+              <article class="detail-atelier-summary-card">
+                <span>步骤进度</span>
+                <strong>{{ mobileCompletedStepCount }} / {{ selectedWish.steps.length }}</strong>
+                <p>{{ mobileCompletedStepCount === selectedWish.steps.length ? '已经全部完成' : `还剩 ${selectedWish.steps.length - mobileCompletedStepCount} 步` }}</p>
+              </article>
+            </div>
+
+            <div v-else class="detail-atelier-empty-block">
+              <strong>还没有拆出小步骤</strong>
+              <p>可以先写下第一个很具体的小目标，例如订票、办签证、买装备。</p>
+            </div>
+
+            <div class="detail-atelier-progress-quick-action">
+              <div class="detail-atelier-progress-quick-copy">
+                <strong>{{ selectedWish.steps.length ? '先完成眼前这一步' : '先写下第一步' }}</strong>
+                <p>{{ selectedWish.steps.length ? '走完下一步时，这页会继续替你把过程留住。' : '有了第一步，这条愿望会更容易继续往前。' }}</p>
+              </div>
+              <button class="detail-atelier-primary detail-atelier-progress-primary" type="button" @click="mobilePrimaryStep ? void toggleWishStep(mobilePrimaryStep.id) : undefined" :disabled="!mobilePrimaryStep || mobilePrimaryStep.isDone">
+                {{ selectedWish.steps.length ? '完成这一步' : '先去下面补一步' }}
+              </button>
+              <p v-if="rewardFeedback && stepRewardFeedbackTargetId" :class="['detail-atelier-feedback', 'detail-atelier-step-feedback', rewardFeedbackTone]" role="status" aria-live="polite">{{ rewardFeedback }}</p>
+            </div>
+
+            <details v-if="selectedWish.steps.length" class="detail-atelier-mobile-more detail-atelier-mobile-only detail-atelier-step-more-card">
+              <summary class="detail-atelier-mobile-more-summary">
+                <span>全部步骤</span>
+                <strong>展开查看这 {{ selectedWish.steps.length }} 步</strong>
+              </summary>
+
+              <div class="detail-atelier-step-list">
+                <article v-for="step in selectedWish.steps" :key="`mobile-step-${step.id}`" :class="['detail-atelier-step-card', { done: step.isDone }]">
+                  <button class="detail-atelier-secondary detail-atelier-step-toggle" type="button" @click="void toggleWishStep(step.id)">{{ getStepActionLabel(step.id, step.isDone) }}</button>
+                  <div class="detail-atelier-step-copy">
+                    <strong>{{ step.title }}</strong>
+                    <div v-if="wishStore.getStepRewardClaim(step.id)" class="detail-atelier-chip-row compact">
+                      <span class="detail-atelier-chip">{{ getClaimToneLabel(wishStore.getStepRewardClaim(step.id)?.claimKind || '') }}</span>
+                      <span class="detail-atelier-chip">{{ wishStore.getStepRewardClaim(step.id)?.titleSnapshot }}</span>
+                    </div>
+                    <p>{{ getStepStatusCopy(step.id, step.isDone) }}</p>
+                  </div>
+                </article>
+              </div>
+            </details>
+          </div>
+
+          <div v-else class="detail-atelier-empty-block">
+            <strong>还没有开始记录进度</strong>
+            <p>这条愿望还没决定要怎么记进度，晚一点再补上也没关系。</p>
+          </div>
+
+          <div v-if="canShowProgressCompletionAction" class="detail-atelier-inline-buttons detail-atelier-progress-completion-row">
+            <button class="detail-atelier-secondary detail-atelier-secondary-action detail-atelier-progress-completion" type="button" @click="void handleWishCompletionAction()">完成并领奖</button>
+          </div>
+        </article>
+      </section>
+
       <section class="detail-atelier-compose-band">
         <article class="page-card detail-atelier-compose-card">
           <div class="detail-atelier-section-head">
@@ -336,7 +454,6 @@ async function confirmDeleteWish() {
               <p class="detail-atelier-kicker">写一笔近况</p>
               <h2>先记下一笔近况</h2>
             </div>
-            <span class="detail-atelier-badge">会落在下面</span>
           </div>
 
           <p class="detail-atelier-support detail-atelier-support-wide">先写一句，想带图也可以；发出去后会顺着往下留下。</p>
@@ -384,7 +501,7 @@ async function confirmDeleteWish() {
               </summary>
 
               <div class="detail-atelier-compose-attachment-copy">
-                <p>{{ wishStore.isUsingCloudWishes ? '可选，会和这笔近况一起留在下面。' : '连接云端愿望后，就能把图片和这笔近况一起留下。' }}</p>
+                <p>{{ wishStore.isUsingCloudWishes ? '可选，会和这笔近况一起留在下面。' : '连接云端愿望后，这里就能加图片' }}</p>
               </div>
 
               <div v-if="wishStore.isUsingCloudWishes" class="detail-atelier-inline-buttons detail-atelier-compose-upload-row">
@@ -424,189 +541,6 @@ async function confirmDeleteWish() {
 
             <p v-if="commentFeedback" :class="['detail-atelier-feedback', commentFeedbackTone]" role="status" aria-live="polite">{{ commentFeedback }}</p>
           </form>
-        </article>
-      </section>
-
-      <section class="detail-atelier-overview-grid">
-        <article id="progress" class="page-card detail-atelier-overview-card detail-atelier-progress-anchor">
-          <div class="detail-atelier-section-head">
-            <div class="detail-atelier-section-copy">
-              <p class="detail-atelier-kicker">推进痕迹</p>
-              <h2>这条愿望正走到哪里</h2>
-            </div>
-            <span class="detail-atelier-badge">{{ progressSnapshot?.label || '还没开始' }}</span>
-          </div>
-
-          <p class="detail-atelier-support">{{ progressLead }}</p>
-
-          <div class="detail-atelier-meter-card">
-            <div class="detail-atelier-meter-head">
-              <strong>{{ progressSnapshot?.mode === 'steps' ? '步骤进度' : progressSnapshot?.mode === 'count' ? '数字进度' : '进度记录' }}</strong>
-              <span>{{ progressSnapshot?.percent ?? 0 }}%</span>
-            </div>
-            <div class="detail-atelier-progress-track" :aria-label="`当前进度 ${progressSnapshot?.label || '未设置'}`">
-              <div class="detail-atelier-progress-fill" :style="{ width: `${progressSnapshot?.percent ?? 0}%` }"></div>
-            </div>
-          </div>
-
-          <div v-if="progressSnapshot?.mode === 'count'" class="detail-atelier-progress-stack">
-            <div class="detail-atelier-progress-quick-action">
-              <div class="detail-atelier-progress-quick-copy">
-                <strong>先让它继续往前一点</strong>
-                <p>每往前一点，小奖励都会先被空间页接住。</p>
-              </div>
-              <button class="detail-atelier-primary detail-atelier-progress-primary" type="button" @click="void adjustCountProgress(1)">
-                +1{{ selectedWish.progressUnit ? ` ${selectedWish.progressUnit}` : '' }}
-              </button>
-            </div>
-          </div>
-
-          <div v-else-if="progressSnapshot?.mode === 'steps'" class="detail-atelier-progress-stack">
-            <div v-if="selectedWish.steps.length" class="detail-atelier-step-list detail-atelier-desktop-only">
-              <article v-for="step in selectedWish.steps" :key="step.id" :class="['detail-atelier-step-card', { done: step.isDone }]">
-                <button class="detail-atelier-secondary detail-atelier-step-toggle" type="button" @click="void toggleWishStep(step.id)">{{ getStepActionLabel(step.id, step.isDone) }}</button>
-                <div class="detail-atelier-step-copy">
-                  <strong>{{ step.title }}</strong>
-                  <div v-if="wishStore.getStepRewardClaim(step.id)" class="detail-atelier-chip-row compact">
-                    <span class="detail-atelier-chip">{{ getClaimToneLabel(wishStore.getStepRewardClaim(step.id)?.claimKind || '') }}</span>
-                    <span class="detail-atelier-chip">{{ wishStore.getStepRewardClaim(step.id)?.titleSnapshot }}</span>
-                  </div>
-                  <p>{{ getStepStatusCopy(step.id, step.isDone) }}</p>
-                </div>
-              </article>
-            </div>
-
-            <div v-if="selectedWish.steps.length" class="detail-atelier-mobile-progress-glance detail-atelier-mobile-only">
-              <article class="detail-atelier-summary-card detail-atelier-summary-card-featured">
-                <span>正在推进</span>
-                <strong>{{ mobilePrimaryStep?.title || '还没有下一步' }}</strong>
-                <p>{{ mobileNextPendingStep ? '先把眼前这一步走完。' : '这条步骤愿望已经全部走完。' }}</p>
-              </article>
-              <article class="detail-atelier-summary-card">
-                <span>步骤进度</span>
-                <strong>{{ mobileCompletedStepCount }} / {{ selectedWish.steps.length }}</strong>
-                <p>{{ mobileCompletedStepCount === selectedWish.steps.length ? '已经全部完成' : `还剩 ${selectedWish.steps.length - mobileCompletedStepCount} 步` }}</p>
-              </article>
-            </div>
-
-            <div v-else class="detail-atelier-empty-block">
-              <strong>还没有拆出小步骤</strong>
-              <p>可以先写下第一个很具体的小目标，例如订票、办签证、买装备。</p>
-            </div>
-
-            <div class="detail-atelier-progress-quick-action">
-              <div class="detail-atelier-progress-quick-copy">
-                <strong>{{ selectedWish.steps.length ? '先完成眼前这一步' : '先写下第一步' }}</strong>
-                <p>{{ selectedWish.steps.length ? '走完下一步时，这页会继续替你把过程留住。' : '有了第一步，这条愿望会更容易继续往前。' }}</p>
-              </div>
-              <button class="detail-atelier-primary detail-atelier-progress-primary" type="button" @click="mobilePrimaryStep ? void toggleWishStep(mobilePrimaryStep.id) : undefined" :disabled="!mobilePrimaryStep || mobilePrimaryStep.isDone">
-                {{ selectedWish.steps.length ? '完成这一步' : '先去下面补一步' }}
-              </button>
-            </div>
-
-            <details v-if="selectedWish.steps.length" class="detail-atelier-mobile-more detail-atelier-mobile-only detail-atelier-step-more-card">
-              <summary class="detail-atelier-mobile-more-summary">
-                <span>全部步骤</span>
-                <strong>展开查看这 {{ selectedWish.steps.length }} 步</strong>
-              </summary>
-
-              <div class="detail-atelier-step-list">
-                <article v-for="step in selectedWish.steps" :key="`mobile-step-${step.id}`" :class="['detail-atelier-step-card', { done: step.isDone }]">
-                  <button class="detail-atelier-secondary detail-atelier-step-toggle" type="button" @click="void toggleWishStep(step.id)">{{ getStepActionLabel(step.id, step.isDone) }}</button>
-                  <div class="detail-atelier-step-copy">
-                    <strong>{{ step.title }}</strong>
-                    <div v-if="wishStore.getStepRewardClaim(step.id)" class="detail-atelier-chip-row compact">
-                      <span class="detail-atelier-chip">{{ getClaimToneLabel(wishStore.getStepRewardClaim(step.id)?.claimKind || '') }}</span>
-                      <span class="detail-atelier-chip">{{ wishStore.getStepRewardClaim(step.id)?.titleSnapshot }}</span>
-                    </div>
-                    <p>{{ getStepStatusCopy(step.id, step.isDone) }}</p>
-                  </div>
-                </article>
-              </div>
-            </details>
-          </div>
-
-          <div v-else class="detail-atelier-empty-block">
-            <strong>还没有开始记录进度</strong>
-            <p>这条愿望还没决定要怎么记进度，晚一点再补上也没关系。</p>
-          </div>
-        </article>
-
-        <article class="page-card detail-atelier-overview-card is-warm">
-          <div class="detail-atelier-section-head">
-            <div class="detail-atelier-section-copy">
-              <p class="detail-atelier-kicker">愿望币与奖励</p>
-              <h2>把偏爱、鼓励和奖励留在同一页</h2>
-            </div>
-            <span class="detail-atelier-badge">{{ coinSnapshot?.total ?? 0 }} / {{ DRAGON_BALL_COIN_TARGET }}</span>
-          </div>
-
-          <p class="detail-atelier-support">{{ coinLead }}</p>
-
-          <div class="detail-atelier-mobile-summary-grid detail-atelier-mobile-only">
-            <article class="detail-atelier-summary-card detail-atelier-summary-card-featured">
-              <span>愿望币</span>
-              <strong>{{ coinSnapshot?.total ?? 0 }} / {{ DRAGON_BALL_COIN_TARGET }}</strong>
-              <p>{{ getCoinStatusLabel() }}</p>
-            </article>
-            <article class="detail-atelier-summary-card">
-              <span>星星币</span>
-              <strong>{{ currentMemberStarCoins }} 枚</strong>
-              <p>高档奖励 {{ currentMemberPremiumRewards.length }} 项</p>
-            </article>
-          </div>
-
-          <div class="detail-atelier-meter-card is-warm">
-            <div class="detail-atelier-meter-head">
-              <strong>七龙珠进度</strong>
-              <span>{{ coinProgressPercent }}%</span>
-            </div>
-            <div class="detail-atelier-progress-track" :aria-label="`愿望币进度 ${coinSnapshot?.total ?? 0}/${DRAGON_BALL_COIN_TARGET}`">
-              <div class="detail-atelier-progress-fill is-warm" :style="{ width: `${coinProgressPercent}%` }"></div>
-            </div>
-            <p>{{ getCoinStatusLabel() }}</p>
-          </div>
-
-          <div class="detail-atelier-member-grid detail-atelier-desktop-only">
-            <article v-for="member in coinSnapshot?.memberTotals ?? []" :key="member.memberId" class="detail-atelier-member-card">
-              <span>{{ member.displayName }}</span>
-              <strong>{{ member.total }} 枚</strong>
-            </article>
-          </div>
-
-          <div class="detail-atelier-reward-block detail-atelier-desktop-only">
-            <strong>{{ rewardHeadline }}</strong>
-            <p>你手里现在攒着 {{ currentMemberStarCoins }} 枚星星币，也替自己备下了 {{ currentMemberPremiumRewards.length }} 项高档奖励；步骤和数字进度的小奖励，现在统一去空间页接住。</p>
-            <div class="detail-atelier-chip-row compact">
-              <span v-if="wishRewardClaim" class="detail-atelier-chip">已领 {{ wishRewardClaim.titleSnapshot }}</span>
-              <span v-else class="detail-atelier-chip">完成时就能领奖</span>
-              <span class="detail-atelier-chip">本周还剩 {{ wishStore.currentMemberRemainingCoins }} 枚愿望币</span>
-            </div>
-          </div>
-
-          <details class="detail-atelier-mobile-more detail-atelier-mobile-only">
-            <summary class="detail-atelier-mobile-more-summary">
-              <span>奖励细节</span>
-              <strong>展开这页的愿望币和奖励说明</strong>
-            </summary>
-
-            <div class="detail-atelier-member-grid">
-              <article v-for="member in coinSnapshot?.memberTotals ?? []" :key="`mobile-${member.memberId}`" class="detail-atelier-member-card">
-                <span>{{ member.displayName }}</span>
-                <strong>{{ member.total }} 枚</strong>
-              </article>
-            </div>
-
-            <div class="detail-atelier-reward-block">
-              <strong>{{ rewardHeadline }}</strong>
-              <p>你手里现在攒着 {{ currentMemberStarCoins }} 枚星星币，也替自己备下了 {{ currentMemberPremiumRewards.length }} 项高档奖励；步骤和数字进度的小奖励，现在统一去空间页接住。</p>
-              <div class="detail-atelier-chip-row compact">
-                <span v-if="wishRewardClaim" class="detail-atelier-chip">已领 {{ wishRewardClaim.titleSnapshot }}</span>
-                <span v-else class="detail-atelier-chip">完成时就能领奖</span>
-                <span class="detail-atelier-chip">本周还剩 {{ wishStore.currentMemberRemainingCoins }} 枚愿望币</span>
-              </div>
-            </div>
-          </details>
         </article>
       </section>
 
@@ -783,76 +717,39 @@ async function confirmDeleteWish() {
 
               <p v-else class="detail-atelier-thread-message detail-atelier-thread-message-mobile">{{ thread.messageText }}</p>
 
-              <details class="detail-atelier-mobile-thread-more">
-                <summary class="detail-atelier-mobile-thread-more-summary">
-                  <span>继续看这笔</span>
-                  <strong>{{ thread.images.length ? `${thread.images.length} 张图` : '表情和更多操作' }}</strong>
-                </summary>
+              <div v-if="thread.images.length" class="detail-atelier-thread-images">
+                <button
+                  v-for="image in thread.images"
+                  :key="`mobile-thread-image-${image.id}`"
+                  class="detail-atelier-thread-image-button"
+                  type="button"
+                  @click="openImagePreview(thread.images, image.id)"
+                >
+                  <img v-if="image.url" class="detail-atelier-thread-image" :src="image.url" :alt="image.fileName" />
+                  <span v-else class="detail-atelier-image-empty">这张图正在出现</span>
+                </button>
+              </div>
 
-                <div v-if="thread.images.length" class="detail-atelier-thread-images">
-                  <button
-                    v-for="image in thread.images"
-                    :key="`mobile-thread-image-${image.id}`"
-                    class="detail-atelier-thread-image-button"
-                    type="button"
-                    @click="openImagePreview(thread.images, image.id)"
-                  >
-                    <img v-if="image.url" class="detail-atelier-thread-image" :src="image.url" :alt="image.fileName" />
-                    <span v-else class="detail-atelier-image-empty">这张图正在出现</span>
-                  </button>
+              <div class="detail-atelier-reaction-row detail-atelier-mobile-reaction-rail">
+                <button
+                  :id="`thread-reaction-toggle-mobile-${thread.id}`"
+                  :class="['detail-atelier-secondary', 'detail-atelier-reaction-toggle', 'detail-atelier-mobile-reaction-trigger', { active: isThreadReactionPickerOpen(thread.id) || hasActiveOverflowThreadReaction(thread) }]"
+                  type="button"
+                  :aria-expanded="isThreadReactionPickerOpen(thread.id)"
+                  aria-controls="detail-thread-reaction-sheet"
+                  :aria-label="isThreadReactionPickerOpen(thread.id) ? '收起表情选项' : '打开表情选项'"
+                  @click="openThreadReactionPicker(thread.id, `thread-reaction-toggle-mobile-${thread.id}`)"
+                >
+                  <span aria-hidden="true">☺</span>
+                </button>
+
+                <div v-if="thread.reactions.length" class="detail-atelier-reaction-list detail-atelier-mobile-reaction-pills">
+                  <span v-for="reaction in thread.reactions" :key="`${thread.id}-mobile-reaction-pill-${reaction.emoji}`" class="detail-atelier-chip">
+                    {{ reaction.emoji }}<span v-if="reaction.count > 1"> {{ reaction.count }}</span>
+                  </span>
                 </div>
-
-                <div class="detail-atelier-reaction-row">
-                  <div class="detail-atelier-reaction-groups">
-                    <div v-if="getThreadMemberReactionEmojis(thread).length" class="detail-atelier-reaction-list detail-atelier-reaction-list-selected">
-                      <span v-for="emoji in getThreadMemberReactionEmojis(thread)" :key="`${thread.id}-mobile-selected-${emoji}`" class="detail-atelier-chip">
-                        {{ emoji }}
-                      </span>
-                    </div>
-
-                    <div class="detail-atelier-reaction-more">
-                      <button
-                        :class="['detail-atelier-secondary', 'detail-atelier-reaction-toggle', { active: isThreadReactionExpanded(thread.id) || hasActiveOverflowThreadReaction(thread) }]"
-                        type="button"
-                        :aria-expanded="isThreadReactionExpanded(thread.id)"
-                        :aria-controls="`thread-reaction-panel-mobile-${thread.id}`"
-                        :aria-label="isThreadReactionExpanded(thread.id) ? '收起表情选项' : '打开表情选项'"
-                        @click="toggleThreadReactionExpansion(thread.id)"
-                      >
-                        {{ isThreadReactionExpanded(thread.id) ? '收起表情' : '表情' }}
-                      </button>
-
-                      <span v-if="thread.reactions.length" class="detail-atelier-reaction-summary">{{ thread.reactions.length }} 种回应</span>
-
-                      <div v-if="isThreadReactionExpanded(thread.id)" :id="`thread-reaction-panel-mobile-${thread.id}`" class="detail-atelier-reaction-list is-extended">
-                        <button
-                          v-for="emoji in THREAD_REACTION_OPTIONS"
-                          :key="`${thread.id}-mobile-reaction-${emoji}`"
-                          :class="['detail-atelier-reaction-button', { active: isThreadReactionActive(thread, emoji), 'is-pending': isTogglingThreadReaction(thread.id, emoji) }]"
-                          type="button"
-                          :disabled="isThreadReactionRowPending(thread.id) || !canAddThreadReaction(thread, emoji)"
-                          :aria-label="getThreadReactionAriaLabel(thread, emoji)"
-                          :aria-pressed="isThreadReactionActive(thread, emoji)"
-                          @click="void toggleThreadReaction(thread.id, emoji)"
-                        >
-                          <span class="detail-atelier-reaction-emoji">{{ emoji }}</span>
-                          <span
-                            :class="[
-                              'detail-atelier-reaction-count',
-                              {
-                                'is-empty': !getThreadReactionCount(thread, emoji) && !isTogglingThreadReaction(thread.id, emoji),
-                                'is-loading': isTogglingThreadReaction(thread.id, emoji),
-                              },
-                            ]"
-                          >
-                            {{ isTogglingThreadReaction(thread.id, emoji) ? '处理中' : getThreadReactionCount(thread, emoji) || '·' }}
-                          </span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </details>
+                <span v-else class="detail-atelier-reaction-summary">还没有回应</span>
+              </div>
             </article>
           </div>
 
@@ -912,76 +809,39 @@ async function confirmDeleteWish() {
 
                 <p v-else class="detail-atelier-thread-message detail-atelier-thread-message-mobile">{{ thread.messageText }}</p>
 
-                <details class="detail-atelier-mobile-thread-more">
-                  <summary class="detail-atelier-mobile-thread-more-summary">
-                    <span>继续看这笔</span>
-                    <strong>{{ thread.images.length ? `${thread.images.length} 张图` : '表情和更多操作' }}</strong>
-                  </summary>
+                <div v-if="thread.images.length" class="detail-atelier-thread-images">
+                  <button
+                    v-for="image in thread.images"
+                    :key="`mobile-thread-overflow-image-${image.id}`"
+                    class="detail-atelier-thread-image-button"
+                    type="button"
+                    @click="openImagePreview(thread.images, image.id)"
+                  >
+                    <img v-if="image.url" class="detail-atelier-thread-image" :src="image.url" :alt="image.fileName" />
+                    <span v-else class="detail-atelier-image-empty">这张图正在出现</span>
+                  </button>
+                </div>
 
-                  <div v-if="thread.images.length" class="detail-atelier-thread-images">
-                    <button
-                      v-for="image in thread.images"
-                      :key="`mobile-thread-overflow-image-${image.id}`"
-                      class="detail-atelier-thread-image-button"
-                      type="button"
-                      @click="openImagePreview(thread.images, image.id)"
-                    >
-                      <img v-if="image.url" class="detail-atelier-thread-image" :src="image.url" :alt="image.fileName" />
-                      <span v-else class="detail-atelier-image-empty">这张图正在出现</span>
-                    </button>
+                <div class="detail-atelier-reaction-row detail-atelier-mobile-reaction-rail">
+                  <button
+                    :id="`thread-reaction-toggle-mobile-overflow-${thread.id}`"
+                    :class="['detail-atelier-secondary', 'detail-atelier-reaction-toggle', 'detail-atelier-mobile-reaction-trigger', { active: isThreadReactionPickerOpen(thread.id) || hasActiveOverflowThreadReaction(thread) }]"
+                    type="button"
+                    :aria-expanded="isThreadReactionPickerOpen(thread.id)"
+                    aria-controls="detail-thread-reaction-sheet"
+                    :aria-label="isThreadReactionPickerOpen(thread.id) ? '收起表情选项' : '打开表情选项'"
+                    @click="openThreadReactionPicker(thread.id, `thread-reaction-toggle-mobile-overflow-${thread.id}`)"
+                  >
+                    <span aria-hidden="true">☺</span>
+                  </button>
+
+                  <div v-if="thread.reactions.length" class="detail-atelier-reaction-list detail-atelier-mobile-reaction-pills">
+                    <span v-for="reaction in thread.reactions" :key="`${thread.id}-mobile-overflow-reaction-pill-${reaction.emoji}`" class="detail-atelier-chip">
+                      {{ reaction.emoji }}<span v-if="reaction.count > 1"> {{ reaction.count }}</span>
+                    </span>
                   </div>
-
-                  <div class="detail-atelier-reaction-row">
-                    <div class="detail-atelier-reaction-groups">
-                      <div v-if="getThreadMemberReactionEmojis(thread).length" class="detail-atelier-reaction-list detail-atelier-reaction-list-selected">
-                        <span v-for="emoji in getThreadMemberReactionEmojis(thread)" :key="`${thread.id}-mobile-overflow-selected-${emoji}`" class="detail-atelier-chip">
-                          {{ emoji }}
-                        </span>
-                      </div>
-
-                      <div class="detail-atelier-reaction-more">
-                        <button
-                          :class="['detail-atelier-secondary', 'detail-atelier-reaction-toggle', { active: isThreadReactionExpanded(thread.id) || hasActiveOverflowThreadReaction(thread) }]"
-                          type="button"
-                          :aria-expanded="isThreadReactionExpanded(thread.id)"
-                          :aria-controls="`thread-reaction-panel-mobile-overflow-${thread.id}`"
-                          :aria-label="isThreadReactionExpanded(thread.id) ? '收起表情选项' : '打开表情选项'"
-                          @click="toggleThreadReactionExpansion(thread.id)"
-                        >
-                          {{ isThreadReactionExpanded(thread.id) ? '收起表情' : '表情' }}
-                        </button>
-
-                        <span v-if="thread.reactions.length" class="detail-atelier-reaction-summary">{{ thread.reactions.length }} 种回应</span>
-
-                        <div v-if="isThreadReactionExpanded(thread.id)" :id="`thread-reaction-panel-mobile-overflow-${thread.id}`" class="detail-atelier-reaction-list is-extended">
-                          <button
-                            v-for="emoji in THREAD_REACTION_OPTIONS"
-                            :key="`${thread.id}-mobile-overflow-reaction-${emoji}`"
-                            :class="['detail-atelier-reaction-button', { active: isThreadReactionActive(thread, emoji), 'is-pending': isTogglingThreadReaction(thread.id, emoji) }]"
-                            type="button"
-                            :disabled="isThreadReactionRowPending(thread.id) || !canAddThreadReaction(thread, emoji)"
-                            :aria-label="getThreadReactionAriaLabel(thread, emoji)"
-                            :aria-pressed="isThreadReactionActive(thread, emoji)"
-                            @click="void toggleThreadReaction(thread.id, emoji)"
-                          >
-                            <span class="detail-atelier-reaction-emoji">{{ emoji }}</span>
-                            <span
-                              :class="[
-                                'detail-atelier-reaction-count',
-                                {
-                                  'is-empty': !getThreadReactionCount(thread, emoji) && !isTogglingThreadReaction(thread.id, emoji),
-                                  'is-loading': isTogglingThreadReaction(thread.id, emoji),
-                                },
-                              ]"
-                            >
-                              {{ isTogglingThreadReaction(thread.id, emoji) ? '处理中' : getThreadReactionCount(thread, emoji) || '·' }}
-                            </span>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </details>
+                  <span v-else class="detail-atelier-reaction-summary">还没有回应</span>
+                </div>
               </article>
             </div>
           </details>
@@ -1198,6 +1058,105 @@ async function confirmDeleteWish() {
       </div>
     </article>
 
+    <Teleport to="body">
+      <div v-if="activeReactionPickerThread" class="detail-atelier-reaction-sheet-layer" @click.self="closeThreadReactionPicker()">
+        <section
+          id="detail-thread-reaction-sheet"
+          class="detail-atelier-reaction-sheet"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="detail-thread-reaction-sheet-title"
+        >
+          <div class="detail-atelier-reaction-sheet-handle" aria-hidden="true"></div>
+
+          <div class="detail-atelier-reaction-sheet-head">
+            <div>
+              <p class="detail-atelier-kicker">手账回应</p>
+              <h3 id="detail-thread-reaction-sheet-title">给这笔一点回应</h3>
+              <span>{{ getThreadHeadline(activeReactionPickerThread) }}</span>
+            </div>
+            <button class="detail-atelier-secondary detail-atelier-reaction-picker-close" type="button" @click="closeThreadReactionPicker()">关闭</button>
+          </div>
+
+          <div class="detail-atelier-reaction-sheet-status">
+            <div v-if="getThreadMemberReactionEmojis(activeReactionPickerThread).length" class="detail-atelier-reaction-list detail-atelier-reaction-list-selected">
+              <span v-for="emoji in getThreadMemberReactionEmojis(activeReactionPickerThread)" :key="`sheet-selected-${activeReactionPickerThread.id}-${emoji}`" class="detail-atelier-chip">
+                {{ emoji }}
+              </span>
+            </div>
+            <p>{{ getThreadReactionRemainingCount(activeReactionPickerThread) ? `还可以再选 ${getThreadReactionRemainingCount(activeReactionPickerThread)} 个` : '已经选满 3 个，点已选表情可以收回' }}</p>
+          </div>
+
+          <div class="detail-atelier-reaction-picker">
+            <section class="detail-atelier-reaction-picker-section" aria-labelledby="detail-thread-reaction-featured-title">
+              <div class="detail-atelier-reaction-picker-section-head">
+                <strong id="detail-thread-reaction-featured-title">常用回应</strong>
+                <span>点一下就记上</span>
+              </div>
+              <div class="detail-atelier-reaction-picker-grid detail-atelier-reaction-list is-extended">
+                <button
+                  v-for="emoji in FEATURED_THREAD_REACTION_OPTIONS"
+                  :key="`sheet-featured-${activeReactionPickerThread.id}-${emoji}`"
+                  :class="['detail-atelier-reaction-button', { active: isThreadReactionActive(activeReactionPickerThread, emoji), 'is-pending': isTogglingThreadReaction(activeReactionPickerThread.id, emoji) }]"
+                  type="button"
+                  :disabled="isThreadReactionRowPending(activeReactionPickerThread.id) || !canAddThreadReaction(activeReactionPickerThread, emoji)"
+                  :aria-label="getThreadReactionAriaLabel(activeReactionPickerThread, emoji)"
+                  :aria-pressed="isThreadReactionActive(activeReactionPickerThread, emoji)"
+                  @click="void toggleThreadReaction(activeReactionPickerThread.id, emoji)"
+                >
+                  <span class="detail-atelier-reaction-emoji">{{ emoji }}</span>
+                  <span class="detail-atelier-reaction-name">{{ getThreadReactionLabel(emoji) }}</span>
+                  <span
+                    :class="[
+                      'detail-atelier-reaction-count',
+                      {
+                        'is-empty': !getThreadReactionCount(activeReactionPickerThread, emoji) && !isTogglingThreadReaction(activeReactionPickerThread.id, emoji),
+                        'is-loading': isTogglingThreadReaction(activeReactionPickerThread.id, emoji),
+                      },
+                    ]"
+                  >
+                    {{ isTogglingThreadReaction(activeReactionPickerThread.id, emoji) ? '处理中' : getThreadReactionCount(activeReactionPickerThread, emoji) || '·' }}
+                  </span>
+                </button>
+              </div>
+            </section>
+
+            <section class="detail-atelier-reaction-picker-section" aria-labelledby="detail-thread-reaction-more-title">
+              <div class="detail-atelier-reaction-picker-section-head">
+                <strong id="detail-thread-reaction-more-title">更多情绪</strong>
+                <span>细一点也可以</span>
+              </div>
+              <div class="detail-atelier-reaction-picker-grid detail-atelier-reaction-list is-extended is-compact">
+                <button
+                  v-for="emoji in EXTENDED_THREAD_REACTION_OPTIONS"
+                  :key="`sheet-more-${activeReactionPickerThread.id}-${emoji}`"
+                  :class="['detail-atelier-reaction-button', { active: isThreadReactionActive(activeReactionPickerThread, emoji), 'is-pending': isTogglingThreadReaction(activeReactionPickerThread.id, emoji) }]"
+                  type="button"
+                  :disabled="isThreadReactionRowPending(activeReactionPickerThread.id) || !canAddThreadReaction(activeReactionPickerThread, emoji)"
+                  :aria-label="getThreadReactionAriaLabel(activeReactionPickerThread, emoji)"
+                  :aria-pressed="isThreadReactionActive(activeReactionPickerThread, emoji)"
+                  @click="void toggleThreadReaction(activeReactionPickerThread.id, emoji)"
+                >
+                  <span class="detail-atelier-reaction-emoji">{{ emoji }}</span>
+                  <span
+                    :class="[
+                      'detail-atelier-reaction-count',
+                      {
+                        'is-empty': !getThreadReactionCount(activeReactionPickerThread, emoji) && !isTogglingThreadReaction(activeReactionPickerThread.id, emoji),
+                        'is-loading': isTogglingThreadReaction(activeReactionPickerThread.id, emoji),
+                      },
+                    ]"
+                  >
+                    {{ isTogglingThreadReaction(activeReactionPickerThread.id, emoji) ? '处理中' : getThreadReactionCount(activeReactionPickerThread, emoji) || '·' }}
+                  </span>
+                </button>
+              </div>
+            </section>
+          </div>
+        </section>
+      </div>
+    </Teleport>
+
     <div v-if="pendingCompletionKind" class="detail-atelier-overlay" @click.self="closeRewardDialog()">
       <div class="detail-atelier-dialog detail-atelier-reward-dialog page-card" role="dialog" aria-modal="true" aria-labelledby="detail-reward-dialog-title">
         <div class="detail-atelier-dialog-head">
@@ -1305,7 +1264,7 @@ async function confirmDeleteWish() {
 .detail-atelier-section-copy,
 .detail-atelier-meta-grid,
 .detail-atelier-meta-item,
-.detail-atelier-action-copy,
+.detail-atelier-hero-summary-grid,
 .detail-atelier-image-intro,
 .detail-atelier-image-grid,
 .detail-atelier-image-memory-strip,
@@ -1338,7 +1297,6 @@ async function confirmDeleteWish() {
 .detail-atelier-chip-row,
 .detail-atelier-hero-top,
 .detail-atelier-meta-row,
-.detail-atelier-action-row,
 .detail-atelier-danger-row,
 .detail-atelier-inline-buttons,
 .detail-atelier-image-actions,
@@ -1775,28 +1733,6 @@ async function confirmDeleteWish() {
   padding-bottom: 0.1rem;
 }
 
-.detail-atelier-action-row {
-  align-items: end;
-  padding-top: 0.1rem;
-}
-
-.detail-atelier-action-copy {
-  gap: 0.34rem;
-  max-width: 24rem;
-}
-
-.detail-atelier-action-copy span {
-  margin: 0;
-  font-family: var(--font-body);
-  color: rgba(70, 53, 45, 0.68);
-  font-size: var(--type-eyebrow-size);
-  font-weight: 600;
-  line-height: 1.4;
-  letter-spacing: var(--type-eyebrow-spacing);
-  text-transform: uppercase;
-}
-
-.detail-atelier-action-copy p,
 .detail-atelier-danger-copy {
   margin: 0;
   font-family: var(--font-body);
@@ -1809,15 +1745,6 @@ async function confirmDeleteWish() {
 .detail-atelier-danger-copy-block {
   display: grid;
   gap: 0.42rem;
-}
-
-.detail-atelier-action-buttons {
-  justify-content: flex-start;
-}
-
-.detail-atelier-action-row .detail-atelier-primary,
-.detail-atelier-action-row .detail-atelier-secondary {
-  min-width: 9.5rem;
 }
 
 .detail-atelier-danger-row {
@@ -1974,7 +1901,12 @@ async function confirmDeleteWish() {
   border-radius: 16px;
 }
 
-.detail-atelier-mobile-summary-grid {
+.detail-atelier-hero-summary-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.58rem;
+}
+
+.detail-atelier-mobile-info-card .detail-atelier-mobile-meta-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.58rem;
 }
@@ -2011,12 +1943,6 @@ async function confirmDeleteWish() {
   font-size: var(--type-card-title-size);
   line-height: var(--type-card-title-line);
   letter-spacing: var(--type-card-title-tracking);
-}
-
-.detail-atelier-overview-card.is-warm {
-  background:
-    linear-gradient(180deg, rgba(255, 249, 241, 0.96), rgba(255, 255, 255, 0.74)),
-    radial-gradient(circle at top right, rgba(232, 216, 166, 0.26), transparent 26%);
 }
 
 .detail-atelier-meter-card,
@@ -2071,10 +1997,13 @@ async function confirmDeleteWish() {
   min-width: 10rem;
 }
 
-.detail-atelier-overview-card.is-warm .detail-atelier-meter-card {
-  background:
-    linear-gradient(180deg, rgba(255, 250, 244, 0.9), rgba(255, 244, 236, 0.78)),
-    radial-gradient(circle at top right, rgba(232, 216, 166, 0.2), transparent 28%);
+.detail-atelier-progress-completion-row {
+  justify-content: flex-end;
+  padding-top: 0.1rem;
+}
+
+.detail-atelier-progress-completion {
+  min-width: 10rem;
 }
 
 .detail-atelier-progress-track {
@@ -2089,10 +2018,6 @@ async function confirmDeleteWish() {
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(135deg, rgba(215, 133, 95, 0.9), rgba(216, 231, 220, 0.92));
-}
-
-.detail-atelier-progress-fill.is-warm {
-  background: linear-gradient(135deg, rgba(215, 133, 95, 0.92), rgba(232, 216, 166, 0.92));
 }
 
 .detail-atelier-inline-form,
@@ -2547,6 +2472,7 @@ async function confirmDeleteWish() {
   line-height: 1.62;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
+  line-clamp: 3;
 }
 
 .detail-atelier-reward-block {
@@ -2650,6 +2576,16 @@ async function confirmDeleteWish() {
   line-height: 1;
 }
 
+.detail-atelier-reaction-name {
+  overflow: hidden;
+  color: rgba(76, 59, 50, 0.68);
+  font-family: var(--font-body);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .detail-atelier-reaction-button.active {
   background: rgba(210, 121, 87, 0.14);
   border-color: rgba(210, 121, 87, 0.24);
@@ -2682,6 +2618,190 @@ async function confirmDeleteWish() {
 .detail-atelier-reaction-count.is-loading {
   color: #9f5d50;
   opacity: 1;
+}
+
+.detail-atelier-reaction-sheet-layer {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  align-items: end;
+  padding: 1rem;
+  background: rgba(36, 27, 22, 0.28);
+  backdrop-filter: blur(10px);
+  z-index: 110;
+  animation: detail-sheet-backdrop-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.detail-atelier-reaction-sheet {
+  display: grid;
+  width: min(560px, 100%);
+  max-height: min(76vh, 680px);
+  justify-self: center;
+  gap: 0.88rem;
+  overflow: auto;
+  padding: 0.72rem 0.9rem calc(0.92rem + env(safe-area-inset-bottom, 0px));
+  border: 1px solid rgba(126, 96, 76, 0.14);
+  border-radius: 26px 26px 22px 22px;
+  background: rgba(255, 252, 247, 0.98);
+  box-shadow: 0 -18px 48px rgba(64, 43, 34, 0.18);
+  animation: detail-sheet-in 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.detail-atelier-reaction-sheet-handle {
+  width: 2.7rem;
+  height: 0.24rem;
+  justify-self: center;
+  border-radius: 999px;
+  background: rgba(126, 96, 76, 0.24);
+}
+
+.detail-atelier-reaction-sheet-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.72rem;
+  align-items: start;
+}
+
+.detail-atelier-reaction-sheet-head h3,
+.detail-atelier-reaction-sheet-head p,
+.detail-atelier-reaction-sheet-head span,
+.detail-atelier-reaction-sheet-status p {
+  margin: 0;
+}
+
+.detail-atelier-reaction-sheet-head h3 {
+  color: #2e1f19;
+  font-family: var(--font-heading);
+  font-size: var(--type-l4-size);
+  font-weight: 600;
+  line-height: var(--type-l4-line);
+  letter-spacing: var(--type-l4-spacing);
+}
+
+.detail-atelier-reaction-sheet-head span {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 0.24rem;
+  color: rgba(76, 59, 50, 0.62);
+  font-family: var(--font-body);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+}
+
+.detail-atelier-reaction-picker-close {
+  min-height: 34px;
+  padding: 0.42rem 0.68rem;
+}
+
+.detail-atelier-reaction-sheet-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.48rem 0.62rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.58rem 0.68rem;
+  border: 1px solid rgba(126, 96, 76, 0.1);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.64);
+}
+
+.detail-atelier-reaction-sheet-status p {
+  color: rgba(76, 59, 50, 0.64);
+  font-family: var(--font-body);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
+}
+
+.detail-atelier-reaction-picker,
+.detail-atelier-reaction-picker-section {
+  display: grid;
+  gap: 0.72rem;
+}
+
+.detail-atelier-reaction-picker-section {
+  padding-top: 0.78rem;
+  border-top: 1px solid rgba(126, 96, 76, 0.12);
+}
+
+.detail-atelier-reaction-picker-section-head {
+  display: flex;
+  gap: 0.52rem;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.detail-atelier-reaction-picker-section-head strong,
+.detail-atelier-reaction-picker-section-head span {
+  font-family: var(--font-body);
+}
+
+.detail-atelier-reaction-picker-section-head strong {
+  color: #2e1f19;
+  font-size: var(--type-body-size);
+  font-weight: 700;
+  line-height: var(--type-body-line);
+  letter-spacing: var(--type-body-spacing);
+}
+
+.detail-atelier-reaction-picker-section-head span {
+  color: rgba(76, 59, 50, 0.54);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line);
+  letter-spacing: var(--type-meta-spacing);
+}
+
+.detail-atelier-reaction-picker-grid.detail-atelier-reaction-list.is-extended {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.46rem;
+  padding: 0;
+}
+
+.detail-atelier-reaction-picker-grid.is-compact {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.detail-atelier-reaction-picker-grid .detail-atelier-reaction-button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 48px;
+  justify-items: start;
+  padding: 0.54rem 0.62rem;
+  border-radius: 18px;
+}
+
+.detail-atelier-reaction-picker-grid.is-compact .detail-atelier-reaction-button {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  gap: 0.2rem;
+  min-height: 52px;
+  padding: 0.46rem 0.28rem;
+}
+
+.detail-atelier-reaction-picker-grid .detail-atelier-reaction-button:active {
+  transform: translateY(1px) scale(0.985);
+}
+
+@keyframes detail-sheet-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes detail-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(22px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .detail-atelier-choice-grid {
@@ -2767,6 +2887,19 @@ async function confirmDeleteWish() {
   background: rgba(249, 238, 232, 0.8);
 }
 
+.detail-atelier-step-feedback {
+  grid-column: 2 / -1;
+  padding: 0.48rem 0.62rem;
+  border-radius: 12px;
+  font-size: var(--type-l7-size);
+  line-height: 1.35;
+  letter-spacing: var(--type-l7-spacing);
+}
+
+.detail-atelier-progress-quick-action .detail-atelier-step-feedback {
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 1080px) {
   .detail-atelier-hero,
   .detail-atelier-overview-grid,
@@ -2790,7 +2923,6 @@ async function confirmDeleteWish() {
   .detail-atelier-marquee,
   .detail-atelier-section-head,
   .detail-atelier-thread-meta,
-  .detail-atelier-action-row,
   .detail-atelier-image-toolbar,
   .detail-atelier-step-card,
   .detail-atelier-lightbox-stage {
@@ -2813,6 +2945,7 @@ async function confirmDeleteWish() {
     overflow: hidden;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 3;
+    line-clamp: 3;
   }
 
   .detail-atelier-mobile-glance {
@@ -2826,8 +2959,8 @@ async function confirmDeleteWish() {
     gap: 0.34rem;
   }
 
-  .detail-atelier-mobile-summary-grid {
-    grid-template-columns: 1fr;
+  .detail-atelier-hero-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .detail-atelier-mobile-progress-glance {
@@ -2841,16 +2974,6 @@ async function confirmDeleteWish() {
 
   .detail-atelier-mobile-more-summary {
     align-items: flex-start;
-  }
-
-  .detail-atelier-action-buttons {
-    width: 100%;
-  }
-
-  .detail-atelier-action-buttons .detail-atelier-primary,
-  .detail-atelier-action-buttons .detail-atelier-secondary {
-    flex: 1 1 100%;
-    min-width: 0;
   }
 
   .detail-atelier-danger-row {
@@ -2903,6 +3026,7 @@ async function confirmDeleteWish() {
     overflow: hidden;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 1;
+    line-clamp: 1;
   }
 
   .detail-atelier-image-toolbar {
@@ -2990,6 +3114,7 @@ async function confirmDeleteWish() {
     line-height: 1.58;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
   }
 
   .detail-atelier-choice-grid-reward .detail-atelier-chip-row {
@@ -3118,6 +3243,12 @@ async function confirmDeleteWish() {
     align-items: center;
   }
 
+  .detail-atelier-step-feedback {
+    grid-column: 1 / -1;
+    padding: 0.42rem 0.54rem;
+    border-radius: 11px;
+  }
+
   .detail-atelier-step-toggle {
     min-width: 5rem;
     min-height: 34px;
@@ -3198,6 +3329,7 @@ async function confirmDeleteWish() {
     letter-spacing: 0;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
   }
 
   .detail-atelier-mobile-thread-title time {
@@ -3228,6 +3360,7 @@ async function confirmDeleteWish() {
   .detail-atelier-thread-message-mobile {
     line-height: 1.48;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
   }
 
   .detail-atelier-mobile-thread-more {
@@ -3236,6 +3369,57 @@ async function confirmDeleteWish() {
 
   .detail-atelier-mobile-thread-more-summary {
     padding-top: 0.1rem;
+  }
+
+  .detail-atelier-mobile-reaction-rail {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.36rem;
+    align-items: center;
+    min-height: 30px;
+  }
+
+  .detail-atelier-mobile-reaction-trigger.detail-atelier-reaction-toggle {
+    width: 30px;
+    min-width: 30px;
+    min-height: 30px;
+    justify-content: center;
+    padding: 0;
+    border-radius: 999px;
+    font-size: var(--type-supporting-size);
+    line-height: 1;
+  }
+
+  .detail-atelier-mobile-reaction-pills.detail-atelier-reaction-list {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+    grid-template-columns: none;
+    gap: 0.28rem;
+    overflow-x: auto;
+    max-width: 100%;
+    padding-bottom: 0;
+    scrollbar-width: none;
+  }
+
+  .detail-atelier-mobile-reaction-pills.detail-atelier-reaction-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .detail-atelier-mobile-reaction-pills .detail-atelier-chip {
+    min-height: 28px;
+    padding: 0.28rem 0.48rem;
+    border-radius: 999px;
+    font-size: var(--type-l7-size);
+    line-height: 1;
+    letter-spacing: 0;
+  }
+
+  .detail-atelier-mobile-reaction-rail .detail-atelier-reaction-summary {
+    align-self: center;
+    font-size: var(--type-l7-size);
+    line-height: 1.2;
+    letter-spacing: var(--type-l7-spacing);
   }
 
   .detail-atelier-image-figure.is-cover {
@@ -3281,6 +3465,71 @@ async function confirmDeleteWish() {
 
   .detail-atelier-reaction-list.is-extended::-webkit-scrollbar {
     display: none;
+  }
+
+  .detail-atelier-reaction-sheet-layer {
+    padding: 0.56rem;
+  }
+
+  .detail-atelier-reaction-sheet {
+    width: 100%;
+    max-height: min(78vh, 640px);
+    gap: 0.76rem;
+    padding: 0.62rem 0.68rem calc(0.78rem + env(safe-area-inset-bottom, 0px));
+    border-radius: 24px 24px 18px 18px;
+  }
+
+  .detail-atelier-reaction-sheet-head {
+    gap: 0.48rem;
+  }
+
+  .detail-atelier-reaction-sheet-head h3 {
+    font-size: var(--type-l5-size);
+    line-height: var(--type-l5-line);
+    letter-spacing: var(--type-l5-spacing);
+  }
+
+  .detail-atelier-reaction-sheet-status {
+    gap: 0.42rem;
+    padding: 0.5rem 0.56rem;
+  }
+
+  .detail-atelier-reaction-picker,
+  .detail-atelier-reaction-picker-section {
+    gap: 0.58rem;
+  }
+
+  .detail-atelier-reaction-picker-section {
+    padding-top: 0.64rem;
+  }
+
+  .detail-atelier-reaction-sheet .detail-atelier-reaction-list.is-extended,
+  .detail-atelier-reaction-picker-grid.detail-atelier-reaction-list.is-extended {
+    display: grid;
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+    overflow: visible;
+    max-width: none;
+    scrollbar-width: auto;
+  }
+
+  .detail-atelier-reaction-picker-grid.detail-atelier-reaction-list.is-extended {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.38rem;
+  }
+
+  .detail-atelier-reaction-picker-grid.is-compact.detail-atelier-reaction-list.is-extended {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .detail-atelier-reaction-picker-grid .detail-atelier-reaction-button {
+    min-height: 46px;
+    padding: 0.48rem 0.46rem;
+  }
+
+  .detail-atelier-reaction-picker-grid.is-compact .detail-atelier-reaction-button {
+    min-height: 50px;
+    padding: 0.42rem 0.22rem;
   }
 
   .detail-atelier-image-actions .detail-atelier-secondary,
@@ -3330,6 +3579,17 @@ async function confirmDeleteWish() {
 
   .detail-atelier-image-empty {
     min-height: 120px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .detail-atelier-reaction-sheet-layer,
+  .detail-atelier-reaction-sheet {
+    animation-duration: 0.01ms;
+  }
+
+  .detail-atelier-reaction-picker-grid .detail-atelier-reaction-button:active {
+    transform: none;
   }
 }
 </style>
