@@ -19,9 +19,13 @@ const {
   getSnapshotMetric,
   getThreadActorName,
   getThreadEventLabel,
+  getThreadReactionMemberNames,
+  getThreadReactionSummaryLabel,
+  getThreadReviewHeadline,
   getWishJournalPreview,
   getWishScopeLabel,
   getWishTitle,
+  isReviewReactionExpanded,
   liveMonthlyThreads,
   monthlyNote,
   monthlySnapshots,
@@ -32,6 +36,7 @@ const {
   reviewHighlights,
   reviewTab,
   reviewTabOptions,
+  toggleReviewReactionMembers,
   getSnapshotPreviewBlocks,
 } = useReviewPageState()
 </script>
@@ -108,7 +113,6 @@ const {
           >
             <span class="review-tab-kicker">{{ tab.eyebrow }}</span>
             <div class="review-tab-main">
-              <span>{{ tab.label }}</span>
               <small>{{ tab.count }}</small>
             </div>
             <p>{{ tab.note }}</p>
@@ -226,14 +230,33 @@ const {
             <div class="review-item-head">
               <div class="review-item-copy">
                 <p class="eyebrow review-item-eyebrow">{{ getWishTitle(thread) }}</p>
-                <h3>{{ thread.messageText }}</h3>
-                <p class="review-item-note">这笔记录已经收进本月实时回顾。</p>
+                <h3>{{ getThreadReviewHeadline(thread) }}</h3>
               </div>
             </div>
-            <p class="review-meta-line">
-              <span :class="['review-member-pill', getMemberToneClass(thread.actorId)]">{{ getThreadActorName(thread) }}</span>
-              <span>{{ getThreadEventLabel(thread.eventKind) }}</span>
-            </p>
+            <div v-if="thread.reactions.length" class="review-reaction-group" aria-label="这条记录收到的表情">
+              <div class="review-reaction-row">
+                <button
+                  v-for="reaction in thread.reactions"
+                  :key="`${thread.id}-${reaction.emoji}`"
+                  class="review-reaction-pill"
+                  type="button"
+                  :aria-expanded="isReviewReactionExpanded(thread.id, reaction.emoji)"
+                  :aria-label="getThreadReactionSummaryLabel(reaction)"
+                  @click="toggleReviewReactionMembers(thread.id, reaction.emoji)"
+                >
+                  <span>{{ reaction.emoji }}</span>
+                  <small v-if="reaction.count > 1">{{ reaction.count }}</small>
+                </button>
+              </div>
+              <div
+                v-for="reaction in thread.reactions"
+                v-show="isReviewReactionExpanded(thread.id, reaction.emoji)"
+                :key="`${thread.id}-${reaction.emoji}-members`"
+                class="review-reaction-members"
+              >
+                <span v-for="memberName in getThreadReactionMemberNames(reaction)" :key="memberName">{{ memberName }}</span>
+              </div>
+            </div>
             <div v-if="thread.wishId" class="button-row review-card-actions">
               <RouterLink class="button-link review-inline-link" :to="{ name: 'wish-detail', params: { id: thread.wishId } }">去这条愿望</RouterLink>
             </div>
@@ -480,7 +503,9 @@ const {
 .review-card-chip {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
   min-height: 30px;
+  width: max-content;
   padding: 0.35rem 0.68rem;
   border-radius: 999px;
   border: 1px solid rgba(126, 96, 76, 0.12);
@@ -660,19 +685,19 @@ const {
   line-height: var(--type-meta-line);
 }
 
-.review-tab-button span {
-  color: #2d201a;
-  font-family: var(--font-heading);
-  font-size: var(--type-l5-size);
-  font-weight: 600;
-  line-height: 1.26;
-  letter-spacing: -0.02em;
-}
-
 .review-tab-button small {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  min-height: 1.85rem;
+  padding: 0.24rem 0.62rem;
+  border-radius: 999px;
+  border: 1px solid rgba(126, 96, 76, 0.12);
+  background: rgba(255, 255, 255, 0.58);
   color: var(--text-soft);
   font-family: var(--font-body);
   font-size: var(--type-meta-size);
+  font-weight: 600;
   letter-spacing: var(--type-meta-spacing);
   line-height: var(--type-meta-line);
 }
@@ -758,19 +783,19 @@ const {
 }
 
 .review-stats {
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  gap: 0.82rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.62rem;
 }
 
 .review-stat-card {
   display: grid;
   align-content: start;
-  gap: 0.38rem;
-  grid-column: span 2;
+  gap: 0.28rem;
+  min-width: 0;
+  padding: 0.72rem 0.78rem;
 }
 
 .review-stat-card.is-primary {
-  grid-column: span 6;
   background: linear-gradient(180deg, rgba(255, 250, 245, 0.96), rgba(255, 255, 255, 0.8));
 }
 
@@ -796,13 +821,14 @@ const {
 .review-stat-label {
   color: rgba(73, 55, 45, 0.72);
   font-family: var(--font-body);
-  font-size: var(--type-body-size);
-  line-height: var(--type-body-line);
+  font-size: var(--type-supporting-size);
+  line-height: 1.35;
 }
 
 .review-stat-card strong {
   margin: 0.15rem 0 0;
   font-family: var(--font-heading);
+  font-size: 1.45rem;
   font-weight: 600;
   line-height: 1.08;
   letter-spacing: -0.03em;
@@ -811,8 +837,8 @@ const {
 .review-stat-note {
   color: var(--text-soft);
   font-family: var(--font-body);
-  font-size: var(--type-body-size);
-  line-height: var(--type-body-line);
+  font-size: var(--type-meta-size);
+  line-height: 1.42;
 }
 
 .review-item,
@@ -889,6 +915,65 @@ const {
   font-size: var(--type-meta-size);
   line-height: var(--type-meta-line);
   text-align: right;
+  white-space: nowrap;
+}
+
+.review-reaction-group {
+  display: grid;
+  gap: 0.42rem;
+}
+
+.review-reaction-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+}
+
+.review-reaction-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.26rem;
+  min-height: 1.9rem;
+  padding: 0.28rem 0.58rem;
+  border-radius: 999px;
+  border: 1px solid rgba(126, 96, 76, 0.12);
+  background: rgba(255, 255, 255, 0.72);
+  color: #392922;
+  font-family: var(--font-body);
+  font-size: var(--type-meta-size);
+  font-weight: 600;
+  line-height: var(--type-meta-line);
+}
+
+.review-reaction-pill small {
+  color: var(--text-soft);
+  font-size: var(--type-l7-size);
+  line-height: 1;
+}
+
+.review-reaction-pill[aria-expanded='true'] {
+  border-color: rgba(185, 120, 53, 0.24);
+  background: rgba(255, 243, 231, 0.86);
+}
+
+.review-reaction-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line);
+}
+
+.review-reaction-members span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.7rem;
+  padding: 0.22rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(248, 244, 237, 0.72);
 }
 
 .review-meta-line {
@@ -1002,7 +1087,6 @@ const {
 
   .review-note-head,
   .journal-card-band,
-  .review-item-band,
   .snapshot-card-band,
   .review-item-head,
   .journal-card-head,
@@ -1042,12 +1126,21 @@ const {
   }
 
   .review-stats {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.56rem;
   }
 
   .review-stat-card,
   .review-stat-card.is-primary {
     grid-column: auto;
+  }
+
+  .review-stat-card {
+    padding: 0.66rem 0.68rem;
+  }
+
+  .review-stat-card strong {
+    font-size: 1.24rem;
   }
 }
 </style>

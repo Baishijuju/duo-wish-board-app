@@ -62,7 +62,9 @@ const {
   getThreadMemberReactionEmojis,
   getThreadReactionCount,
   getThreadReactionLabel,
+  getThreadReactionMemberNames,
   getThreadReactionRemainingCount,
+  getThreadReactionSummaryLabel,
   hasActiveOverflowThreadReaction,
   handleCommentImageSelection,
   handleImageSelection,
@@ -76,6 +78,7 @@ const {
   isSubmittingReward,
   isThreadReactionActive,
   isThreadReactionExpanded,
+  isThreadReactionMembersExpanded,
   isThreadReactionPickerOpen,
   isThreadReactionRowPending,
   isTogglingThreadReaction,
@@ -107,6 +110,7 @@ const {
   threadFeedback,
   threadFeedbackTone,
   toggleThreadReactionExpansion,
+  toggleThreadReactionMembers,
   toggleThreadReaction,
   toggleWishStep,
   wishJournalEntries,
@@ -639,10 +643,18 @@ async function confirmDeleteWish() {
 
               <div class="detail-atelier-reaction-row">
                 <div class="detail-atelier-reaction-groups">
-                  <div v-if="getThreadMemberReactionEmojis(thread).length" class="detail-atelier-reaction-list detail-atelier-reaction-list-selected">
-                    <span v-for="emoji in getThreadMemberReactionEmojis(thread)" :key="`${thread.id}-selected-${emoji}`" class="detail-atelier-chip">
-                      {{ emoji }}
-                    </span>
+                  <div v-if="thread.reactions.length" class="detail-atelier-reaction-list detail-atelier-reaction-list-selected">
+                    <button
+                      v-for="reaction in thread.reactions"
+                      :key="`${thread.id}-reaction-pill-${reaction.emoji}`"
+                      :class="['detail-atelier-chip', 'detail-atelier-reaction-pill', { active: isThreadReactionMembersExpanded(thread.id, reaction.emoji) }]"
+                      type="button"
+                      :aria-expanded="isThreadReactionMembersExpanded(thread.id, reaction.emoji)"
+                      :aria-label="getThreadReactionSummaryLabel(reaction)"
+                      @click="toggleThreadReactionMembers(thread.id, reaction.emoji)"
+                    >
+                      {{ reaction.emoji }}<span v-if="reaction.count > 1"> {{ reaction.count }}</span>
+                    </button>
                   </div>
 
                   <div class="detail-atelier-reaction-more">
@@ -685,6 +697,16 @@ async function confirmDeleteWish() {
                       </button>
                     </div>
                   </div>
+                </div>
+              </div>
+              <div v-if="thread.reactions.length" class="detail-atelier-reaction-members-stack">
+                <div
+                  v-for="reaction in thread.reactions"
+                  v-show="isThreadReactionMembersExpanded(thread.id, reaction.emoji)"
+                  :key="`${thread.id}-reaction-members-${reaction.emoji}`"
+                  class="detail-atelier-reaction-members"
+                >
+                  <span v-for="memberName in getThreadReactionMemberNames(reaction)" :key="memberName">{{ memberName }}</span>
                 </div>
               </div>
             </article>
@@ -755,9 +777,17 @@ async function confirmDeleteWish() {
                 </button>
 
                 <div v-if="thread.reactions.length" class="detail-atelier-reaction-list detail-atelier-mobile-reaction-pills">
-                  <span v-for="reaction in thread.reactions" :key="`${thread.id}-mobile-reaction-pill-${reaction.emoji}`" class="detail-atelier-chip">
+                  <button
+                    v-for="reaction in thread.reactions"
+                    :key="`${thread.id}-mobile-reaction-pill-${reaction.emoji}`"
+                    :class="['detail-atelier-chip', 'detail-atelier-reaction-pill', { active: isThreadReactionMembersExpanded(thread.id, reaction.emoji) }]"
+                    type="button"
+                    :aria-expanded="isThreadReactionMembersExpanded(thread.id, reaction.emoji)"
+                    :aria-label="getThreadReactionSummaryLabel(reaction)"
+                    @click="toggleThreadReactionMembers(thread.id, reaction.emoji)"
+                  >
                     {{ reaction.emoji }}<span v-if="reaction.count > 1"> {{ reaction.count }}</span>
-                  </span>
+                  </button>
                 </div>
                 <span v-else class="detail-atelier-reaction-summary">还没有回应</span>
 
@@ -768,6 +798,16 @@ async function confirmDeleteWish() {
                   <button class="detail-atelier-text danger" type="button" :disabled="deletingThreadId === thread.id" @click="void deleteThreadComment(thread)">
                     {{ deletingThreadId === thread.id ? '删除中' : '删除' }}
                   </button>
+                </div>
+              </div>
+              <div v-if="thread.reactions.length" class="detail-atelier-reaction-members-stack detail-atelier-mobile-reaction-members-stack">
+                <div
+                  v-for="reaction in thread.reactions"
+                  v-show="isThreadReactionMembersExpanded(thread.id, reaction.emoji)"
+                  :key="`${thread.id}-mobile-reaction-members-${reaction.emoji}`"
+                  class="detail-atelier-reaction-members"
+                >
+                  <span v-for="memberName in getThreadReactionMemberNames(reaction)" :key="memberName">{{ memberName }}</span>
                 </div>
               </div>
             </article>
@@ -844,9 +884,17 @@ async function confirmDeleteWish() {
                   </button>
 
                   <div v-if="thread.reactions.length" class="detail-atelier-reaction-list detail-atelier-mobile-reaction-pills">
-                    <span v-for="reaction in thread.reactions" :key="`${thread.id}-mobile-overflow-reaction-pill-${reaction.emoji}`" class="detail-atelier-chip">
+                    <button
+                      v-for="reaction in thread.reactions"
+                      :key="`${thread.id}-mobile-overflow-reaction-pill-${reaction.emoji}`"
+                      :class="['detail-atelier-chip', 'detail-atelier-reaction-pill', { active: isThreadReactionMembersExpanded(thread.id, reaction.emoji) }]"
+                      type="button"
+                      :aria-expanded="isThreadReactionMembersExpanded(thread.id, reaction.emoji)"
+                      :aria-label="getThreadReactionSummaryLabel(reaction)"
+                      @click="toggleThreadReactionMembers(thread.id, reaction.emoji)"
+                    >
                       {{ reaction.emoji }}<span v-if="reaction.count > 1"> {{ reaction.count }}</span>
-                    </span>
+                    </button>
                   </div>
                   <span v-else class="detail-atelier-reaction-summary">还没有回应</span>
 
@@ -857,6 +905,16 @@ async function confirmDeleteWish() {
                     <button class="detail-atelier-text danger" type="button" :disabled="deletingThreadId === thread.id" @click="void deleteThreadComment(thread)">
                       {{ deletingThreadId === thread.id ? '删除中' : '删除' }}
                     </button>
+                  </div>
+                </div>
+                <div v-if="thread.reactions.length" class="detail-atelier-reaction-members-stack detail-atelier-mobile-reaction-members-stack">
+                  <div
+                    v-for="reaction in thread.reactions"
+                    v-show="isThreadReactionMembersExpanded(thread.id, reaction.emoji)"
+                    :key="`${thread.id}-mobile-overflow-reaction-members-${reaction.emoji}`"
+                    class="detail-atelier-reaction-members"
+                  >
+                    <span v-for="memberName in getThreadReactionMemberNames(reaction)" :key="memberName">{{ memberName }}</span>
                   </div>
                 </div>
               </article>
@@ -2566,6 +2624,40 @@ async function confirmDeleteWish() {
   gap: 0.4rem;
 }
 
+.detail-atelier-reaction-pill {
+  cursor: pointer;
+  letter-spacing: 0;
+}
+
+.detail-atelier-reaction-pill.active {
+  border-color: rgba(185, 120, 53, 0.24);
+  background: rgba(255, 243, 231, 0.88);
+}
+
+.detail-atelier-reaction-members-stack {
+  display: grid;
+  gap: 0.36rem;
+}
+
+.detail-atelier-reaction-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  color: rgba(76, 59, 50, 0.62);
+  font-family: var(--font-body);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line);
+}
+
+.detail-atelier-reaction-members span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.7rem;
+  padding: 0.22rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(248, 244, 237, 0.74);
+}
+
 .detail-atelier-reaction-list.is-extended {
   flex: 1 1 100%;
   padding-top: 0.12rem;
@@ -3477,6 +3569,10 @@ async function confirmDeleteWish() {
     font-size: var(--type-l7-size);
     line-height: 1;
     letter-spacing: 0;
+  }
+
+  .detail-atelier-mobile-reaction-members-stack {
+    padding-top: 0.1rem;
   }
 
   .detail-atelier-mobile-reaction-rail .detail-atelier-reaction-summary {

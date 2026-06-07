@@ -41,6 +41,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
   const commentImageInputVersion = ref(0)
   const pendingThreadReactionKeys = ref<string[]>([])
   const expandedThreadReactionIds = ref<string[]>([])
+  const expandedThreadReactionMemberKey = ref<string | null>(null)
   const activeReactionPickerThreadId = ref<string | null>(null)
   const activeReactionPickerTriggerId = ref<string | null>(null)
   const isUploadingImages = ref(false)
@@ -199,6 +200,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
       stepRewardFeedbackTargetId.value = ''
       isCountProgressFeedback.value = false
       expandedThreadReactionIds.value = []
+      expandedThreadReactionMemberKey.value = null
       pendingThreadReactionKeys.value = []
       closeThreadReactionPicker(false)
     },
@@ -344,6 +346,29 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     const pendingCopy = isTogglingThreadReaction(thread.id, emoji) ? '，正在发送' : ''
 
     return `${getThreadReactionLabel(emoji)}${countCopy}${activeCopy}${pendingCopy}`
+  }
+
+  function getThreadReactionMemberKey(threadId: string, emoji: string) {
+    return `${threadId}:${emoji}`
+  }
+
+  function isThreadReactionMembersExpanded(threadId: string, emoji: string) {
+    return expandedThreadReactionMemberKey.value === getThreadReactionMemberKey(threadId, emoji)
+  }
+
+  function toggleThreadReactionMembers(threadId: string, emoji: string) {
+    const reactionKey = getThreadReactionMemberKey(threadId, emoji)
+    expandedThreadReactionMemberKey.value = expandedThreadReactionMemberKey.value === reactionKey ? null : reactionKey
+  }
+
+  function getThreadReactionMemberNames(reaction: WishThreadEntry['reactions'][number]) {
+    return reaction.memberIds.map((memberId) => getMemberName(memberId))
+  }
+
+  function getThreadReactionSummaryLabel(reaction: WishThreadEntry['reactions'][number]) {
+    const memberNames = getThreadReactionMemberNames(reaction)
+    const memberLabel = memberNames.length ? memberNames.join('、') : `${reaction.count} 位成员`
+    return `${memberLabel} 放了 ${reaction.emoji}`
   }
 
   function isThreadReactionActive(thread: WishThreadEntry, emoji: string) {
@@ -1196,8 +1221,10 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     getThreadHeadline,
     getThreadReactionCount,
     getThreadReactionLabel,
+    getThreadReactionMemberNames,
     getThreadReactionOverflowLabel,
     getThreadReactionRemainingCount,
+    getThreadReactionSummaryLabel,
     getWishActionLabel,
     hasActiveOverflowThreadReaction,
     handleCommentImageSelection,
@@ -1224,6 +1251,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     isSubmittingReward,
     isThreadReactionActive,
     isThreadReactionExpanded,
+    isThreadReactionMembersExpanded,
     isThreadReactionPickerOpen,
     isThreadReactionRowPending,
     isTogglingThreadReaction,
@@ -1259,6 +1287,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     threadFeedbackTone,
     getThreadMemberReactionEmojis,
     canAddThreadReaction,
+    toggleThreadReactionMembers,
     toggleImageSelection,
     toggleThreadReactionExpansion,
     toggleThreadReaction,

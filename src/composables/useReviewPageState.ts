@@ -14,6 +14,7 @@ export function useReviewPageState() {
   const wishStore = useWishStore()
 
   const reviewTab = ref<'journals' | 'live' | 'snapshots'>('live')
+  const expandedReviewReactionKey = ref<string | null>(null)
   const topCoinWish = computed(() => wishStore.dragonBallWishes[0] ?? null)
   const topCoinWishSummary = computed(() => {
     return topCoinWish.value ? wishStore.getWishCoinSummary(topCoinWish.value) : null
@@ -69,9 +70,9 @@ export function useReviewPageState() {
         eyebrow: '照片记忆',
         featured: false,
         key: 'images',
-        label: '已经存下',
+        label: '存下的图片',
         note: wishStore.stats.totalImages ? '这段时间已经开始有能翻出来看的画面了' : '还在等第一张照片把这一页翻开',
-        value: formatStorageBytes(wishStore.stats.totalImageBytes),
+        value: `${wishStore.stats.totalImages} 张`,
       },
     ]
   })
@@ -258,6 +259,69 @@ export function useReviewPageState() {
     return '领取奖励'
   }
 
+  function getThreadReviewHeadline(thread: WishThreadEntry) {
+    const actorName = getThreadActorName(thread)
+    const wishTitle = getWishTitle(thread)
+    const messageText = thread.messageText.trim()
+
+    if (thread.eventKind === 'comment') {
+      return messageText ? `${actorName} 留下近况：${messageText}` : `${actorName} 留下了一句近况`
+    }
+
+    if (thread.eventKind === 'wish_published') {
+      return `${actorName} 写下了「${wishTitle}」`
+    }
+
+    if (thread.eventKind === 'wish_step_completed') {
+      return `${actorName} 推进了「${wishTitle}」`
+    }
+
+    if (thread.eventKind === 'wish_coin_cast') {
+      return `${actorName} 给「${wishTitle}」投下一枚愿望币`
+    }
+
+    if (thread.eventKind === 'dragon_ball_reached') {
+      return `${actorName} 为「${wishTitle}」集齐了七龙珠`
+    }
+
+    if (thread.eventKind === 'wish_completed') {
+      return `${actorName} 把「${wishTitle}」收进完成册页`
+    }
+
+    if (thread.eventKind === 'premium_redeem') {
+      return `${actorName} 兑换了「${wishTitle}」的奖励`
+    }
+
+    if (thread.eventKind === 'weekly_welfare_issued') {
+      return `${actorName} 收到了这一周的愿望币`
+    }
+
+    return messageText ? `${actorName} 记录了：${messageText}` : `${actorName} 留下了一条${getThreadEventLabel(thread.eventKind)}`
+  }
+
+  function getThreadReactionKey(threadId: string, emoji: string) {
+    return `${threadId}:${emoji}`
+  }
+
+  function isReviewReactionExpanded(threadId: string, emoji: string) {
+    return expandedReviewReactionKey.value === getThreadReactionKey(threadId, emoji)
+  }
+
+  function toggleReviewReactionMembers(threadId: string, emoji: string) {
+    const reactionKey = getThreadReactionKey(threadId, emoji)
+    expandedReviewReactionKey.value = expandedReviewReactionKey.value === reactionKey ? null : reactionKey
+  }
+
+  function getThreadReactionMemberNames(reaction: WishThreadEntry['reactions'][number]) {
+    return reaction.memberIds.map((memberId) => getMemberName(memberId))
+  }
+
+  function getThreadReactionSummaryLabel(reaction: WishThreadEntry['reactions'][number]) {
+    const memberNames = getThreadReactionMemberNames(reaction)
+    const memberLabel = memberNames.length ? memberNames.join('、') : `${reaction.count} 位成员`
+    return `${memberLabel} 放了 ${reaction.emoji}`
+  }
+
   function getWishTitle(thread: WishThreadEntry) {
     if (!thread.wishId) {
       return '空间记录'
@@ -334,9 +398,13 @@ export function useReviewPageState() {
     getSnapshotMetric,
     getThreadActorName,
     getThreadEventLabel,
+    getThreadReactionMemberNames,
+    getThreadReactionSummaryLabel,
+    getThreadReviewHeadline,
     getWishJournalPreview,
     getWishScopeLabel,
     getWishTitle,
+    isReviewReactionExpanded,
     liveMonthlyThreads,
     monthlyNote,
     monthlySnapshots,
@@ -347,24 +415,9 @@ export function useReviewPageState() {
     reviewHighlights,
     reviewTab,
     reviewTabOptions,
+    toggleReviewReactionMembers,
     getSnapshotPreviewBlocks,
   }
-}
-
-function formatStorageBytes(sizeBytes: number) {
-  if (sizeBytes >= 1024 * 1024 * 1024) {
-    return `${(sizeBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
-  }
-
-  if (sizeBytes >= 1024 * 1024) {
-    return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`
-  }
-
-  if (sizeBytes >= 1024) {
-    return `${Math.round(sizeBytes / 1024)} KB`
-  }
-
-  return `${sizeBytes} B`
 }
 
 function getBeijingMonthKey(dateValue: string | Date = new Date()) {
