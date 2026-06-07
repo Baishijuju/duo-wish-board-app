@@ -73,12 +73,15 @@ test.describe('compose and detail visual acceptance', () => {
       await expect(page.locator('.detail-atelier-story-card h1')).toBeVisible()
       await expect(page.locator('.detail-atelier-action-row')).toHaveCount(0)
       await expect(page.locator('.detail-atelier-overview-card.is-warm')).toHaveCount(0)
+      await expect(page.locator('.detail-atelier-image-card')).toHaveCount(0)
       await expect(page.locator('.detail-atelier-story-card .detail-atelier-hero-summary-grid')).toContainText('愿望币')
       await expect(page.locator('.detail-atelier-story-card .detail-atelier-hero-summary-grid')).toContainText('星星币')
       await expect(page.getByRole('button', { name: '完成并领奖' })).toHaveCount(0)
       await expect(page.locator('.detail-atelier-danger-summary')).toBeVisible()
-      await expect(page.locator('.detail-atelier-danger-actions')).not.toBeVisible()
+      await page.locator('.detail-atelier-danger-summary').click()
+      await expect(page.getByRole('link', { name: '编辑愿望' })).toBeVisible()
       await expect(page.getByText('以谁的身份留言')).toHaveCount(0)
+      await expect(page.getByText(/默认以 .* 留言/)).toHaveCount(0)
       await expect(page.locator('.detail-atelier-compose-message-field textarea')).toBeVisible()
 
       const sectionOrder = await page.evaluate(() => {
@@ -98,6 +101,9 @@ test.describe('compose and detail visual acceptance', () => {
         await expect(page.locator('.detail-atelier-story-card .detail-atelier-mobile-info-card')).toContainText('写下的人')
         await expect(page.locator('.detail-atelier-story-card .detail-atelier-mobile-info-card')).toContainText('创建时间')
         await expect(page.locator('.detail-atelier-compose-attachment-details')).toBeVisible()
+        await expect(page.locator('.detail-atelier-mobile-glance-copy')).toHaveCount(0)
+        await expect(page.getByText('给这条留言加图片')).toHaveCount(0)
+        await expect(page.getByText('可选，会和这笔近况一起留在下面。')).toHaveCount(0)
       } else {
         await expect(page.locator('.detail-atelier-compose-attachment-panel')).toBeVisible()
       }
@@ -126,7 +132,9 @@ test.describe('compose and detail visual acceptance', () => {
 
       if (viewport.width <= 430) {
         await expect(page.locator('.detail-atelier-mobile-thread-more-summary')).toHaveCount(0)
+        await expect(page.locator('.detail-atelier-mobile-thread-tools')).toHaveCount(0)
         await expect(page.locator('.detail-atelier-mobile-reaction-rail').first()).toBeVisible()
+        await expect(page.locator('.detail-atelier-mobile-reaction-trigger').first()).toContainText('表情')
         const compactThreadMetrics = await page.evaluate(() => {
           const card = document.querySelector('.detail-atelier-thread-list.detail-atelier-mobile-only .detail-atelier-thread-entry')?.getBoundingClientRect()
           const chips = document.querySelector('.detail-atelier-thread-list.detail-atelier-mobile-only .detail-atelier-mobile-thread-corner-chips')?.getBoundingClientRect()
@@ -143,7 +151,7 @@ test.describe('compose and detail visual acceptance', () => {
         expect(compactThreadMetrics.firstThreadHeight).toBeLessThanOrEqual(190)
         expect(compactThreadMetrics.cornerChipsTop).toBeLessThanOrEqual(20)
         expect(compactThreadMetrics.cornerChipsRightInset).toBeLessThanOrEqual(24)
-        expect(compactThreadMetrics.reactionRailHeight).toBeLessThanOrEqual(34)
+        expect(compactThreadMetrics.reactionRailHeight).toBeLessThanOrEqual(36)
       }
 
       await expect(reactionToggle).toBeVisible()
@@ -216,6 +224,11 @@ test.describe('compose and detail visual acceptance', () => {
       await completionButton.click()
       await expect(page.locator('.detail-atelier-story-card > .detail-atelier-feedback')).toHaveText('先去空间页给自己准备至少一个高档奖励，再来完成这条愿望。')
       await expectNoHorizontalOverflow(page)
+
+      await page.goto('/wish/wish-home-corner')
+      await expect(page.locator('.detail-atelier-story-card h1')).toBeVisible()
+      await expect(page.locator('.detail-atelier-progress-one-step')).toBeVisible()
+      await expect(page.locator('.detail-atelier-progress-completion')).toBeVisible()
     })
 
     test(`space keeps reward member cards paired at ${viewport.name}`, async ({ page }) => {

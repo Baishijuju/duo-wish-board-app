@@ -19,9 +19,7 @@ const {
   THREAD_REACTION_OPTIONS,
   activeReactionPickerThread,
   adjustCountProgress,
-  authStore,
   canAddThreadReaction,
-  cancelEditingImageNote,
   cancelEditingThreadComment,
   canConfirmWishReward,
   canDeleteImage,
@@ -49,7 +47,6 @@ const {
   deletingThreadId,
   draftMessage,
   dueDateLabel,
-  editingImageNoteId,
   editingThreadMessage,
   formatFileSize,
   getClaimToneLabel,
@@ -70,12 +67,10 @@ const {
   handleCommentImageSelection,
   handleImageSelection,
   handleWishCompletionAction,
-  imageNoteDraft,
   isCommentThread,
   isCountProgressFeedback,
   isCoverImage,
   isEditingThreadComment,
-  isSavingImageNote,
   isSavingThreadEdit,
   isSubmittingComment,
   isSubmittingReward,
@@ -100,11 +95,9 @@ const {
   rewardFeedback,
   rewardFeedbackTone,
   saveCountProgress,
-  saveImageNote,
   saveThreadComment,
   shouldRecordCountProgressLog,
   selectedWish,
-  startEditingImageNote,
   startEditingThreadComment,
   stepDraft,
   stepPreview,
@@ -150,26 +143,7 @@ const mobileAttachmentSummary = computed(() => {
     return `已选 ${commentImageFiles.value.length} 张图`
   }
 
-  return wishStore.isUsingCloudWishes
-    ? '先写一句也可以，图片放在里面再加'
-    : '连接云端愿望后，这里就能加图片'
-})
-const mobileStorySummary = computed(() => {
-  if (!selectedWish.value) {
-    return '先写下一笔近况，今天最重要的变化就会继续落在这里。'
-  }
-
-  if (progressSnapshot.value?.mode === 'steps') {
-    return selectedWish.value.steps.length
-      ? '先完成眼前这一步，再回来把新的变化写下来。'
-      : '先写下第一步，这页会更容易继续往前。'
-  }
-
-  if (progressSnapshot.value?.mode === 'count') {
-    return '先把数字往前推一点，再回来记一句今天的近况。'
-  }
-
-  return '先写一句近况，后面的推进、投币和记录都会继续接在这一页。'
+  return wishStore.isUsingCloudWishes ? '可选' : '需云端'
 })
 const canShowProgressCompletionAction = computed(() => {
   const progress = progressSnapshot.value
@@ -177,8 +151,10 @@ const canShowProgressCompletionAction = computed(() => {
   return Boolean(
     selectedWish.value
       && selectedWish.value.status !== 'done'
-      && (progress?.mode === 'count' || progress?.mode === 'steps')
-      && progress.isReady,
+      && (
+        progress?.mode === 'none'
+        || ((progress?.mode === 'count' || progress?.mode === 'steps') && progress.isReady)
+      ),
   )
 })
 const isDeleteWishConfirming = ref(false)
@@ -257,23 +233,47 @@ async function confirmDeleteWish() {
           </div>
 
           <div class="detail-atelier-mobile-glance detail-atelier-mobile-only">
-            <button
-              v-if="coverImageUrl && coverImageEntry"
-              class="detail-atelier-mobile-cover-button"
-              type="button"
-              @click="openImagePreview(visibleImages, coverImageEntry.id)"
-            >
-              <img class="detail-atelier-mobile-cover-image" :src="coverImageUrl" :alt="`${selectedWish.title} 首图`" />
-            </button>
-            <div v-else class="detail-atelier-mobile-cover-empty detail-atelier-empty-block">
-              <strong>还没有封面</strong>
-              <p>等你留下第一张图。</p>
-            </div>
+            <div class="detail-atelier-cover-slot">
+              <button
+                v-if="coverImageUrl && coverImageEntry"
+                class="detail-atelier-mobile-cover-button"
+                type="button"
+                @click="openImagePreview(visibleImages, coverImageEntry.id)"
+              >
+                <img class="detail-atelier-mobile-cover-image" :src="coverImageUrl" :alt="`${selectedWish.title} 首图`" />
+              </button>
+              <label v-else-if="wishStore.isUsingCloudWishes" class="detail-atelier-mobile-cover-empty detail-atelier-cover-upload">
+                <input
+                  class="visually-hidden"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  @change="handleImageSelection"
+                />
+                <strong>{{ isUploadingImages ? '上传中...' : '添加首图' }}</strong>
+              </label>
+              <div v-else class="detail-atelier-mobile-cover-empty detail-atelier-empty-block">
+                <strong>还没有封面</strong>
+              </div>
 
-            <div class="detail-atelier-mobile-glance-copy">
-              <span class="detail-atelier-badge">{{ coverImageEntry ? '已留住封面' : '还没有首图' }}</span>
-              <strong>{{ selectedWish.images.length }} 张图 · {{ visibleThreads.length }} 条记录</strong>
-              <p>{{ mobileStorySummary }}</p>
+              <div v-if="coverImageEntry" class="detail-atelier-cover-inline-actions">
+                <label v-if="wishStore.isUsingCloudWishes" class="detail-atelier-mini-link detail-atelier-cover-action upload-trigger">
+                  <input
+                    class="visually-hidden"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    @change="handleImageSelection"
+                  />
+                  换图
+                </label>
+                <button
+                  v-if="canDeleteImage(coverImageEntry.createdBy)"
+                  class="detail-atelier-mini-link detail-atelier-cover-action danger"
+                  type="button"
+                  @click="void deleteImage(coverImageEntry.id)"
+                >
+                  删除
+                </button>
+              </div>
             </div>
           </div>
 
@@ -321,15 +321,44 @@ async function confirmDeleteWish() {
         </article>
 
         <article class="page-card detail-atelier-cover-card detail-atelier-desktop-only">
-          <img v-if="coverImageUrl" class="detail-atelier-cover-image" :src="coverImageUrl" :alt="`${selectedWish.title} 首图`" />
+          <button v-if="coverImageUrl && coverImageEntry" class="detail-atelier-cover-button" type="button" @click="openImagePreview(visibleImages, coverImageEntry.id)">
+            <img class="detail-atelier-cover-image" :src="coverImageUrl" :alt="`${selectedWish.title} 首图`" />
+          </button>
+          <label v-else-if="wishStore.isUsingCloudWishes" class="detail-atelier-cover-empty detail-atelier-cover-upload">
+            <input
+              class="visually-hidden"
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              @change="handleImageSelection"
+            />
+            <strong>{{ isUploadingImages ? '上传中...' : '添加首图' }}</strong>
+          </label>
           <div v-else class="detail-atelier-cover-empty">
             <strong>这页还在等一张封面</strong>
-            <p>这条愿望还没放进图片，但详情页仍会完整保留过程和记录。</p>
           </div>
 
           <div class="detail-atelier-cover-head">
             <p class="detail-atelier-kicker">封面首图</p>
             <span class="detail-atelier-badge">{{ coverImageEntry ? '已经留住一张首图' : '还没有留下首图' }}</span>
+          </div>
+          <div class="detail-atelier-inline-buttons detail-atelier-cover-inline-actions">
+            <label v-if="wishStore.isUsingCloudWishes" class="detail-atelier-secondary upload-trigger">
+              <input
+                class="visually-hidden"
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                @change="handleImageSelection"
+              />
+              {{ coverImageEntry ? '换图' : '添加首图' }}
+            </label>
+            <button
+              v-if="coverImageEntry && canDeleteImage(coverImageEntry.createdBy)"
+              class="detail-atelier-text danger"
+              type="button"
+              @click="void deleteImage(coverImageEntry.id)"
+            >
+              删除首图
+            </button>
           </div>
         </article>
       </section>
@@ -436,9 +465,11 @@ async function confirmDeleteWish() {
             </details>
           </div>
 
-          <div v-else class="detail-atelier-empty-block">
-            <strong>还没有开始记录进度</strong>
-            <p>这条愿望还没决定要怎么记进度，晚一点再补上也没关系。</p>
+          <div v-else class="detail-atelier-progress-quick-action detail-atelier-progress-one-step">
+            <div class="detail-atelier-progress-quick-copy">
+              <strong>这条愿望可以一步完成</strong>
+              <p>没有拆数字或步骤时，完成按钮就直接放在这里。</p>
+            </div>
           </div>
 
           <div v-if="canShowProgressCompletionAction" class="detail-atelier-inline-buttons detail-atelier-progress-completion-row">
@@ -467,7 +498,6 @@ async function confirmDeleteWish() {
             <div class="detail-atelier-attachment-panel detail-atelier-compose-attachment-panel detail-atelier-compose-block detail-atelier-desktop-only" :class="{ 'is-disabled': !wishStore.isUsingCloudWishes }">
               <div class="detail-atelier-compose-attachment-copy">
                 <span>图片附件</span>
-                <p>{{ wishStore.isUsingCloudWishes ? '可选，会和这笔近况一起留在下面。' : '连接云端愿望后，就能把图片和这笔近况一起留下。' }}</p>
               </div>
 
               <div v-if="wishStore.isUsingCloudWishes" class="detail-atelier-inline-buttons detail-atelier-compose-upload-row">
@@ -480,7 +510,7 @@ async function confirmDeleteWish() {
                     multiple
                     @change="handleCommentImageSelection"
                   />
-                  {{ commentImageFiles.length ? `已选 ${commentImageFiles.length} 张图` : '给这条留言加图片' }}
+                  {{ commentImageFiles.length ? `已选 ${commentImageFiles.length} 张图` : '选图' }}
                 </label>
                 <button v-if="commentImageFiles.length" class="detail-atelier-secondary" type="button" @click="clearCommentImageFiles()">清空已选</button>
               </div>
@@ -500,10 +530,6 @@ async function confirmDeleteWish() {
                 <strong>{{ mobileAttachmentSummary }}</strong>
               </summary>
 
-              <div class="detail-atelier-compose-attachment-copy">
-                <p>{{ wishStore.isUsingCloudWishes ? '可选，会和这笔近况一起留在下面。' : '连接云端愿望后，这里就能加图片' }}</p>
-              </div>
-
               <div v-if="wishStore.isUsingCloudWishes" class="detail-atelier-inline-buttons detail-atelier-compose-upload-row">
                 <label class="detail-atelier-secondary upload-trigger">
                   <input
@@ -514,7 +540,7 @@ async function confirmDeleteWish() {
                     multiple
                     @change="handleCommentImageSelection"
                   />
-                  {{ commentImageFiles.length ? `已选 ${commentImageFiles.length} 张图` : '给这条留言加图片' }}
+                  {{ commentImageFiles.length ? `已选 ${commentImageFiles.length} 张图` : '选图' }}
                 </label>
                 <button v-if="commentImageFiles.length" class="detail-atelier-secondary" type="button" @click="clearCommentImageFiles()">清空已选</button>
               </div>
@@ -529,8 +555,6 @@ async function confirmDeleteWish() {
             </details>
 
             <div class="detail-atelier-compose-submit-row detail-atelier-compose-block">
-              <span class="detail-atelier-compose-author-note">默认以 {{ authStore.currentMember?.displayName || '当前成员' }} 留言</span>
-
               <div class="detail-atelier-inline-buttons detail-atelier-compose-submit-buttons">
                 <button class="detail-atelier-primary" type="submit" :disabled="!draftMessage.trim() || isSubmittingComment">
                   {{ isSubmittingComment ? '发送中...' : '发送留言' }}
@@ -689,19 +713,6 @@ async function confirmDeleteWish() {
                   </div>
                 </div>
 
-                <details v-if="canManageThreadComment(thread)" class="detail-atelier-mobile-thread-tools">
-                  <summary class="detail-atelier-mobile-thread-tools-summary">
-                    <span>更多</span>
-                  </summary>
-                  <div class="detail-atelier-inline-buttons detail-atelier-thread-tools">
-                    <button class="detail-atelier-secondary" type="button" @click="isEditingThreadComment(thread.id) ? cancelEditingThreadComment() : startEditingThreadComment(thread)">
-                      {{ isEditingThreadComment(thread.id) ? '取消编辑' : '编辑评论' }}
-                    </button>
-                    <button class="detail-atelier-text danger" type="button" :disabled="deletingThreadId === thread.id" @click="void deleteThreadComment(thread)">
-                      {{ deletingThreadId === thread.id ? '删除中...' : '删除评论' }}
-                    </button>
-                  </div>
-                </details>
               </div>
 
               <label v-if="isEditingThreadComment(thread.id)" class="detail-atelier-note-editor">
@@ -740,7 +751,8 @@ async function confirmDeleteWish() {
                   :aria-label="isThreadReactionPickerOpen(thread.id) ? '收起表情选项' : '打开表情选项'"
                   @click="openThreadReactionPicker(thread.id, `thread-reaction-toggle-mobile-${thread.id}`)"
                 >
-                  <span aria-hidden="true">☺</span>
+                  <span aria-hidden="true">+</span>
+                  <span>表情</span>
                 </button>
 
                 <div v-if="thread.reactions.length" class="detail-atelier-reaction-list detail-atelier-mobile-reaction-pills">
@@ -749,6 +761,15 @@ async function confirmDeleteWish() {
                   </span>
                 </div>
                 <span v-else class="detail-atelier-reaction-summary">还没有回应</span>
+
+                <div v-if="canManageThreadComment(thread)" class="detail-atelier-inline-buttons detail-atelier-mobile-thread-inline-tools">
+                  <button class="detail-atelier-text" type="button" @click="isEditingThreadComment(thread.id) ? cancelEditingThreadComment() : startEditingThreadComment(thread)">
+                    {{ isEditingThreadComment(thread.id) ? '取消' : '编辑' }}
+                  </button>
+                  <button class="detail-atelier-text danger" type="button" :disabled="deletingThreadId === thread.id" @click="void deleteThreadComment(thread)">
+                    {{ deletingThreadId === thread.id ? '删除中' : '删除' }}
+                  </button>
+                </div>
               </div>
             </article>
           </div>
@@ -781,19 +802,6 @@ async function confirmDeleteWish() {
                     </div>
                   </div>
 
-                  <details v-if="canManageThreadComment(thread)" class="detail-atelier-mobile-thread-tools">
-                    <summary class="detail-atelier-mobile-thread-tools-summary">
-                      <span>更多</span>
-                    </summary>
-                    <div class="detail-atelier-inline-buttons detail-atelier-thread-tools">
-                      <button class="detail-atelier-secondary" type="button" @click="isEditingThreadComment(thread.id) ? cancelEditingThreadComment() : startEditingThreadComment(thread)">
-                        {{ isEditingThreadComment(thread.id) ? '取消编辑' : '编辑评论' }}
-                      </button>
-                      <button class="detail-atelier-text danger" type="button" :disabled="deletingThreadId === thread.id" @click="void deleteThreadComment(thread)">
-                        {{ deletingThreadId === thread.id ? '删除中...' : '删除评论' }}
-                      </button>
-                    </div>
-                  </details>
                 </div>
 
                 <label v-if="isEditingThreadComment(thread.id)" class="detail-atelier-note-editor">
@@ -832,7 +840,8 @@ async function confirmDeleteWish() {
                     :aria-label="isThreadReactionPickerOpen(thread.id) ? '收起表情选项' : '打开表情选项'"
                     @click="openThreadReactionPicker(thread.id, `thread-reaction-toggle-mobile-overflow-${thread.id}`)"
                   >
-                    <span aria-hidden="true">☺</span>
+                    <span aria-hidden="true">+</span>
+                    <span>表情</span>
                   </button>
 
                   <div v-if="thread.reactions.length" class="detail-atelier-reaction-list detail-atelier-mobile-reaction-pills">
@@ -841,6 +850,15 @@ async function confirmDeleteWish() {
                     </span>
                   </div>
                   <span v-else class="detail-atelier-reaction-summary">还没有回应</span>
+
+                  <div v-if="canManageThreadComment(thread)" class="detail-atelier-inline-buttons detail-atelier-mobile-thread-inline-tools">
+                    <button class="detail-atelier-text" type="button" @click="isEditingThreadComment(thread.id) ? cancelEditingThreadComment() : startEditingThreadComment(thread)">
+                      {{ isEditingThreadComment(thread.id) ? '取消' : '编辑' }}
+                    </button>
+                    <button class="detail-atelier-text danger" type="button" :disabled="deletingThreadId === thread.id" @click="void deleteThreadComment(thread)">
+                      {{ deletingThreadId === thread.id ? '删除中' : '删除' }}
+                    </button>
+                  </div>
                 </div>
               </article>
             </div>
@@ -854,108 +872,6 @@ async function confirmDeleteWish() {
           <p v-if="threadFeedback" :class="['detail-atelier-feedback', threadFeedbackTone]" role="status" aria-live="polite">{{ threadFeedback }}</p>
         </article>
 
-        <article class="page-card detail-atelier-image-card">
-          <div class="detail-atelier-section-head">
-            <div class="detail-atelier-section-copy">
-              <p class="detail-atelier-kicker">图片与纪念</p>
-              <h2>图片与纪念</h2>
-            </div>
-            <span class="detail-atelier-badge">{{ visibleImages.length }} 张</span>
-          </div>
-
-          <div class="detail-atelier-image-intro">
-            <div class="detail-atelier-image-toolbar">
-              <div class="detail-atelier-image-toolbar-copy">
-                <span>先挑出最想记住的画面</span>
-                <p>这里更像纪念册。先摆顺序，再补一句话。</p>
-              </div>
-
-              <div class="detail-atelier-inline-buttons detail-atelier-image-toolbar-actions">
-                <label v-if="wishStore.isUsingCloudWishes && !visibleImages.length" class="detail-atelier-secondary upload-trigger">
-                  <input
-                    class="visually-hidden"
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/gif"
-                    @change="handleImageSelection"
-                  />
-                  {{ isUploadingImages ? '上传中...' : '添加封面图' }}
-                </label>
-                <span v-else-if="wishStore.isUsingCloudWishes" class="detail-atelier-chip">现在先留住这一张封面</span>
-              </div>
-            </div>
-
-            <p v-if="visibleImages.length" class="detail-atelier-support">想换一张时，再回来慢慢整理也可以。</p>
-
-            <div v-if="visibleImages.length" class="detail-atelier-image-memory-strip">
-              <article class="detail-atelier-image-memory-card">
-                <span>这一页的封面</span>
-                <strong>{{ coverImageEntry?.fileName || '还没设置首图' }}</strong>
-                <p>封面会先出现在首屏。</p>
-              </article>
-            </div>
-          </div>
-
-          <div v-if="visibleImages.length" class="detail-atelier-image-grid">
-            <figure
-              v-for="(image, index) in visibleImages"
-              :key="image.id"
-              :class="['detail-atelier-image-figure', { 'is-cover': isCoverImage(image.id) }]"
-            >
-              <div class="detail-atelier-image-stage">
-                <button v-if="image.url" class="detail-atelier-image-button" type="button" @click="openImagePreview(visibleImages, image.id)">
-                  <img class="detail-atelier-image" :src="image.url" :alt="image.fileName" draggable="false" />
-                </button>
-                <div v-else class="detail-atelier-image-empty">这张图正在展开</div>
-
-                <div class="detail-atelier-image-badges">
-                  <span class="detail-atelier-chip">{{ isCoverImage(image.id) ? '当前首图' : `第 ${index + 1} 张` }}</span>
-                </div>
-              </div>
-
-              <div class="detail-atelier-image-sheet">
-                <figcaption class="detail-atelier-image-caption">
-                  <div class="detail-atelier-image-caption-copy">
-                    <strong>{{ image.fileName }}</strong>
-                    <div class="detail-atelier-chip-row compact detail-atelier-image-meta-chips">
-                      <span class="detail-atelier-chip">{{ getMemberName(image.createdBy) }}</span>
-                      <span class="detail-atelier-chip">{{ formatFileSize(image.sizeBytes) }}</span>
-                    </div>
-                  </div>
-                  <span v-if="isCoverImage(image.id)" class="detail-atelier-chip">封面</span>
-                </figcaption>
-
-                <div :class="['detail-atelier-image-memory-note', { 'is-empty': !image.note }]">
-                  <span>{{ image.note ? '纪念备注' : '还没写下这一刻' }}</span>
-                  <p class="detail-atelier-image-note">{{ image.note || '可以补一句地点、当时的心情，或者它为什么值得留下。' }}</p>
-                </div>
-
-                <div v-if="editingImageNoteId === image.id" class="detail-atelier-note-editor">
-                  <label>
-                    <span>图片备注</span>
-                    <textarea v-model="imageNoteDraft" rows="3" maxlength="240" placeholder="补充这张图的地点、想法、来源或纪念意义"></textarea>
-                  </label>
-                  <div class="detail-atelier-inline-buttons">
-                    <button class="detail-atelier-secondary" type="button" @click="cancelEditingImageNote()">取消</button>
-                    <button class="detail-atelier-primary" type="button" :disabled="isSavingImageNote" @click="void saveImageNote(image.id)">
-                      {{ isSavingImageNote ? '保存中...' : '保存备注' }}
-                    </button>
-                  </div>
-                </div>
-
-                <div class="detail-atelier-image-actions">
-                  <button class="detail-atelier-secondary" type="button" @click="startEditingImageNote(image.id, image.note)">
-                    {{ image.note ? '编辑备注' : '添加备注' }}
-                  </button>
-                </div>
-              </div>
-            </figure>
-          </div>
-
-          <div v-else class="detail-atelier-empty-block">
-            <strong>还没有图片</strong>
-            <p>可以给这条愿望上传灵感图、截图或者完成过程里的纪念照片。</p>
-          </div>
-        </article>
       </section>
 
       <section class="detail-atelier-tools-band">
@@ -966,24 +882,17 @@ async function confirmDeleteWish() {
           </summary>
 
           <div class="detail-atelier-danger-copy-block">
-            <p class="detail-atelier-danger-copy">删除和移走这条愿望，都放在这里，平时不用一直看见。</p>
+            <p class="detail-atelier-danger-copy">补详情、整理进度和移走愿望，都放在这里。</p>
             <p v-if="deleteWishFeedback" class="detail-atelier-feedback danger" role="status" aria-live="polite">{{ deleteWishFeedback }}</p>
           </div>
 
-          <div v-if="visibleImages.length" class="detail-atelier-tools-section">
+          <div class="detail-atelier-tools-section">
             <div class="detail-atelier-tools-copy">
-              <span>封面图片</span>
-              <p>如果想换掉这一张封面，先从这里整理会更安全。</p>
+              <span>愿望详情</span>
+              <p>把轻轻写下的愿望补得更完整。</p>
             </div>
             <div class="detail-atelier-inline-buttons detail-atelier-danger-actions">
-              <button
-                v-if="coverImageEntry && canDeleteImage(coverImageEntry.createdBy)"
-                class="detail-atelier-secondary"
-                type="button"
-                @click="void deleteImage(coverImageEntry.id)"
-              >
-                换一张封面
-              </button>
+              <RouterLink class="detail-atelier-secondary" :to="{ name: 'compose', query: { edit: selectedWish.id } }">编辑愿望</RouterLink>
             </div>
           </div>
 
@@ -1474,7 +1383,7 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-section-copy {
-  gap: 0.34rem;
+  gap: 0.18rem;
   max-width: 28rem;
 }
 
@@ -1487,16 +1396,30 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-mobile-glance {
-  grid-template-columns: minmax(96px, 112px) minmax(0, 1fr);
-  gap: 0.82rem;
+  grid-template-columns: minmax(96px, 128px);
+  width: fit-content;
+  gap: 0.5rem;
   align-items: start;
-  padding: 0.82rem;
+  padding: 0.68rem;
   border-radius: 22px;
   border: 1px solid rgba(126, 96, 76, 0.1);
   background: rgba(255, 255, 255, 0.62);
 }
 
+.detail-atelier-cover-slot {
+  display: grid;
+  gap: 0.46rem;
+}
+
 .detail-atelier-mobile-cover-button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.detail-atelier-cover-button {
+  display: block;
   border: 0;
   padding: 0;
   background: transparent;
@@ -1513,8 +1436,34 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-mobile-cover-empty {
-  min-height: 100%;
+  min-height: 112px;
   padding: 0.72rem;
+}
+
+.detail-atelier-cover-upload {
+  display: grid;
+  place-items: center;
+  border-radius: 20px;
+  border: 1px dashed rgba(126, 96, 76, 0.22);
+  background: rgba(255, 255, 255, 0.66);
+  cursor: pointer;
+}
+
+.detail-atelier-cover-inline-actions {
+  gap: 0.36rem;
+  align-items: center;
+}
+
+.detail-atelier-cover-action {
+  min-height: 30px;
+  padding: 0.24rem 0.52rem;
+  border-radius: 999px;
+  font-size: var(--type-l7-size);
+  line-height: 1.1;
+}
+
+.detail-atelier-cover-action.danger {
+  color: var(--danger);
 }
 
 .detail-atelier-mobile-cover-empty strong,
@@ -1558,6 +1507,23 @@ async function confirmDeleteWish() {
   align-items: center;
   cursor: pointer;
   list-style: none;
+}
+
+.detail-atelier-mobile-more-summary::after,
+.detail-atelier-danger-summary::after {
+  content: '';
+  width: 0.42rem;
+  height: 0.42rem;
+  flex: 0 0 auto;
+  border-right: 1.5px solid rgba(76, 59, 50, 0.62);
+  border-bottom: 1.5px solid rgba(76, 59, 50, 0.62);
+  transform: rotate(45deg) translateY(-1px);
+  transition: transform 160ms ease;
+}
+
+.detail-atelier-mobile-more[open] .detail-atelier-mobile-more-summary::after,
+.detail-atelier-danger-details[open] .detail-atelier-danger-summary::after {
+  transform: rotate(225deg) translateY(-1px);
 }
 
 .detail-atelier-mobile-more-summary::-webkit-details-marker {
@@ -1655,11 +1621,11 @@ async function confirmDeleteWish() {
 .detail-atelier-dialog h3,
 .detail-atelier-lightbox h3,
 .detail-atelier-empty-card h2 {
-  font-family: var(--font-heading);
+  font-family: var(--font-body);
   font-size: var(--type-card-title-size);
-  font-weight: 600;
+  font-weight: 700;
   line-height: var(--type-card-title-line);
-  letter-spacing: var(--type-card-title-tracking);
+  letter-spacing: 0;
 }
 
 .detail-atelier-story-card h1 {
@@ -2052,7 +2018,7 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-compose-submit-row {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 1fr;
   gap: 0.62rem 0.82rem;
   align-items: center;
 }
@@ -2429,6 +2395,21 @@ async function confirmDeleteWish() {
 .detail-atelier-mobile-thread-more {
   display: grid;
   gap: 0.62rem;
+}
+
+.detail-atelier-mobile-thread-inline-tools {
+  gap: 0.22rem;
+  margin-left: auto;
+  flex-wrap: nowrap;
+}
+
+.detail-atelier-mobile-thread-inline-tools .detail-atelier-text {
+  min-height: 30px;
+  padding: 0.24rem 0.42rem;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: var(--type-l7-size);
 }
 
 .detail-atelier-mobile-thread-tools-summary,
@@ -2949,10 +2930,14 @@ async function confirmDeleteWish() {
   }
 
   .detail-atelier-mobile-glance {
-    grid-template-columns: 92px minmax(0, 1fr);
-    gap: 0.72rem;
-    padding: 0.78rem;
+    grid-template-columns: minmax(92px, 118px);
+    gap: 0.48rem;
+    padding: 0.62rem;
     border-radius: 20px;
+  }
+
+  .detail-atelier-mobile-cover-empty {
+    min-height: 92px;
   }
 
   .detail-atelier-mobile-glance-copy {
@@ -3372,19 +3357,20 @@ async function confirmDeleteWish() {
   }
 
   .detail-atelier-mobile-reaction-rail {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 0.36rem;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.32rem;
     align-items: center;
     min-height: 30px;
   }
 
   .detail-atelier-mobile-reaction-trigger.detail-atelier-reaction-toggle {
-    width: 30px;
-    min-width: 30px;
+    width: auto;
+    min-width: 0;
     min-height: 30px;
     justify-content: center;
-    padding: 0;
+    gap: 0.18rem;
+    padding: 0.26rem 0.48rem;
     border-radius: 999px;
     font-size: var(--type-supporting-size);
     line-height: 1;
@@ -3397,7 +3383,8 @@ async function confirmDeleteWish() {
     grid-template-columns: none;
     gap: 0.28rem;
     overflow-x: auto;
-    max-width: 100%;
+    max-width: none;
+    flex: 1 1 auto;
     padding-bottom: 0;
     scrollbar-width: none;
   }
@@ -3417,9 +3404,14 @@ async function confirmDeleteWish() {
 
   .detail-atelier-mobile-reaction-rail .detail-atelier-reaction-summary {
     align-self: center;
+    flex: 1 1 auto;
     font-size: var(--type-l7-size);
     line-height: 1.2;
     letter-spacing: var(--type-l7-spacing);
+  }
+
+  .detail-atelier-mobile-thread-inline-tools {
+    flex: 0 0 auto;
   }
 
   .detail-atelier-image-figure.is-cover {

@@ -81,6 +81,26 @@ test.describe('home and list visual acceptance', () => {
       await expect(page.locator('.list-board-more-trigger')).toHaveCount(0)
       await expect(page.locator('.list-board-progress-link').first()).toHaveAttribute('href', /#progress$/)
 
+      const listImageMetrics = await page.evaluate(() => {
+        const image = document.querySelector('.list-board-card-image')?.getBoundingClientRect()
+        const toolbarCopy = Array.from(document.querySelectorAll('.list-board-toolbar-copy p')).find((node) => !node.classList.contains('list-board-kicker'))
+        const toolbarCopyBox = toolbarCopy?.getBoundingClientRect()
+
+        return {
+          imageHeight: Math.round(image?.height ?? 0),
+          imageWidth: Math.round(image?.width ?? 0),
+          toolbarCopyClientWidth: Math.round((toolbarCopy as HTMLElement | undefined)?.clientWidth ?? 0),
+          toolbarCopyHeight: Math.round(toolbarCopyBox?.height ?? 0),
+          toolbarCopyScrollWidth: Math.round((toolbarCopy as HTMLElement | undefined)?.scrollWidth ?? 0),
+        }
+      })
+
+      if (listImageMetrics.imageWidth > 0) {
+        expect(Math.abs(listImageMetrics.imageWidth - listImageMetrics.imageHeight)).toBeLessThanOrEqual(1)
+      }
+      expect(listImageMetrics.toolbarCopyHeight).toBeLessThanOrEqual(34)
+      expect(listImageMetrics.toolbarCopyScrollWidth).toBeLessThanOrEqual(listImageMetrics.toolbarCopyClientWidth + 1)
+
       await page.getByRole('button', { name: '先看快靠近的' }).click()
       await expect(page.getByRole('button', { name: '先看快靠近的' })).toHaveClass(/is-active/)
 

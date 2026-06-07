@@ -234,12 +234,12 @@ textarea {
 }
 
 .section-title {
-  margin: 0 0 0.9rem;
-  font-family: var(--font-heading);
+  margin: 0 0 0.55rem;
+  font-family: var(--font-body);
   font-size: var(--type-section-title-size);
-  font-weight: 600;
+  font-weight: 700;
   line-height: var(--type-section-title-line);
-  letter-spacing: var(--type-section-title-tracking);
+  letter-spacing: 0;
 }
 
 .page-title,
@@ -258,7 +258,7 @@ textarea {
 .card-title {
   font-size: var(--type-card-title-size);
   line-height: var(--type-card-title-line);
-  letter-spacing: var(--type-card-title-tracking);
+  letter-spacing: 0;
 }
 
 .section-copy,

@@ -59,7 +59,10 @@ export async function toggleThreadReactionWrite(options: {
       const error = mutationResult.error
 
       if (error) {
-        const nextMessage = options.allowsLegacyCapabilityFallback && options.isWishThreadFeatureMissing(error.message)
+        const needsTextTargetMigration = options.threadId.startsWith('thread-') && error.message.includes('invalid input syntax for type uuid')
+        const nextMessage = needsTextTargetMigration
+          ? '表情回应失败：系统记录表情需要先执行新的 Supabase reaction migration。'
+          : options.allowsLegacyCapabilityFallback && options.isWishThreadFeatureMissing(error.message)
           ? `表情回应失败：${error.message}。如果你刚更新前端，请先执行新的 Supabase 手账 migration。`
           : `表情回应失败：${error.message}`
 

@@ -694,9 +694,11 @@ async function handleCastWishCoin(wish: WishRecord) {
 
 .list-board-toolbar-copy h2,
 .list-board-head h2 {
+  font-family: var(--list-body-font);
   font-size: var(--type-section-title-size);
+  font-weight: 700;
   line-height: var(--type-section-title-line);
-  letter-spacing: var(--type-section-title-tracking);
+  letter-spacing: 0;
 }
 
 .list-board-item h3,
@@ -785,7 +787,7 @@ async function handleCastWishCoin(wish: WishRecord) {
 .list-board-card-image {
   width: 100%;
   max-width: 176px;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 1;
   object-fit: cover;
   border-radius: var(--radius-lg);
   border: 1px solid var(--list-line);
@@ -864,7 +866,9 @@ async function handleCastWishCoin(wish: WishRecord) {
 }
 
 .list-board-toolbar-copy p {
-  max-width: 33ch;
+  width: max-content;
+  max-width: min(100%, 52ch);
+  white-space: nowrap;
 }
 
 .list-board-toolbar-actions {
