@@ -100,10 +100,39 @@ test.describe('compose and detail visual acceptance', () => {
         await expect(page.locator('.detail-atelier-story-card .detail-atelier-mobile-more-summary').filter({ hasText: '更多信息' })).toHaveCount(0)
         await expect(page.locator('.detail-atelier-story-card .detail-atelier-mobile-info-card')).toContainText('写下的人')
         await expect(page.locator('.detail-atelier-story-card .detail-atelier-mobile-info-card')).toContainText('创建时间')
-        await expect(page.locator('.detail-atelier-compose-attachment-details')).toBeVisible()
+        await expect(page.locator('.detail-atelier-compose-attachment-details')).toHaveCount(0)
+        await expect(page.locator('.detail-atelier-mobile-upload-panel')).toBeVisible()
         await expect(page.locator('.detail-atelier-mobile-glance-copy')).toHaveCount(0)
         await expect(page.getByText('给这条留言加图片')).toHaveCount(0)
         await expect(page.getByText('可选，会和这笔近况一起留在下面。')).toHaveCount(0)
+        const compactUploadMetrics = await page.evaluate(() => {
+          const upload = document.querySelector('.detail-atelier-mobile-upload-panel .upload-trigger')?.getBoundingClientRect()
+          const cover = document.querySelector('.detail-atelier-mobile-glance')?.getBoundingClientRect()
+          const coverImage = document.querySelector('.detail-atelier-mobile-cover-image, .detail-atelier-mobile-cover-empty')?.getBoundingClientRect()
+
+          return {
+            coverHeight: Math.round(cover?.height ?? 0),
+            coverImageHeight: Math.round(coverImage?.height ?? 0),
+            coverImageWidth: Math.round(coverImage?.width ?? 0),
+            uploadHeight: Math.round(upload?.height ?? 0),
+          }
+        })
+
+        expect(compactUploadMetrics.uploadHeight).toBeLessThanOrEqual(48)
+        if (compactUploadMetrics.coverImageWidth > 0) {
+          expect(Math.abs(compactUploadMetrics.coverImageWidth - compactUploadMetrics.coverImageHeight)).toBeLessThanOrEqual(1)
+          expect(compactUploadMetrics.coverHeight).toBeLessThanOrEqual(compactUploadMetrics.coverImageHeight + 24)
+        }
+        const mobileCoverButton = page.locator('.detail-atelier-mobile-cover-button')
+        if (await mobileCoverButton.count()) {
+          await expect(page.locator('.detail-atelier-mobile-glance .detail-atelier-cover-inline-actions')).toHaveCount(0)
+          await mobileCoverButton.click()
+          const lightbox = page.locator('.detail-atelier-preview-lightbox')
+          await expect(lightbox).toBeVisible()
+          await expect(lightbox.locator('.detail-atelier-lightbox-actions')).toBeVisible()
+          await expect(lightbox.locator('.detail-atelier-support')).not.toHaveText('这张图还没有备注。')
+          await lightbox.getByRole('button', { name: '关闭' }).click()
+        }
       } else {
         await expect(page.locator('.detail-atelier-compose-attachment-panel')).toBeVisible()
       }

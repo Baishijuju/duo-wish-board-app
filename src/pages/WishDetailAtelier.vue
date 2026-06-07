@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { DRAGON_BALL_COIN_TARGET } from '../stores/wishes'
+import { DRAGON_BALL_COIN_TARGET, type WishImage } from '../stores/wishes'
 import { formatBeijingDateTime } from '../utils/datetime'
 import { useWishDetailPageState } from '../composables/useWishDetailPageState'
 
@@ -133,18 +133,31 @@ const visibleImages = computed(() => {
 })
 const coverImageEntry = computed(() => visibleImages.value.find((image) => isCoverImage(image.id)) ?? visibleImages.value[0] ?? null)
 const visibleThreads = computed(() => wishJournalEntries.value)
+const detailPreviewImages = computed(() => {
+  const images: WishImage[] = []
+  const seenImageIds = new Set<string>()
+  const addImage = (image: WishImage) => {
+    if (seenImageIds.has(image.id)) {
+      return
+    }
+
+    seenImageIds.add(image.id)
+    images.push(image)
+  }
+
+  selectedWish.value?.images.forEach(addImage)
+  visibleThreads.value.forEach((thread) => thread.images.forEach(addImage))
+
+  return images
+})
+const detailImageCount = computed(() => detailPreviewImages.value.length)
+const wishImageIds = computed(() => new Set(selectedWish.value?.images.map((image) => image.id) ?? []))
+const canManagePreviewImage = computed(() => !!previewImage.value && wishImageIds.value.has(previewImage.value.id))
 const mobileVisibleThreads = computed(() => visibleThreads.value.slice(0, MOBILE_THREAD_PREVIEW_COUNT))
 const mobileOverflowThreads = computed(() => visibleThreads.value.slice(MOBILE_THREAD_PREVIEW_COUNT))
 const mobileNextPendingStep = computed(() => selectedWish.value?.steps.find((step) => !step.isDone) ?? null)
 const mobilePrimaryStep = computed(() => mobileNextPendingStep.value ?? selectedWish.value?.steps[0] ?? null)
 const mobileCompletedStepCount = computed(() => selectedWish.value?.steps.filter((step) => step.isDone).length ?? 0)
-const mobileAttachmentSummary = computed(() => {
-  if (commentImageFiles.value.length) {
-    return `已选 ${commentImageFiles.value.length} 张图`
-  }
-
-  return wishStore.isUsingCloudWishes ? '可选' : '需云端'
-})
 const canShowProgressCompletionAction = computed(() => {
   const progress = progressSnapshot.value
 
@@ -160,6 +173,17 @@ const canShowProgressCompletionAction = computed(() => {
 const isDeleteWishConfirming = ref(false)
 const isDeletingWish = ref(false)
 const deleteWishFeedback = ref('')
+
+function getPreviewImageCaption(image: WishImage) {
+  if (wishImageIds.value.has(image.id)) {
+    return coverImageEntry.value?.id === image.id || isCoverImage(image.id) ? '封面图' : '愿望图片'
+  }
+
+  const sourceThread = visibleThreads.value.find((thread) => thread.images.some((threadImage) => threadImage.id === image.id))
+  const threadMessage = sourceThread?.messageText.trim()
+
+  return threadMessage || '评论图片'
+}
 
 function openWishDeleteConfirm() {
   deleteWishFeedback.value = ''
@@ -238,7 +262,7 @@ async function confirmDeleteWish() {
                 v-if="coverImageUrl && coverImageEntry"
                 class="detail-atelier-mobile-cover-button"
                 type="button"
-                @click="openImagePreview(visibleImages, coverImageEntry.id)"
+                @click="openImagePreview(detailPreviewImages, coverImageEntry.id)"
               >
                 <img class="detail-atelier-mobile-cover-image" :src="coverImageUrl" :alt="`${selectedWish.title} 首图`" />
               </button>
@@ -254,26 +278,6 @@ async function confirmDeleteWish() {
               <div v-else class="detail-atelier-mobile-cover-empty detail-atelier-empty-block">
                 <strong>还没有封面</strong>
               </div>
-
-              <div v-if="coverImageEntry" class="detail-atelier-cover-inline-actions">
-                <label v-if="wishStore.isUsingCloudWishes" class="detail-atelier-mini-link detail-atelier-cover-action upload-trigger">
-                  <input
-                    class="visually-hidden"
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/gif"
-                    @change="handleImageSelection"
-                  />
-                  换图
-                </label>
-                <button
-                  v-if="canDeleteImage(coverImageEntry.createdBy)"
-                  class="detail-atelier-mini-link detail-atelier-cover-action danger"
-                  type="button"
-                  @click="void deleteImage(coverImageEntry.id)"
-                >
-                  删除
-                </button>
-              </div>
             </div>
           </div>
 
@@ -288,7 +292,7 @@ async function confirmDeleteWish() {
             </div>
             <div class="detail-atelier-meta-item">
               <span class="detail-atelier-meta-label">这页进展</span>
-              <strong>{{ selectedWish.images.length }} 张图 · {{ wishJournalEntries.length }} 条记录</strong>
+              <strong>{{ detailImageCount }} 张图 · {{ wishJournalEntries.length }} 条记录</strong>
             </div>
             <div class="detail-atelier-meta-item">
               <span class="detail-atelier-meta-label">创建时间</span>
@@ -308,7 +312,7 @@ async function confirmDeleteWish() {
               </div>
               <div class="detail-atelier-meta-item">
                 <span class="detail-atelier-meta-label">这页进展</span>
-                <strong>{{ selectedWish.images.length }} 张图 · {{ wishJournalEntries.length }} 条记录</strong>
+                <strong>{{ detailImageCount }} 张图 · {{ wishJournalEntries.length }} 条记录</strong>
               </div>
               <div class="detail-atelier-meta-item">
                 <span class="detail-atelier-meta-label">创建时间</span>
@@ -321,7 +325,7 @@ async function confirmDeleteWish() {
         </article>
 
         <article class="page-card detail-atelier-cover-card detail-atelier-desktop-only">
-          <button v-if="coverImageUrl && coverImageEntry" class="detail-atelier-cover-button" type="button" @click="openImagePreview(visibleImages, coverImageEntry.id)">
+          <button v-if="coverImageUrl && coverImageEntry" class="detail-atelier-cover-button" type="button" @click="openImagePreview(detailPreviewImages, coverImageEntry.id)">
             <img class="detail-atelier-cover-image" :src="coverImageUrl" :alt="`${selectedWish.title} 首图`" />
           </button>
           <label v-else-if="wishStore.isUsingCloudWishes" class="detail-atelier-cover-empty detail-atelier-cover-upload">
@@ -524,12 +528,7 @@ async function confirmDeleteWish() {
               </div>
             </div>
 
-            <details class="detail-atelier-mobile-more detail-atelier-mobile-only detail-atelier-compose-attachment-details" :class="{ 'is-disabled': !wishStore.isUsingCloudWishes }">
-              <summary class="detail-atelier-mobile-more-summary">
-                <span>图片附件</span>
-                <strong>{{ mobileAttachmentSummary }}</strong>
-              </summary>
-
+            <div class="detail-atelier-mobile-upload-panel detail-atelier-mobile-only" :class="{ 'is-disabled': !wishStore.isUsingCloudWishes }">
               <div v-if="wishStore.isUsingCloudWishes" class="detail-atelier-inline-buttons detail-atelier-compose-upload-row">
                 <label class="detail-atelier-secondary upload-trigger">
                   <input
@@ -552,7 +551,7 @@ async function confirmDeleteWish() {
                   {{ file.name }} · 移除
                 </button>
               </div>
-            </details>
+            </div>
 
             <div class="detail-atelier-compose-submit-row detail-atelier-compose-block">
               <div class="detail-atelier-inline-buttons detail-atelier-compose-submit-buttons">
@@ -631,7 +630,7 @@ async function confirmDeleteWish() {
                   :key="image.id"
                   class="detail-atelier-thread-image-button"
                   type="button"
-                  @click="openImagePreview(thread.images, image.id)"
+                  @click="openImagePreview(detailPreviewImages, image.id)"
                 >
                   <img v-if="image.url" class="detail-atelier-thread-image" :src="image.url" :alt="image.fileName" />
                   <span v-else class="detail-atelier-image-empty">这张图正在出现</span>
@@ -734,7 +733,7 @@ async function confirmDeleteWish() {
                   :key="`mobile-thread-image-${image.id}`"
                   class="detail-atelier-thread-image-button"
                   type="button"
-                  @click="openImagePreview(thread.images, image.id)"
+                  @click="openImagePreview(detailPreviewImages, image.id)"
                 >
                   <img v-if="image.url" class="detail-atelier-thread-image" :src="image.url" :alt="image.fileName" />
                   <span v-else class="detail-atelier-image-empty">这张图正在出现</span>
@@ -823,7 +822,7 @@ async function confirmDeleteWish() {
                     :key="`mobile-thread-overflow-image-${image.id}`"
                     class="detail-atelier-thread-image-button"
                     type="button"
-                    @click="openImagePreview(thread.images, image.id)"
+                    @click="openImagePreview(detailPreviewImages, image.id)"
                   >
                     <img v-if="image.url" class="detail-atelier-thread-image" :src="image.url" :alt="image.fileName" />
                     <span v-else class="detail-atelier-image-empty">这张图正在出现</span>
@@ -1135,16 +1134,39 @@ async function confirmDeleteWish() {
         </div>
 
         <div class="detail-atelier-lightbox-stage">
-          <button class="detail-atelier-secondary" type="button" :disabled="!canPreviewPrevious" @click="stepPreview(-1)">上一张</button>
           <img class="detail-atelier-lightbox-image" :src="previewImage.url" :alt="previewImage.fileName" />
-          <button class="detail-atelier-secondary" type="button" :disabled="!canPreviewNext" @click="stepPreview(1)">下一张</button>
+          <div class="detail-atelier-lightbox-actions">
+            <div class="detail-atelier-lightbox-nav-actions">
+              <button class="detail-atelier-secondary" type="button" :disabled="!canPreviewPrevious" @click="stepPreview(-1)">上一张</button>
+              <button class="detail-atelier-secondary" type="button" :disabled="!canPreviewNext" @click="stepPreview(1)">下一张</button>
+            </div>
+            <div v-if="canManagePreviewImage" class="detail-atelier-lightbox-manage-actions">
+              <label v-if="wishStore.isUsingCloudWishes" class="detail-atelier-secondary upload-trigger">
+                <input
+                  class="visually-hidden"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  @change="handleImageSelection"
+                />
+                换图
+              </label>
+              <button
+                v-if="canDeleteImage(previewImage.createdBy)"
+                class="detail-atelier-text danger"
+                type="button"
+                @click="void deleteImage(previewImage.id)"
+              >
+                删除
+              </button>
+            </div>
+          </div>
         </div>
 
         <div class="detail-atelier-meta-row">
           <span>{{ previewImageIndex + 1 }} / {{ lightboxImages.length }}</span>
           <span>{{ formatFileSize(previewImage.sizeBytes) }}</span>
         </div>
-        <p class="detail-atelier-support">{{ previewImage.note || '这张图还没有备注。' }}</p>
+        <p class="detail-atelier-support">{{ getPreviewImageCaption(previewImage) }}</p>
       </div>
     </div>
   </section>
@@ -1153,6 +1175,18 @@ async function confirmDeleteWish() {
 <style scoped>
 .detail-atelier-page {
   font-family: var(--font-body);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .detail-atelier-page,
@@ -1396,8 +1430,8 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-mobile-glance {
-  grid-template-columns: minmax(96px, 128px);
-  width: fit-content;
+  grid-template-columns: minmax(0, 1fr);
+  width: min(100%, 355px);
   gap: 0.5rem;
   align-items: start;
   padding: 0.68rem;
@@ -1408,10 +1442,13 @@ async function confirmDeleteWish() {
 
 .detail-atelier-cover-slot {
   display: grid;
+  width: 100%;
   gap: 0.46rem;
 }
 
 .detail-atelier-mobile-cover-button {
+  display: block;
+  width: 100%;
   border: 0;
   padding: 0;
   background: transparent;
@@ -1436,7 +1473,8 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-mobile-cover-empty {
-  min-height: 112px;
+  min-height: 0;
+  aspect-ratio: 1;
   padding: 0.72rem;
 }
 
@@ -1450,6 +1488,8 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-cover-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.36rem;
   align-items: center;
 }
@@ -2830,9 +2870,42 @@ async function confirmDeleteWish() {
 
 .detail-atelier-lightbox-stage {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.8rem;
   align-items: center;
+}
+
+.detail-atelier-lightbox-actions {
+  display: grid;
+  grid-template-columns: max-content max-content;
+  gap: 0.52rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.detail-atelier-lightbox-nav-actions,
+.detail-atelier-lightbox-manage-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.52rem;
+  align-items: flex-start;
+}
+
+.detail-atelier-lightbox-manage-actions {
+  justify-self: end;
+  margin-left: 0;
+  justify-content: flex-end;
+}
+
+.detail-atelier-lightbox-actions .detail-atelier-secondary,
+.detail-atelier-lightbox-actions .detail-atelier-text,
+.detail-atelier-lightbox-actions .upload-trigger {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: max-content;
+  min-height: 36px;
+  height: auto;
+  padding: 0.46rem 0.72rem;
 }
 
 .detail-atelier-lightbox-image {
@@ -2930,14 +3003,11 @@ async function confirmDeleteWish() {
   }
 
   .detail-atelier-mobile-glance {
-    grid-template-columns: minmax(92px, 118px);
+    grid-template-columns: minmax(0, 1fr);
+    width: min(100%, 355px);
     gap: 0.48rem;
     padding: 0.62rem;
     border-radius: 20px;
-  }
-
-  .detail-atelier-mobile-cover-empty {
-    min-height: 92px;
   }
 
   .detail-atelier-mobile-glance-copy {
@@ -3119,6 +3189,23 @@ async function confirmDeleteWish() {
     width: 100%;
   }
 
+  .detail-atelier-mobile-upload-panel {
+    gap: 0.44rem;
+    padding-top: 0.48rem;
+  }
+
+  .detail-atelier-mobile-upload-panel .detail-atelier-compose-upload-row {
+    width: auto;
+  }
+
+  .detail-atelier-comment-form .detail-atelier-compose-upload-row .upload-trigger {
+    display: inline-flex;
+    flex: 0 1 auto;
+    width: auto;
+    min-height: 40px;
+    padding: 0.48rem 0.82rem;
+  }
+
   .detail-atelier-chip-row.compact,
   .detail-atelier-reaction-list {
     display: grid;
@@ -3152,6 +3239,11 @@ async function confirmDeleteWish() {
     min-width: 0;
   }
 
+  .detail-atelier-mobile-upload-panel .detail-atelier-compose-upload-row .detail-atelier-secondary,
+  .detail-atelier-mobile-upload-panel .detail-atelier-compose-upload-row .upload-trigger {
+    flex: 0 1 auto;
+  }
+
   .detail-atelier-thread-list {
     gap: 0.54rem;
   }
@@ -3169,21 +3261,6 @@ async function confirmDeleteWish() {
   .detail-atelier-thread-tools .detail-atelier-text {
     flex: 1 1 calc(50% - 0.25rem);
     min-width: 0;
-  }
-
-  .detail-atelier-compose-attachment-details {
-    gap: 0.44rem;
-    padding: 0.62rem 0.68rem;
-    border-radius: 16px;
-  }
-
-  .detail-atelier-compose-attachment-details .detail-atelier-mobile-more-summary {
-    gap: 0.48rem;
-    align-items: center;
-  }
-
-  .detail-atelier-compose-attachment-details .detail-atelier-mobile-more-summary strong {
-    line-height: 1.28;
   }
 
   .detail-atelier-comment-form.is-front {
@@ -3545,6 +3622,11 @@ async function confirmDeleteWish() {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.55rem;
     align-items: stretch;
+  }
+
+  .detail-atelier-lightbox-actions {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 
   .detail-atelier-lightbox-image {
