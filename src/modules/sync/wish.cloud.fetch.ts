@@ -14,6 +14,16 @@ import type {
 } from '../wishes/wish.mapping.cloud'
 import type { WishThreadImageRowLike, WishThreadRowLike } from '../journal/journal.mapping.cloud'
 
+const SIGNED_URL_TTL_SECONDS = 60 * 60
+const SIGNED_URL_CACHE_TTL_MS = 55 * 60 * 1000
+
+interface SignedUrlCacheEntry {
+  expiresAt: number
+  signedUrl: string
+}
+
+const signedUrlCache = new Map<string, SignedUrlCacheEntry>()
+
 export interface WishCloudFetchResult {
   wishRows: WishRowLike[]
   wishCoinRows: WishCoinRowLike[]
@@ -45,6 +55,76 @@ export interface MonthlyJournalSnapshotRowLike {
   source_refs: unknown
   created_at: string
   created_by: string | null
+}
+
+function getSignedUrlCacheKey(bucketName: string, storagePath: string) {
+  return `${bucketName}:${storagePath}`
+}
+
+function getCachedSignedUrl(bucketName: string, storagePath: string, now = Date.now()) {
+  const cacheKey = getSignedUrlCacheKey(bucketName, storagePath)
+  const entry = signedUrlCache.get(cacheKey)
+
+  if (!entry) {
+    return null
+  }
+
+  if (entry.expiresAt <= now) {
+    signedUrlCache.delete(cacheKey)
+    return null
+  }
+
+  return entry.signedUrl
+}
+
+async function createCachedSignedUrlMap(
+  supabase: SupabaseClient,
+  bucketName: string,
+  storagePaths: string[],
+  onWarningMessage: (message: string) => void,
+  warningPrefix: string,
+) {
+  const uniqueStoragePaths = Array.from(new Set(storagePaths.filter(Boolean)))
+  const signedUrlMap = new Map<string, string>()
+  const missingStoragePaths: string[] = []
+  const now = Date.now()
+
+  for (const storagePath of uniqueStoragePaths) {
+    const cachedUrl = getCachedSignedUrl(bucketName, storagePath, now)
+
+    if (cachedUrl) {
+      signedUrlMap.set(storagePath, cachedUrl)
+    } else {
+      missingStoragePaths.push(storagePath)
+    }
+  }
+
+  if (!missingStoragePaths.length) {
+    return signedUrlMap
+  }
+
+  const { data: signedUrls, error: signedUrlError } = await supabase.storage
+    .from(bucketName)
+    .createSignedUrls(missingStoragePaths, SIGNED_URL_TTL_SECONDS)
+
+  if (signedUrlError) {
+    onWarningMessage(`${warningPrefix}：${signedUrlError.message}`)
+    return signedUrlMap
+  }
+
+  const expiresAt = Date.now() + SIGNED_URL_CACHE_TTL_MS
+
+  for (const item of signedUrls ?? []) {
+    if (item.path && item.signedUrl) {
+      signedUrlMap.set(item.path, item.signedUrl)
+      signedUrlCache.set(getSignedUrlCacheKey(bucketName, item.path), {
+        expiresAt,
+        signedUrl: item.signedUrl,
+      })
+    }
+  }
+
+  return signedUrlMap
 }
 
 export async function fetchWishCloudRows(
@@ -151,19 +231,32 @@ export async function fetchWishCloudRows(
     } else {
       hasUnifiedThreadData = true
       threadRows = (threadData ?? []) as WishThreadRowLike[]
+      const threadIds = threadRows.map((thread) => thread.id)
 
-      const { data: reactionData, error: reactionError } = await supabase
-        .from('thread_reactions')
-        .select('id, space_id, target_thread_id, actor_id, emoji, created_at')
-        .eq('space_id', spaceId)
-        .order('created_at', { ascending: true })
+      const [reactionResult, threadImageResult] = await Promise.all([
+        supabase
+          .from('thread_reactions')
+          .select('id, space_id, target_thread_id, actor_id, emoji, created_at')
+          .eq('space_id', spaceId)
+          .order('created_at', { ascending: true }),
+        threadIds.length
+          ? supabase
+            .from('wish_thread_images')
+            .select('id, thread_id, created_by, storage_path, file_name, mime_type, size_bytes, sort_order, created_at')
+            .in('thread_id', threadIds)
+            .order('sort_order', { ascending: true })
+            .order('created_at', { ascending: true })
+          : Promise.resolve({ data: [], error: null }),
+      ])
 
-      if (reactionError) {
+      if (reactionResult.error) {
+        const reactionError = reactionResult.error
+
         if (!allowsLegacyCapabilityFallback || (reactionError.code !== '42P01' && !/thread_reactions/i.test(reactionError.message))) {
           return { ok: false, message: `云端表情回应同步失败：${reactionError.message}` }
         }
       } else {
-        threadReactionRows = ((reactionData ?? []) as Array<{ id: string; space_id: string; target_thread_id: string; actor_id: string; emoji: string; created_at: string }>).map((reaction) =>
+        threadReactionRows = ((reactionResult.data ?? []) as Array<{ id: string; space_id: string; target_thread_id: string; actor_id: string; emoji: string; created_at: string }>).map((reaction) =>
           createThreadReactionRecord({
             actorId: reaction.actor_id,
             createdAt: reaction.created_at,
@@ -175,41 +268,24 @@ export async function fetchWishCloudRows(
         )
       }
 
-      const threadIds = threadRows.map((thread) => thread.id)
-
       if (threadIds.length) {
-        const { data: threadImageData, error: threadImageError } = await supabase
-          .from('wish_thread_images')
-          .select('id, thread_id, created_by, storage_path, file_name, mime_type, size_bytes, sort_order, created_at')
-          .in('thread_id', threadIds)
-          .order('sort_order', { ascending: true })
-          .order('created_at', { ascending: true })
+        if (threadImageResult.error) {
+          const threadImageError = threadImageResult.error
 
-        if (threadImageError) {
           if (!allowsLegacyCapabilityFallback || (threadImageError.code !== '42P01' && !/wish_thread_images/i.test(threadImageError.message))) {
             return { ok: false, message: `云端手账图片同步失败：${threadImageError.message}` }
           }
         } else {
-          threadImageRows = (threadImageData ?? []) as WishThreadImageRowLike[]
+          threadImageRows = (threadImageResult.data ?? []) as WishThreadImageRowLike[]
 
           if (threadImageRows.length) {
-            const { data: signedThreadImageUrls, error: signedThreadImageUrlError } = await supabase.storage
-              .from('wish-comment-images')
-              .createSignedUrls(threadImageRows.map((image) => image.storage_path), 60 * 60)
-
-            if (signedThreadImageUrlError) {
-              options.onWarningMessage(`云端手账图片链接生成失败：${signedThreadImageUrlError.message}`)
-            } else {
-              const commentImageUrlEntries: Array<[string, string]> = []
-
-              for (const item of signedThreadImageUrls ?? []) {
-                if (item.path && item.signedUrl) {
-                  commentImageUrlEntries.push([item.path, item.signedUrl])
-                }
-              }
-
-              commentImageUrlMap = new Map<string, string>(commentImageUrlEntries)
-            }
+            commentImageUrlMap = await createCachedSignedUrlMap(
+              supabase,
+              'wish-comment-images',
+              threadImageRows.map((image) => image.storage_path),
+              options.onWarningMessage,
+              '云端手账图片链接生成失败',
+            )
           }
         }
       }
@@ -279,23 +355,13 @@ export async function fetchWishCloudRows(
         commentImageRows = (commentImageData ?? []) as WishCommentImageRowLike[]
 
         if (commentImageRows.length) {
-          const { data: signedCommentImageUrls, error: signedCommentImageUrlError } = await supabase.storage
-            .from('wish-comment-images')
-            .createSignedUrls(commentImageRows.map((image) => image.storage_path), 60 * 60)
-
-          if (signedCommentImageUrlError) {
-            options.onWarningMessage(`云端留言图片链接生成失败：${signedCommentImageUrlError.message}`)
-          } else {
-            const commentImageUrlEntries: Array<[string, string]> = []
-
-            for (const item of signedCommentImageUrls ?? []) {
-              if (item.path && item.signedUrl) {
-                commentImageUrlEntries.push([item.path, item.signedUrl])
-              }
-            }
-
-            commentImageUrlMap = new Map<string, string>(commentImageUrlEntries)
-          }
+          commentImageUrlMap = await createCachedSignedUrlMap(
+            supabase,
+            'wish-comment-images',
+            commentImageRows.map((image) => image.storage_path),
+            options.onWarningMessage,
+            '云端留言图片链接生成失败',
+          )
         }
       }
     }
@@ -329,23 +395,13 @@ export async function fetchWishCloudRows(
     imageRows = (imageData ?? []) as WishImageRowLike[]
 
     if (imageRows.length) {
-      const { data: signedImageUrls, error: signedImageUrlError } = await supabase.storage
-        .from('wish-images')
-        .createSignedUrls(imageRows.map((image) => image.storage_path), 60 * 60)
-
-      if (signedImageUrlError) {
-        options.onWarningMessage(`云端图片链接生成失败：${signedImageUrlError.message}`)
-      } else {
-        const imageUrlEntries: Array<[string, string]> = []
-
-        for (const item of signedImageUrls ?? []) {
-          if (item.path && item.signedUrl) {
-            imageUrlEntries.push([item.path, item.signedUrl])
-          }
-        }
-
-        imageUrlMap = new Map<string, string>(imageUrlEntries)
-      }
+      imageUrlMap = await createCachedSignedUrlMap(
+        supabase,
+        'wish-images',
+        imageRows.map((image) => image.storage_path),
+        options.onWarningMessage,
+        '云端图片链接生成失败',
+      )
     }
   }
 

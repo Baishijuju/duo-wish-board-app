@@ -1,6 +1,16 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { WishActionResult, WishRecord } from '../../stores/wishes'
-import { createWishComment } from './wish.factories'
+import type { WishActionResult, WishImage, WishRecord } from '../../stores/wishes'
+import { createWishComment, createWishImage } from './wish.factories'
+
+export interface CommentImageUploadResult {
+  summaryMessage: string
+  uploadedImages: WishImage[]
+}
+
+export interface PendingCommentImageUpload {
+  commentId: string
+  promise: Promise<CommentImageUploadResult>
+}
 
 export async function addCommentWrite(options: {
   supabase: SupabaseClient | null
@@ -11,7 +21,7 @@ export async function addCommentWrite(options: {
   authorId: string
   message: string
   files?: File[]
-  uploadCommentImages?: (commentId: string, authorId: string, files: File[]) => Promise<{ summaryMessage: string }>
+  uploadCommentImages?: (commentId: string, authorId: string, files: File[]) => Promise<CommentImageUploadResult>
   onLoadingChange: (value: boolean) => void
   onSyncMessage: (message: string) => void
   syncFromSupabase: (spaceId: string) => Promise<boolean>
@@ -42,7 +52,7 @@ export async function addCommentWrite(options: {
           body: normalizedMessage,
           wish_id: options.wishId,
         })
-        .select('id')
+        .select('id, created_at')
         .single()
 
       if (commentError || !insertedComment?.id) {
@@ -51,16 +61,39 @@ export async function addCommentWrite(options: {
         return { ok: false, message: nextMessage || '留言发送失败，请稍后重试。' } satisfies WishActionResult
       }
 
-      let summaryMessage = '留言已同步到 Supabase。'
+      const createdAt = insertedComment.created_at ?? new Date().toISOString()
+      const pendingImages = files.map((file, index) => createWishImage({
+        id: `pending-comment-image:${insertedComment.id}:${index}`,
+        createdAt,
+        createdBy: options.authorId,
+        fileName: file.name.trim() || 'image',
+        mimeType: file.type.trim().toLowerCase() || 'application/octet-stream',
+        sizeBytes: file.size,
+        storagePath: `pending-comment-image:${insertedComment.id}:${index}`,
+      }))
+      const pendingCommentImageUpload = files.length && options.uploadCommentImages
+        ? {
+            commentId: insertedComment.id,
+            promise: options.uploadCommentImages(insertedComment.id, options.authorId, files),
+          }
+        : null
 
-      if (files.length && options.uploadCommentImages) {
-        const uploadResult = await options.uploadCommentImages(insertedComment.id, options.authorId, files)
-        summaryMessage = uploadResult.summaryMessage
+      options.onSyncMessage(files.length ? '这句近况已经送出，图片正在上传。' : '留言已同步到 Supabase。')
+      return {
+        ok: true,
+        message: files.length ? '这句近况已经送出，图片正在上传。' : '这句近况已经送出。',
+        cloudComment: createWishComment({
+          id: insertedComment.id,
+          authorId: options.authorId,
+          createdAt,
+          images: pendingImages,
+          message: normalizedMessage,
+        }),
+        pendingCommentImageUpload,
+      } satisfies WishActionResult & {
+        cloudComment: ReturnType<typeof createWishComment>
+        pendingCommentImageUpload: PendingCommentImageUpload | null
       }
-
-      await options.syncFromSupabase(options.currentSpaceId)
-      options.onSyncMessage(summaryMessage)
-      return { ok: true, message: files.length ? '这句近况和图片已经送出。' : '这句近况已经送出。' } satisfies WishActionResult
     } finally {
       options.onLoadingChange(false)
     }
@@ -122,11 +155,12 @@ export async function updateCommentWrite(options: {
         return { ok: false, message } satisfies WishActionResult
       }
 
-      if (options.currentSpaceId) {
-        await options.syncFromSupabase(options.currentSpaceId)
-      }
       options.onSyncMessage('留言已更新。')
-      return { ok: true, message: '这句留言已经改好了。' } satisfies WishActionResult
+      return {
+        ok: true,
+        message: '这句留言已经改好了。',
+        updatedMessage: normalizedMessage,
+      } satisfies WishActionResult & { updatedMessage: string }
     } finally {
       options.onLoadingChange(false)
     }
@@ -177,11 +211,12 @@ export async function deleteCommentWrite(options: {
         return { ok: false, message } satisfies WishActionResult
       }
 
-      if (options.currentSpaceId) {
-        await options.syncFromSupabase(options.currentSpaceId)
-      }
       options.onSyncMessage('留言已删除。')
-      return { ok: true, message: '这句留言已经移走了。' } satisfies WishActionResult
+      return {
+        ok: true,
+        message: '这句留言已经移走了。',
+        deletedCommentId: options.commentId,
+      } satisfies WishActionResult & { deletedCommentId: string }
     } finally {
       options.onLoadingChange(false)
     }

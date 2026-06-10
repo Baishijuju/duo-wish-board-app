@@ -1,5 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { WishRecord } from '../../stores/wishes'
+import type { WishImage, WishRecord } from '../../stores/wishes'
+import { createWishImage } from './wish.factories'
+
+export interface CommentImageUploadResult {
+  summaryMessage: string
+  uploadedImages: WishImage[]
+}
 
 export async function uploadCommentImagesWrite(options: {
   supabase: SupabaseClient
@@ -15,6 +21,7 @@ export async function uploadCommentImagesWrite(options: {
 }) {
   let uploadedCount = 0
   let compressedCount = 0
+  let uploadedImages: WishImage[] = []
   const skippedFiles: string[] = []
   const failedFiles: string[] = []
   let nextSortOrder = 0
@@ -51,17 +58,21 @@ export async function uploadCommentImagesWrite(options: {
       continue
     }
 
-    const { error: rowError } = await options.supabase.from('wish_comment_images').insert({
-      comment_id: options.commentId,
-      created_by: options.authorId,
-      file_name: uploadFile.name.trim() || 'image',
-      mime_type: uploadType,
-      size_bytes: uploadFile.size,
-      sort_order: nextSortOrder,
-      storage_path: storagePath,
-    })
+    const { data: imageRow, error: rowError } = await options.supabase
+      .from('wish_comment_images')
+      .insert({
+        comment_id: options.commentId,
+        created_by: options.authorId,
+        file_name: uploadFile.name.trim() || 'image',
+        mime_type: uploadType,
+        size_bytes: uploadFile.size,
+        sort_order: nextSortOrder,
+        storage_path: storagePath,
+      })
+      .select('id, created_by, storage_path, file_name, mime_type, size_bytes, created_at')
+      .single()
 
-    if (rowError) {
+    if (rowError || !imageRow) {
       nextSortOrder -= 1
       failedFiles.push(file.name)
       await options.supabase.storage.from(options.imageBucket).remove([storagePath])
@@ -69,14 +80,44 @@ export async function uploadCommentImagesWrite(options: {
     }
 
     uploadedCount += 1
+    uploadedImages.push(createWishImage({
+      id: imageRow.id,
+      createdAt: imageRow.created_at,
+      createdBy: imageRow.created_by,
+      fileName: imageRow.file_name,
+      mimeType: imageRow.mime_type,
+      sizeBytes: imageRow.size_bytes,
+      storagePath: imageRow.storage_path,
+    }))
 
     if (preparedUpload.compressed) {
       compressedCount += 1
     }
   }
 
+  if (uploadedImages.length) {
+    const { data: signedUrls } = await options.supabase.storage
+      .from(options.imageBucket)
+      .createSignedUrls(uploadedImages.map((image) => image.storagePath), 60 * 60)
+
+    const signedUrlEntries: Array<[string, string]> = []
+
+    for (const item of signedUrls ?? []) {
+      if (item.path && item.signedUrl) {
+        signedUrlEntries.push([item.path, item.signedUrl])
+      }
+    }
+
+    const signedUrlMap = new Map(signedUrlEntries)
+
+    uploadedImages = uploadedImages.map((image) => ({
+      ...image,
+      url: signedUrlMap.get(image.storagePath) ?? image.url,
+    }))
+  }
+
   if (!options.files.length) {
-    return { summaryMessage: '留言已同步到 Supabase。' }
+    return { summaryMessage: '留言已同步到 Supabase。', uploadedImages }
   }
 
   if (uploadedCount === options.files.length && !failedFiles.length && !skippedFiles.length) {
@@ -84,11 +125,13 @@ export async function uploadCommentImagesWrite(options: {
       summaryMessage: compressedCount
         ? `留言和 ${uploadedCount} 张图片已同步到 Supabase，其中 ${compressedCount} 张已自动压缩。`
         : `留言和 ${uploadedCount} 张图片已同步到 Supabase。`,
+      uploadedImages,
     }
   }
 
   return {
     summaryMessage: `这句近况已经送出；${uploadedCount} 张图片上传成功${compressedCount ? `，其中 ${compressedCount} 张已自动压缩` : ''}${failedFiles.length ? `；${failedFiles.length} 张失败` : ''}${skippedFiles.length ? `；${skippedFiles.length} 张因格式或大小限制被跳过` : ''}。`,
+    uploadedImages,
   }
 }
 
@@ -133,6 +176,7 @@ export async function uploadWishImagesWrite(options: {
   options.onLoadingChange(true)
   let uploadedCount = 0
   let compressedCount = 0
+  let uploadedImages: WishImage[] = []
   const skippedFiles: string[] = []
   const failedFiles: string[] = []
   let nextSortOrder = options.wish.images.length
@@ -170,17 +214,21 @@ export async function uploadWishImagesWrite(options: {
         continue
       }
 
-      const { error: rowError } = await options.supabase.from('wish_images').insert({
-        created_by: options.uploaderId,
-        file_name: uploadFile.name.trim() || 'image',
-        mime_type: uploadType,
-        size_bytes: uploadFile.size,
-        sort_order: nextSortOrder,
-        storage_path: storagePath,
-        wish_id: options.wishId,
-      })
+      const { data: imageRow, error: rowError } = await options.supabase
+        .from('wish_images')
+        .insert({
+          created_by: options.uploaderId,
+          file_name: uploadFile.name.trim() || 'image',
+          mime_type: uploadType,
+          size_bytes: uploadFile.size,
+          sort_order: nextSortOrder,
+          storage_path: storagePath,
+          wish_id: options.wishId,
+        })
+        .select('id, created_by, storage_path, file_name, mime_type, size_bytes, note, created_at')
+        .single()
 
-      if (rowError) {
+      if (rowError || !imageRow) {
         nextSortOrder -= 1
         failedFiles.push(file.name)
         await options.supabase.storage.from(options.imageBucket).remove([storagePath])
@@ -188,14 +236,39 @@ export async function uploadWishImagesWrite(options: {
       }
 
       uploadedCount += 1
+      uploadedImages.push(createWishImage({
+        id: imageRow.id,
+        createdAt: imageRow.created_at,
+        createdBy: imageRow.created_by,
+        fileName: imageRow.file_name,
+        mimeType: imageRow.mime_type,
+        note: imageRow.note ?? '',
+        sizeBytes: imageRow.size_bytes,
+        storagePath: imageRow.storage_path,
+      }))
 
       if (preparedUpload.compressed) {
         compressedCount += 1
       }
     }
 
-    if (uploadedCount) {
-      await options.syncFromSupabase(options.currentSpaceId)
+    if (uploadedImages.length) {
+      const { data: signedUrls } = await options.supabase.storage
+        .from(options.imageBucket)
+        .createSignedUrls(uploadedImages.map((image) => image.storagePath), 60 * 60)
+
+      const signedUrlMap = new Map<string, string>()
+
+      for (const item of signedUrls ?? []) {
+        if (item.path && item.signedUrl) {
+          signedUrlMap.set(item.path, item.signedUrl)
+        }
+      }
+
+      uploadedImages = uploadedImages.map((image) => ({
+        ...image,
+        url: signedUrlMap.get(image.storagePath) ?? image.url,
+      }))
     }
 
     if (uploadedCount && !failedFiles.length && !skippedFiles.length) {
@@ -204,12 +277,12 @@ export async function uploadWishImagesWrite(options: {
           ? `已上传 ${uploadedCount} 张图片到 Supabase，其中 ${compressedCount} 张已自动压缩。`
           : `已上传 ${uploadedCount} 张图片到 Supabase。`,
       )
-      return true
+      return { ok: true, uploadedImages }
     }
 
     if (uploadedCount) {
       options.onSyncMessage(`已上传 ${uploadedCount} 张图片${compressedCount ? `，其中 ${compressedCount} 张已自动压缩` : ''}；${failedFiles.length} 张失败，${skippedFiles.length} 张因格式或大小限制被跳过。`)
-      return true
+      return { ok: true, uploadedImages }
     }
 
     options.onSyncMessage(

@@ -19,9 +19,7 @@ import {
   type WishCoinRowLike,
   type WishCommentImageRowLike,
   type WishCommentRowLike,
-  type WishImageRowLike,
   type WishRowLike,
-  type WishStepRowLike,
 } from '../wishes/wish.mapping.cloud'
 import type { WishCloudFetchResult } from './wish.cloud.fetch'
 
@@ -71,14 +69,20 @@ export function composeWishCloudState(fetchResult: WishCloudFetchResult) {
     ? mapCommentImageRowsFromThreadImages(fetchResult.threadImageRows)
     : fetchResult.commentImageRows
 
+  const coinRowsByWishId = groupRowsByKey(fetchResult.wishCoinRows, (coin) => coin.wish_id)
+  const commentRowsByWishId = groupRowsByKey(commentRows, (comment) => comment.wish_id)
+  const commentImageRowsByCommentId = groupRowsByKey(commentImageRows, (image) => image.comment_id)
+  const imageRowsByWishId = groupRowsByKey(fetchResult.imageRows, (image) => image.wish_id)
+  const stepRowsByWishId = groupRowsByKey(fetchResult.stepRows, (step) => step.wish_id)
+
   const nextWishes = fetchResult.wishRows.map((wish) =>
     createWishRecordFromRow(
       wish as WishRowLike,
-      fetchResult.wishCoinRows as WishCoinRowLike[],
-      commentRows as WishCommentRowLike[],
-      commentImageRows as WishCommentImageRowLike[],
-      fetchResult.imageRows as WishImageRowLike[],
-      fetchResult.stepRows as WishStepRowLike[],
+      coinRowsByWishId.get(wish.id) ?? [],
+      commentRowsByWishId.get(wish.id) ?? [],
+      getCommentImagesForComments(commentRowsByWishId.get(wish.id) ?? [], commentImageRowsByCommentId),
+      imageRowsByWishId.get(wish.id) ?? [],
+      stepRowsByWishId.get(wish.id) ?? [],
       fetchResult.imageUrlMap,
       fetchResult.commentImageUrlMap,
     ),
@@ -134,4 +138,33 @@ function createWishImageRecord(image: {
     ...image,
     note: image.note ?? '',
   }
+}
+
+function groupRowsByKey<T>(rows: T[], getKey: (row: T) => string | null | undefined) {
+  const groupedRows = new Map<string, T[]>()
+
+  for (const row of rows) {
+    const key = getKey(row)
+
+    if (!key) {
+      continue
+    }
+
+    const existingRows = groupedRows.get(key)
+
+    if (existingRows) {
+      existingRows.push(row)
+    } else {
+      groupedRows.set(key, [row])
+    }
+  }
+
+  return groupedRows
+}
+
+function getCommentImagesForComments(
+  comments: WishCommentRowLike[],
+  imagesByCommentId: Map<string, WishCommentImageRowLike[]>,
+) {
+  return comments.flatMap((comment) => imagesByCommentId.get(comment.id) ?? [])
 }

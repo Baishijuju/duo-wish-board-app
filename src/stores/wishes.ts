@@ -137,6 +137,7 @@ const WISH_IMAGE_EXTENSION_BY_TYPE: Record<string, string> = {
 const WISH_IMAGE_COMPRESS_QUALITY_STEPS = [0.92, 0.88, 0.84, 0.8]
 const WISH_MAX_IMAGE_COUNT_PER_WISH = 1
 const MAX_THREAD_REACTIONS_PER_MEMBER = 3
+const LOCAL_REALTIME_ECHO_TTL_MS = 15_000
 
 export const WISH_COIN_BUDGET_PER_CYCLE = 3
 export const DRAGON_BALL_COIN_TARGET = 7
@@ -1008,6 +1009,8 @@ export const useWishStore = defineStore('wishes', () => {
   const syncMessage = ref('当前使用本地演示数据。')
   const lastLoadedSpaceId = ref<string | null>(null)
   const realtimeStatus = ref<'idle' | 'connecting' | 'subscribed' | 'error'>('idle')
+  const recentLocalCommentDeletes = new Map<string, number>()
+  const recentLocalReactionDeletes = new Map<string, number>()
 
   const isUsingCloudWishes = computed(() => authStore.usesSupabaseSpace && !!authStore.currentSpaceId)
   const realtimeMessage = computed(() => {
@@ -1569,6 +1572,23 @@ export const useWishStore = defineStore('wishes', () => {
       .sort((left, right) => compareIsoAscending(right.createdAt, left.createdAt) || left.id.localeCompare(right.id))
   }
 
+  function patchCommentImages(commentId: string, images: WishImage[]) {
+    const nextImages = images.map((image) => ({ ...image }))
+
+    wishes.value.forEach((wish) => {
+      const comment = wish.comments.find((entry) => entry.id === commentId)
+
+      if (comment) {
+        comment.images = nextImages.map((image) => ({ ...image }))
+        wish.updatedAt = new Date().toISOString()
+      }
+    })
+
+    wishThreads.value = wishThreads.value.map((thread) => thread.id === commentId
+      ? { ...thread, images: nextImages.map((image) => ({ ...image })), updatedAt: new Date().toISOString() }
+      : thread)
+  }
+
   function rewardResult(ok: boolean, message: string): RewardActionResult {
     syncMessage.value = message
     return { ok, message }
@@ -1614,7 +1634,122 @@ export const useWishStore = defineStore('wishes', () => {
     })
   }
 
-  function handleCommentRealtimeEvent(payload: { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null }) {
+  function getRealtimeEventType(payload: { eventType?: unknown }) {
+    return typeof payload.eventType === 'string' ? payload.eventType : ''
+  }
+
+  function hasLocalComment(commentId: string) {
+    return wishes.value.some((wish) => wish.comments.some((comment) => comment.id === commentId))
+  }
+
+  function hasLocalCommentBody(commentId: string, message: string | null) {
+    return wishes.value.some((wish) => wish.comments.some((comment) => comment.id === commentId && (!message || comment.message === message)))
+  }
+
+  function hasLocalWishImage(imageId: string | null, storagePath: string | null) {
+    return wishes.value.some((wish) => wish.images.some((image) => (
+      (imageId && image.id === imageId) || (storagePath && image.storagePath === storagePath)
+    )))
+  }
+
+  function hasLocalCommentImage(imageId: string | null, storagePath: string | null) {
+    return wishes.value.some((wish) => wish.comments.some((comment) => comment.images.some((image) => (
+      (imageId && image.id === imageId) || (storagePath && image.storagePath === storagePath)
+    ))))
+  }
+
+  function getReactionEchoKey(reaction: { actor_id?: unknown; actorId?: unknown; emoji?: unknown; target_thread_id?: unknown; targetThreadId?: unknown }) {
+    const actorId = typeof reaction.actor_id === 'string' ? reaction.actor_id : typeof reaction.actorId === 'string' ? reaction.actorId : ''
+    const emoji = typeof reaction.emoji === 'string' ? reaction.emoji : ''
+    const targetThreadId = typeof reaction.target_thread_id === 'string'
+      ? reaction.target_thread_id
+      : typeof reaction.targetThreadId === 'string'
+        ? reaction.targetThreadId
+        : ''
+
+    return actorId && emoji && targetThreadId ? `${targetThreadId}:${actorId}:${emoji}` : ''
+  }
+
+  function pruneLocalReactionEchoTombstones() {
+    const now = Date.now()
+
+    recentLocalReactionDeletes.forEach((expiresAt, key) => {
+      if (expiresAt <= now) {
+        recentLocalReactionDeletes.delete(key)
+      }
+    })
+  }
+
+  function pruneLocalCommentEchoTombstones() {
+    const now = Date.now()
+
+    recentLocalCommentDeletes.forEach((expiresAt, key) => {
+      if (expiresAt <= now) {
+        recentLocalCommentDeletes.delete(key)
+      }
+    })
+  }
+
+  function markLocalCommentDelete(commentId: string) {
+    recentLocalCommentDeletes.set(commentId, Date.now() + LOCAL_REALTIME_ECHO_TTL_MS)
+  }
+
+  function wasLocalCommentDelete(commentId: string | null) {
+    if (!commentId) {
+      return false
+    }
+
+    pruneLocalCommentEchoTombstones()
+    return recentLocalCommentDeletes.has(commentId)
+  }
+
+  function markLocalReactionDelete(reaction: ThreadReactionRecord) {
+    const expiresAt = Date.now() + LOCAL_REALTIME_ECHO_TTL_MS
+
+    recentLocalReactionDeletes.set(reaction.id, expiresAt)
+    recentLocalReactionDeletes.set(getReactionEchoKey(reaction), expiresAt)
+  }
+
+  function hasLocalReactionEcho(reaction: Record<string, unknown> | null | undefined) {
+    if (!reaction) {
+      return false
+    }
+
+    const reactionId = typeof reaction.id === 'string' ? reaction.id : ''
+    const echoKey = getReactionEchoKey(reaction)
+
+    return threadReactions.value.some((entry) => (
+      (reactionId && entry.id === reactionId) || (echoKey && getReactionEchoKey(entry) === echoKey)
+    ))
+  }
+
+  function wasLocalReactionDelete(reaction: Record<string, unknown> | null | undefined) {
+    if (!reaction) {
+      return false
+    }
+
+    pruneLocalReactionEchoTombstones()
+
+    const reactionId = typeof reaction.id === 'string' ? reaction.id : ''
+    const echoKey = getReactionEchoKey(reaction)
+
+    return Boolean((reactionId && recentLocalReactionDeletes.has(reactionId)) || (echoKey && recentLocalReactionDeletes.has(echoKey)))
+  }
+
+  function handleCommentRealtimeEvent(payload: { eventType?: unknown; new?: Record<string, unknown> | null; old?: Record<string, unknown> | null }) {
+    const eventType = getRealtimeEventType(payload)
+    const nextCommentId = typeof payload.new?.id === 'string' ? payload.new.id : null
+    const nextCommentBody = typeof payload.new?.body === 'string' ? payload.new.body : null
+    const previousCommentId = typeof payload.old?.id === 'string' ? payload.old.id : null
+
+    if (
+      (eventType === 'INSERT' && nextCommentId && hasLocalComment(nextCommentId))
+      || (eventType === 'UPDATE' && nextCommentId && hasLocalCommentBody(nextCommentId, nextCommentBody))
+      || (eventType === 'DELETE' && wasLocalCommentDelete(previousCommentId))
+    ) {
+      return
+    }
+
     const visibleWishIds = new Set(wishes.value.map((wish) => wish.id))
 
     if (shouldSyncForWishRealtimeEvent(payload, visibleWishIds)) {
@@ -1622,7 +1757,14 @@ export const useWishStore = defineStore('wishes', () => {
     }
   }
 
-  function handleImageRealtimeEvent(payload: { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null }) {
+  function handleImageRealtimeEvent(payload: { eventType?: unknown; new?: Record<string, unknown> | null; old?: Record<string, unknown> | null }) {
+    const nextImageId = typeof payload.new?.id === 'string' ? payload.new.id : null
+    const nextStoragePath = typeof payload.new?.storage_path === 'string' ? payload.new.storage_path : null
+
+    if (getRealtimeEventType(payload) === 'INSERT' && hasLocalWishImage(nextImageId, nextStoragePath)) {
+      return
+    }
+
     const visibleWishIds = new Set(wishes.value.map((wish) => wish.id))
 
     if (shouldSyncForWishRealtimeEvent(payload, visibleWishIds)) {
@@ -1630,7 +1772,14 @@ export const useWishStore = defineStore('wishes', () => {
     }
   }
 
-  function handleCommentImageRealtimeEvent(payload: { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null }) {
+  function handleCommentImageRealtimeEvent(payload: { eventType?: unknown; new?: Record<string, unknown> | null; old?: Record<string, unknown> | null }) {
+    const nextImageId = typeof payload.new?.id === 'string' ? payload.new.id : null
+    const nextStoragePath = typeof payload.new?.storage_path === 'string' ? payload.new.storage_path : null
+
+    if (getRealtimeEventType(payload) === 'INSERT' && hasLocalCommentImage(nextImageId, nextStoragePath)) {
+      return
+    }
+
     const visibleCommentIds = new Set(
       wishes.value.flatMap((wish) => wish.comments.map((comment) => comment.id)),
     )
@@ -1646,6 +1795,16 @@ export const useWishStore = defineStore('wishes', () => {
     if (shouldSyncForThreadImageRealtimeEvent(payload, visibleThreadIds)) {
       scheduleRealtimeSync('手账图片')
     }
+  }
+
+  function handleThreadReactionRealtimeEvent(payload: { eventType?: unknown; new?: Record<string, unknown> | null; old?: Record<string, unknown> | null }) {
+    const eventType = getRealtimeEventType(payload)
+
+    if ((eventType === 'INSERT' && hasLocalReactionEcho(payload.new)) || (eventType === 'DELETE' && wasLocalReactionDelete(payload.old))) {
+      return
+    }
+
+    scheduleRealtimeSync('表情回应')
   }
 
   function teardownRealtimeSubscription() {
@@ -1700,8 +1859,10 @@ export const useWishStore = defineStore('wishes', () => {
           table: 'thread_reactions',
           filter: `space_id=eq.${spaceId}`,
           capabilityKey: 'hasUnifiedThreads',
-          onEvent: () => {
-            scheduleRealtimeSync('表情回应')
+          onEvent: (payload) => {
+            if (payload) {
+              handleThreadReactionRealtimeEvent(payload)
+            }
           },
         },
         {
@@ -2517,6 +2678,48 @@ export const useWishStore = defineStore('wishes', () => {
       }
     }
 
+    if ('cloudComment' in result) {
+      const wish = findById(wishId)
+
+      if (wish && result.cloudComment) {
+        wish.comments = [
+          result.cloudComment,
+          ...wish.comments.filter((comment) => comment.id !== result.cloudComment.id),
+        ]
+        wish.updatedAt = result.cloudComment.createdAt
+
+        const nextThread = createWishThreadEntry({
+          actorId: result.cloudComment.authorId,
+          createdAt: result.cloudComment.createdAt,
+          eventKind: 'comment',
+          id: result.cloudComment.id,
+          images: result.cloudComment.images,
+          messageText: result.cloudComment.message,
+          reactions: [],
+          spaceId: authStore.currentSpaceId || null,
+          updatedAt: result.cloudComment.createdAt,
+          wishId,
+        })
+
+        wishThreads.value = [
+          ...wishThreads.value.filter((thread) => thread.id !== nextThread.id),
+          nextThread,
+        ].sort((left, right) => compareIsoAscending(left.createdAt, right.createdAt) || left.id.localeCompare(right.id))
+      }
+
+      if ('pendingCommentImageUpload' in result && result.pendingCommentImageUpload) {
+        void result.pendingCommentImageUpload.promise
+          .then((uploadResult) => {
+            patchCommentImages(result.pendingCommentImageUpload!.commentId, uploadResult.uploadedImages)
+            syncMessage.value = uploadResult.summaryMessage
+          })
+          .catch((error: unknown) => {
+            patchCommentImages(result.pendingCommentImageUpload!.commentId, [])
+            syncMessage.value = `图片上传失败：${error instanceof Error ? error.message : '请稍后重试。'}`
+          })
+      }
+    }
+
     return result
   }
 
@@ -2571,10 +2774,11 @@ export const useWishStore = defineStore('wishes', () => {
       syncFromSupabase,
     })
 
-    if ('deletedCommentId' in result) {
+    if ('deletedCommentId' in result && result.deletedCommentId) {
       const wish = findById(wishId)
 
       if (wish) {
+        markLocalCommentDelete(result.deletedCommentId)
         wish.comments = wish.comments.filter((entry) => entry.id !== result.deletedCommentId)
         wish.updatedAt = new Date().toISOString()
         syncMessage.value = '留言已删除。'
@@ -2621,6 +2825,10 @@ export const useWishStore = defineStore('wishes', () => {
             spaceId: authStore.currentSpaceId,
             targetThreadId: threadId,
           })
+
+      if (existingReaction) {
+        markLocalReactionDelete(existingReaction)
+      }
 
       threadReactions.value = existingReaction
         ? threadReactions.value.filter((reaction) => reaction.id !== existingReaction.id)
@@ -2700,7 +2908,7 @@ export const useWishStore = defineStore('wishes', () => {
   }
 
   async function uploadWishImages(wishId: string, files: File[]) {
-    return uploadWishImagesWrite({
+    const result = await uploadWishImagesWrite({
       supabase,
       isUsingCloudWishes: isUsingCloudWishes.value,
       currentSpaceId: authStore.currentSpaceId,
@@ -2723,6 +2931,20 @@ export const useWishStore = defineStore('wishes', () => {
       uploadMaxBytes: WISH_IMAGE_MAX_BYTES,
       imageBucket: WISH_IMAGE_BUCKET,
     })
+
+    if (result && typeof result === 'object' && 'uploadedImages' in result && result.uploadedImages.length) {
+      const wish = findById(wishId)
+
+      if (wish) {
+        wish.images = [
+          ...wish.images,
+          ...result.uploadedImages,
+        ].slice(0, WISH_MAX_IMAGE_COUNT_PER_WISH)
+        wish.updatedAt = new Date().toISOString()
+      }
+    }
+
+    return result
   }
 
   async function deleteWishImage(wishId: string, imageId: string) {
