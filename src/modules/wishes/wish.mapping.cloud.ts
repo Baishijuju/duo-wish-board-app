@@ -79,7 +79,6 @@ export interface WishStepRowLike {
   wish_id: string
   title: string
   is_done: boolean
-  sort_order: number
   created_at: string
   updated_at: string
 }
@@ -146,7 +145,7 @@ export function createWishRecordFromRow(
     completedAt: row.completed_at,
     steps: stepRows
       .filter((step) => step.wish_id === row.id)
-      .sort((left, right) => left.sort_order - right.sort_order || new Date(left.created_at).getTime() - new Date(right.created_at).getTime())
+      .sort((left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime())
       .map((step) =>
         createWishStep({
           id: step.id,

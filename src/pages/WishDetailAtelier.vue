@@ -256,7 +256,7 @@ async function confirmDeleteWish() {
             <article class="detail-atelier-summary-card">
               <span>星星币</span>
               <strong>{{ currentMemberStarCoins }} 枚</strong>
-              <p>高档奖励 {{ currentMemberPremiumRewards.length }} 项</p>
+              <p>攒着，去空间页接住大奖励</p>
             </article>
           </div>
 
@@ -944,24 +944,18 @@ async function confirmDeleteWish() {
           </div>
 
           <div class="detail-atelier-tools-section">
-            <div class="detail-atelier-tools-copy">
-              <span>愿望详情</span>
-              <p>把轻轻写下的愿望补得更完整。</p>
-            </div>
-            <div class="detail-atelier-inline-buttons detail-atelier-danger-actions">
+            <div class="detail-atelier-inline-buttons detail-atelier-danger-actions detail-atelier-edit-delete-actions">
               <RouterLink class="detail-atelier-secondary" :to="{ name: 'compose', query: { edit: selectedWish.id } }">编辑愿望</RouterLink>
+              <button v-if="!isDeleteWishConfirming" class="detail-atelier-text danger" type="button" @click="openWishDeleteConfirm()">移走这条愿望</button>
             </div>
           </div>
 
-          <div class="detail-atelier-inline-buttons detail-atelier-danger-actions">
-            <template v-if="isDeleteWishConfirming">
-              <span class="detail-atelier-chip detail-atelier-danger-chip">移走后会回到清单页</span>
-              <button class="detail-atelier-secondary" type="button" :disabled="isDeletingWish" @click="cancelWishDeleteConfirm()">先不删</button>
-              <button class="detail-atelier-text danger" type="button" :disabled="isDeletingWish" @click="void confirmDeleteWish()">
-                {{ isDeletingWish ? '删除中...' : '确认删除' }}
-              </button>
-            </template>
-            <button v-else class="detail-atelier-text danger" type="button" @click="openWishDeleteConfirm()">移走这条愿望</button>
+          <div v-if="isDeleteWishConfirming" class="detail-atelier-inline-buttons detail-atelier-danger-actions">
+            <span class="detail-atelier-chip detail-atelier-danger-chip">移走后会回到清单页</span>
+            <button class="detail-atelier-secondary" type="button" :disabled="isDeletingWish" @click="cancelWishDeleteConfirm()">先不删</button>
+            <button class="detail-atelier-text danger" type="button" :disabled="isDeletingWish" @click="void confirmDeleteWish()">
+              {{ isDeletingWish ? '删除中...' : '确认删除' }}
+            </button>
           </div>
 
           <div v-if="progressSnapshot?.mode === 'count'" class="detail-atelier-tools-section">
@@ -1662,9 +1656,9 @@ async function confirmDeleteWish() {
 
 .detail-atelier-hero-top .detail-atelier-mini-link {
   min-height: auto;
-  padding: 0;
-  border: 0;
-  background: transparent;
+  padding: 0.18rem 0.62rem;
+  border: 1px solid rgba(126, 96, 76, 0.22);
+  background: rgba(255, 255, 255, 0.7);
   color: rgba(86, 63, 52, 0.84);
   justify-content: flex-start;
 }
@@ -1893,6 +1887,16 @@ async function confirmDeleteWish() {
 .detail-atelier-danger-actions {
   justify-content: flex-end;
   align-items: center;
+}
+
+.detail-atelier-edit-delete-actions {
+  flex-wrap: nowrap;
+}
+
+.detail-atelier-edit-delete-actions > .detail-atelier-secondary,
+.detail-atelier-edit-delete-actions > .detail-atelier-text.danger {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .detail-atelier-tools-actions {
@@ -3161,11 +3165,17 @@ async function confirmDeleteWish() {
   }
 
   .detail-atelier-compose-card .detail-atelier-section-head {
+    height: 65px;
     gap: 0.42rem;
+    justify-content: center;
   }
 
   .detail-atelier-compose-card .detail-atelier-section-copy {
     gap: 0.18rem;
+  }
+
+  .detail-atelier-compose-card .detail-atelier-section-copy h2 {
+    margin: 0;
   }
 
   .detail-atelier-compose-card .detail-atelier-support-wide {
@@ -3294,8 +3304,10 @@ async function confirmDeleteWish() {
     display: inline-flex;
     flex: 0 1 auto;
     width: auto;
-    min-height: 40px;
-    padding: 0.48rem 0.82rem;
+    min-height: 36px;
+    padding: 0.42rem 0.74rem;
+    font-size: var(--type-l6-size);
+    line-height: var(--type-l6-line);
   }
 
   .detail-atelier-chip-row.compact,
@@ -3707,6 +3719,13 @@ async function confirmDeleteWish() {
   .detail-atelier-badge {
     min-height: 34px;
     padding: 0.42rem 0.74rem;
+  }
+
+  .detail-atelier-chip-row-primary .detail-atelier-chip {
+    min-height: 30px;
+    padding: 0.34rem 0.62rem;
+    font-size: var(--type-l6-size);
+    line-height: var(--type-l6-line);
   }
 
   .detail-atelier-reaction-button {

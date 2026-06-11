@@ -1009,6 +1009,8 @@ export const useWishStore = defineStore('wishes', () => {
   const syncMessage = ref('当前使用本地演示数据。')
   const lastLoadedSpaceId = ref<string | null>(null)
   const realtimeStatus = ref<'idle' | 'connecting' | 'subscribed' | 'error'>('idle')
+  const recentLocalWishDeletes = new Map<string, number>()
+  const recentLocalWishUpdates = new Map<string, number>()
   const recentLocalCommentDeletes = new Map<string, number>()
   const recentLocalReactionDeletes = new Map<string, number>()
 
@@ -1652,6 +1654,48 @@ export const useWishStore = defineStore('wishes', () => {
     )))
   }
 
+  function pruneLocalWishEchoTombstones() {
+    const now = Date.now()
+
+    recentLocalWishDeletes.forEach((expiresAt, key) => {
+      if (expiresAt <= now) {
+        recentLocalWishDeletes.delete(key)
+      }
+    })
+
+    recentLocalWishUpdates.forEach((expiresAt, key) => {
+      if (expiresAt <= now) {
+        recentLocalWishUpdates.delete(key)
+      }
+    })
+  }
+
+  function markLocalWishUpdate(wishId: string) {
+    recentLocalWishUpdates.set(wishId, Date.now() + LOCAL_REALTIME_ECHO_TTL_MS)
+  }
+
+  function markLocalWishDelete(wishId: string) {
+    recentLocalWishDeletes.set(wishId, Date.now() + LOCAL_REALTIME_ECHO_TTL_MS)
+  }
+
+  function wasLocalWishUpdate(wishId: string | null) {
+    if (!wishId) {
+      return false
+    }
+
+    pruneLocalWishEchoTombstones()
+    return recentLocalWishUpdates.has(wishId)
+  }
+
+  function wasLocalWishDelete(wishId: string | null) {
+    if (!wishId) {
+      return false
+    }
+
+    pruneLocalWishEchoTombstones()
+    return recentLocalWishDeletes.has(wishId)
+  }
+
   function hasLocalCommentImage(imageId: string | null, storagePath: string | null) {
     return wishes.value.some((wish) => wish.comments.some((comment) => comment.images.some((image) => (
       (imageId && image.id === imageId) || (storagePath && image.storagePath === storagePath)
@@ -1757,6 +1801,18 @@ export const useWishStore = defineStore('wishes', () => {
     }
   }
 
+  function handleWishRealtimeEvent(payload: { eventType?: unknown; new?: Record<string, unknown> | null; old?: Record<string, unknown> | null }) {
+    const eventType = getRealtimeEventType(payload)
+    const nextWishId = typeof payload.new?.id === 'string' ? payload.new.id : null
+    const previousWishId = typeof payload.old?.id === 'string' ? payload.old.id : null
+
+    if ((eventType === 'UPDATE' && wasLocalWishUpdate(nextWishId)) || (eventType === 'DELETE' && wasLocalWishDelete(previousWishId))) {
+      return
+    }
+
+    scheduleRealtimeSync('愿望')
+  }
+
   function handleImageRealtimeEvent(payload: { eventType?: unknown; new?: Record<string, unknown> | null; old?: Record<string, unknown> | null }) {
     const nextImageId = typeof payload.new?.id === 'string' ? payload.new.id : null
     const nextStoragePath = typeof payload.new?.storage_path === 'string' ? payload.new.storage_path : null
@@ -1834,8 +1890,10 @@ export const useWishStore = defineStore('wishes', () => {
         {
           table: 'wishes',
           filter: `space_id=eq.${spaceId}`,
-          onEvent: () => {
-            scheduleRealtimeSync('愿望')
+          onEvent: (payload) => {
+            if (payload) {
+              handleWishRealtimeEvent(payload)
+            }
           },
         },
         {
@@ -2009,6 +2067,22 @@ export const useWishStore = defineStore('wishes', () => {
     }
   }
 
+  function removeWishLocally(id: string) {
+    wishes.value = deleteWishLocal(id, wishes.value)
+    wishCoins.value = wishCoins.value.filter((coin) => coin.wishId !== id)
+    rewardClaims.value = rewardClaims.value.map((claim) => {
+      if (claim.sourceWishId !== id) {
+        return claim
+      }
+
+      return {
+        ...claim,
+        sourceStepId: null,
+        sourceWishId: null,
+      }
+    })
+  }
+
   async function addWish(draft: WishDraft, initialStepTitles: string[] = []) {
     const normalizedStepTitles = draft.progressMode === 'steps'
       ? initialStepTitles.map((title) => title.trim()).filter((title) => !!title)
@@ -2087,7 +2161,16 @@ export const useWishStore = defineStore('wishes', () => {
             .update(updatePayload)
             .eq('id', id),
         '愿望修改已同步到 Supabase。',
-      )
+        { syncAfterWrite: false },
+      ).then((ok) => {
+        if (ok) {
+          wishes.value = wishes.value.map((wish) => wish.id === id ? updateWishLocal(wish, draft, touchWish) : wish)
+          markLocalWishUpdate(id)
+          syncMessage.value = '愿望修改已同步到 Supabase。'
+        }
+
+        return ok
+      })
     }
 
     wishes.value = wishes.value.map((wish) => {
@@ -2108,22 +2191,19 @@ export const useWishStore = defineStore('wishes', () => {
       return runCloudMutation(
         async () => client.from('wishes').delete().eq('id', id),
         '愿望已从 Supabase 删除。',
-      )
+        { syncAfterWrite: false },
+      ).then((ok) => {
+        if (ok) {
+          markLocalWishDelete(id)
+          removeWishLocally(id)
+          syncMessage.value = '愿望已从 Supabase 删除。'
+        }
+
+        return ok
+      })
     }
 
-    wishes.value = deleteWishLocal(id, wishes.value)
-    wishCoins.value = wishCoins.value.filter((coin) => coin.wishId !== id)
-    rewardClaims.value = rewardClaims.value.map((claim) => {
-      if (claim.sourceWishId !== id) {
-        return claim
-      }
-
-      return {
-        ...claim,
-        sourceStepId: null,
-        sourceWishId: null,
-      }
-    })
+    removeWishLocally(id)
     return true
   }
 
@@ -2528,6 +2608,9 @@ export const useWishStore = defineStore('wishes', () => {
       wishId,
       normalizedTitle: title.trim(),
       runCloudMutation,
+      onLoadingChange: (value) => {
+        isLoading.value = value
+      },
       onSyncMessage: (value) => {
         syncMessage.value = value
       },

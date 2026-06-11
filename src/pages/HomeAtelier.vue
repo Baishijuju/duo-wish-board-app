@@ -236,13 +236,6 @@ const sharedLatestMoment = computed(() => latestHomeThreads.value.find((thread) 
 const heroPrimaryWish = computed(() => {
   return nearestDueWishes.value[0] ?? dragonBallWishes.value[0] ?? wishStore.wishes[0] ?? null
 })
-const heroLead = computed(() => {
-  if (!heroPrimaryWish.value) {
-    return '先写下一条愿望，今天最该关心的事就会先出现在这里。'
-  }
-
-  return '先把今天最该推进的一条放到眼前，再去看清单、愿望瓶和最近的变化。'
-})
 const heroPrimaryWishCaption = computed(() => {
   if (!heroPrimaryWish.value) {
     return '先写下一条愿望，让今天先有一件值得关心的事。'
@@ -253,12 +246,6 @@ const heroPrimaryWishCaption = computed(() => {
   }
 
   return getWishCoinHint(heroPrimaryWish.value)
-})
-const homePrimaryActionTo = computed(() => {
-  return wishStore.wishes.length ? '/list' : '/compose'
-})
-const homePrimaryActionLabel = computed(() => {
-  return wishStore.wishes.length ? '去清单继续推进' : '写下第一条愿望'
 })
 const heroPrimaryActionTo = computed(() => {
   if (!heroPrimaryWish.value) {
@@ -322,7 +309,7 @@ const bottleMoodChips = computed(() => {
   ]
 
   if (wishBottleHiddenStarCount.value) {
-    chips.push(`另有 ${wishBottleHiddenStarCount.value} 颗星星收起`) 
+    chips.push(`另有 ${wishBottleHiddenStarCount.value} 颗星星收起`)
   }
 
   return chips
@@ -684,7 +671,6 @@ function formatRecentThreadTime(timestamp: string) {
             <span class="atelier-hero-line is-tight">摆到眼前。</span>
           </span>
         </h1>
-        <p class="atelier-lead">{{ heroLead }}</p>
 
         <article class="priority-card is-primary-focus">
           <div class="priority-head">
@@ -694,7 +680,6 @@ function formatRecentThreadTime(timestamp: string) {
                 <path d="M6 18l4-1 10-10-3-3L7 14l-1 4z" />
               </svg>
             </div>
-            <span class="priority-label">今天先推进</span>
           </div>
 
           <div class="priority-body">
@@ -709,11 +694,6 @@ function formatRecentThreadTime(timestamp: string) {
           </div>
         </article>
 
-        <div class="atelier-action-row">
-          <RouterLink class="atelier-button atelier-button-solid" :to="homePrimaryActionTo">
-            {{ homePrimaryActionLabel }}
-          </RouterLink>
-        </div>
       </div>
 
       <article
@@ -929,7 +909,7 @@ function formatRecentThreadTime(timestamp: string) {
 
           <div class="atelier-stage-metrics">
             <div class="atelier-progress-hero">
-              <p class="wish-bottle-dashboard-kicker">现在的愿望瓶 <span>Now in Bottle</span></p>
+              <p class="wish-bottle-dashboard-kicker">现在的愿望瓶</p>
               <strong class="atelier-progress-value">{{ wishBottleSnapshot.overallPercent }}%</strong>
               <p class="atelier-progress-caption">{{ getWishBottleDashboardHint() }}</p>
 
@@ -1193,8 +1173,7 @@ function formatRecentThreadTime(timestamp: string) {
 
 .atelier-kicker,
 .wish-bottle-story-kicker,
-.wish-bottle-dashboard-kicker,
-.priority-label {
+.wish-bottle-dashboard-kicker {
   margin: 0;
   color: var(--atelier-ink-soft);
   font-family: var(--atelier-body-font);
@@ -1216,8 +1195,7 @@ function formatRecentThreadTime(timestamp: string) {
 }
 
 .atelier-kicker span,
-.wish-bottle-story-kicker span,
-.wish-bottle-dashboard-kicker span {
+.wish-bottle-story-kicker span {
   color: rgba(57, 42, 36, 0.38);
   font-size: var(--type-kicker-sub-size);
   letter-spacing: var(--type-kicker-sub-spacing);
@@ -1303,7 +1281,6 @@ function formatRecentThreadTime(timestamp: string) {
   padding-left: 0.28em;
 }
 
-.atelier-lead,
 .atelier-stage-copy,
 .atelier-stage-hint,
 .priority-copy,
@@ -1333,21 +1310,6 @@ function formatRecentThreadTime(timestamp: string) {
   letter-spacing: var(--type-supporting-spacing);
 }
 
-.atelier-lead {
-  max-width: 33rem;
-  color: rgba(57, 42, 36, 0.84);
-  font-size: var(--type-lead-size);
-  line-height: var(--type-lead-line);
-}
-
-.atelier-action-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.68rem;
-  max-width: 18rem;
-}
-
-.atelier-button,
 .priority-link,
 .lane-link {
   display: inline-flex;
@@ -1366,19 +1328,6 @@ function formatRecentThreadTime(timestamp: string) {
     box-shadow 180ms ease;
 }
 
-.atelier-button {
-  min-height: 44px;
-  padding: 0.66rem 1.06rem;
-  border: 1px solid rgba(148, 115, 94, 0.14);
-}
-
-.atelier-button-solid {
-  background: linear-gradient(135deg, var(--atelier-rose), var(--atelier-rose-deep));
-  color: #fffaf6;
-  box-shadow: 0 14px 28px rgba(166, 90, 96, 0.24);
-}
-
-.atelier-button-ghost,
 .priority-link,
 .lane-link {
   background: rgba(255, 255, 255, 0.58);
@@ -2339,7 +2288,6 @@ function formatRecentThreadTime(timestamp: string) {
 }
 
 @media (hover: hover) {
-  .atelier-button:hover,
   .priority-link:hover,
   .lane-link:hover,
   .atelier-mini-link:hover {
@@ -2431,12 +2379,10 @@ function formatRecentThreadTime(timestamp: string) {
     border-radius: 20px;
   }
 
-  .atelier-action-row,
   .atelier-marquee-actions {
     width: 100%;
   }
 
-  .atelier-button,
   .atelier-mini-pill,
   .priority-link {
     width: 100%;
@@ -2479,11 +2425,6 @@ function formatRecentThreadTime(timestamp: string) {
   .atelier-hero-line.is-tight {
     max-width: none;
     padding-left: 0;
-  }
-
-  .atelier-lead {
-    font-size: var(--type-lead-size);
-    line-height: var(--type-lead-line);
   }
 
   .atelier-metric-grid {
@@ -2558,7 +2499,6 @@ function formatRecentThreadTime(timestamp: string) {
     animation: none !important;
   }
 
-  .atelier-button,
   .priority-link,
   .lane-link,
   .atelier-mini-link {

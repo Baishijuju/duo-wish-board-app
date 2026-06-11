@@ -385,6 +385,7 @@ export async function addWishStepWrite(options: {
   wishId: string
   normalizedTitle: string
   runCloudMutation: (mutate: () => Promise<{ error: { message: string } | null }>, successMessage: string, options?: { syncAfterWrite?: boolean }) => Promise<boolean>
+  onLoadingChange: (value: boolean) => void
   onSyncMessage: (message: string) => void
 }) {
   if (!options.wish || options.wish.progressMode !== 'steps') {
@@ -397,18 +398,44 @@ export async function addWishStepWrite(options: {
   }
 
   if (options.supabase && options.isUsingCloudWishes) {
-    return options.runCloudMutation(
-      async () =>
-        options.supabase!
-          .from('wish_steps')
-          .insert({
-            is_done: false,
-            sort_order: options.wish!.steps.length + 1,
-            title: options.normalizedTitle,
-            wish_id: options.wishId,
-          }),
-      '小步骤已同步到 Supabase。',
-    )
+    options.onLoadingChange(true)
+
+    try {
+      const { data: stepRow, error } = await options.supabase
+        .from('wish_steps')
+        .insert({
+          is_done: false,
+          title: options.normalizedTitle,
+          wish_id: options.wishId,
+        })
+        .select('id, title, is_done, created_at, updated_at')
+        .single()
+
+      if (error || !stepRow) {
+        options.onSyncMessage(`小步骤同步失败：${error?.message ?? '云端没有返回新步骤。'}`)
+        return false
+      }
+
+      return {
+        localWish: {
+          ...options.wish,
+          steps: [
+            ...options.wish.steps,
+            createWishStep({
+              id: stepRow.id,
+              title: stepRow.title,
+              isDone: stepRow.is_done,
+              createdAt: stepRow.created_at,
+              updatedAt: stepRow.updated_at,
+            }),
+          ],
+          updatedAt: new Date().toISOString(),
+        },
+        message: '小步骤已同步到 Supabase。',
+      }
+    } finally {
+      options.onLoadingChange(false)
+    }
   }
 
   return {
@@ -465,7 +492,7 @@ export async function deleteWishStepWrite(options: {
   wish: WishRecord | undefined
   wishId: string
   stepId: string
-  runCloudMutation: (mutate: () => Promise<{ error: { message: string } | null }>, successMessage: string) => Promise<boolean>
+  runCloudMutation: (mutate: () => Promise<{ error: { message: string } | null }>, successMessage: string, options?: { syncAfterWrite?: boolean }) => Promise<boolean>
 }) {
   const nextSteps = options.wish?.steps.filter((step) => step.id !== options.stepId) ?? []
 
@@ -474,7 +501,7 @@ export async function deleteWishStepWrite(options: {
   }
 
   if (options.supabase && options.isUsingCloudWishes) {
-    return options.runCloudMutation(
+    const synced = await options.runCloudMutation(
       async () =>
         options.supabase!
           .from('wish_steps')
@@ -482,7 +509,21 @@ export async function deleteWishStepWrite(options: {
           .eq('id', options.stepId)
           .eq('wish_id', options.wishId),
       '已删除这个小步骤。',
+      { syncAfterWrite: false },
     )
+
+    if (!synced) {
+      return false
+    }
+
+    return {
+      localWish: {
+        ...options.wish,
+        steps: nextSteps,
+        updatedAt: new Date().toISOString(),
+      },
+      message: '已删除这个小步骤。',
+    }
   }
 
   return {

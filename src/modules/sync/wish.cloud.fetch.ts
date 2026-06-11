@@ -369,9 +369,8 @@ export async function fetchWishCloudRows(
     if (!options.capabilities || options.capabilities.hasWishProgress) {
       const { data: stepData, error: stepError } = await supabase
         .from('wish_steps')
-        .select('id, wish_id, title, is_done, sort_order, created_at, updated_at')
+        .select('id, wish_id, title, is_done, created_at, updated_at')
         .in('wish_id', wishIds)
-        .order('sort_order', { ascending: true })
         .order('created_at', { ascending: true })
 
       if (stepError) {

@@ -92,9 +92,8 @@ export async function addWishCloud(
 
     if (data?.id && options.initialStepTitles.length) {
       const { error: stepError } = await options.supabase.from('wish_steps').insert(
-        options.initialStepTitles.map((title, index) => ({
+        options.initialStepTitles.map((title) => ({
           is_done: false,
-          sort_order: index + 1,
           title,
           wish_id: data.id,
         })),
