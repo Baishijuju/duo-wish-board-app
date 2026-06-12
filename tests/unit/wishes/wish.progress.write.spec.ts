@@ -152,7 +152,11 @@ describe('wish.progress.write', () => {
       runCloudMutation: vi.fn(),
       onSyncMessage: vi.fn(),
     })
-    expect(addResult && typeof addResult === 'object' && 'localWish' in addResult).toBe(true)
+    expect(addResult && typeof addResult === 'object' && 'createdStep' in addResult).toBe(true)
+
+    if (addResult && typeof addResult === 'object' && 'createdStep' in addResult) {
+      expect(addResult.createdStep.title).toBe('第二步')
+    }
 
     const toggleResult = await toggleWishStepWrite({
       supabase: null,

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { RewardPoolItem, WishRecord } from '../../stores/wishes'
+import type { RewardPoolItem, WishRecord, WishStep } from '../../stores/wishes'
 import { createRewardClaimRecord } from '../rewards/reward.factories'
 import { createWishCoinRecord, createWishStep } from './wish.factories'
 
@@ -417,20 +417,13 @@ export async function addWishStepWrite(options: {
       }
 
       return {
-        localWish: {
-          ...options.wish,
-          steps: [
-            ...options.wish.steps,
-            createWishStep({
-              id: stepRow.id,
-              title: stepRow.title,
-              isDone: stepRow.is_done,
-              createdAt: stepRow.created_at,
-              updatedAt: stepRow.updated_at,
-            }),
-          ],
-          updatedAt: new Date().toISOString(),
-        },
+        createdStep: createWishStep({
+          id: stepRow.id,
+          title: stepRow.title,
+          isDone: stepRow.is_done,
+          createdAt: stepRow.created_at,
+          updatedAt: stepRow.updated_at,
+        }),
         message: '小步骤已同步到 Supabase。',
       }
     } finally {
@@ -438,12 +431,10 @@ export async function addWishStepWrite(options: {
     }
   }
 
+  const createdStep: WishStep = createWishStep({ title: options.normalizedTitle })
+
   return {
-    localWish: {
-      ...options.wish,
-      steps: [...options.wish.steps, createWishStep({ title: options.normalizedTitle })],
-      updatedAt: new Date().toISOString(),
-    },
+    createdStep,
     message: '已添加一个小步骤。',
   }
 }

@@ -75,6 +75,7 @@ const {
   isEditingThreadComment,
   isSavingThreadEdit,
   isSubmittingComment,
+  isSubmittingStep,
   isSubmittingReward,
   isThreadReactionActive,
   isThreadReactionExpanded,
@@ -993,7 +994,9 @@ async function confirmDeleteWish() {
                 <input v-model="stepDraft" type="text" maxlength="60" placeholder="例如：先确认路线和预算" />
               </label>
               <div class="detail-atelier-inline-buttons detail-atelier-tools-actions">
-                <button class="detail-atelier-secondary" type="submit" :disabled="!stepDraft.trim()">加入这一步</button>
+                <button class="detail-atelier-secondary" type="submit" :disabled="isSubmittingStep || !stepDraft.trim()">
+                  {{ isSubmittingStep ? '正在加入...' : '加入这一步' }}
+                </button>
               </div>
             </form>
 

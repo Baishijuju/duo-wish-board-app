@@ -63,6 +63,7 @@
 前端当前会订阅下面这些表；如果目标环境的 `supabase_realtime` 没包含其中任何一张表，前端虽然可能仍可工作，但行为会变成“写入后回拉”或部分失效。
 
 - `public.wishes`
+- `public.wish_steps`
 - `public.wish_threads`
 - `public.wish_comments`
 - `public.wish_images`

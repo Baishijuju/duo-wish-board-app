@@ -35,6 +35,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
   const editingThreadMessage = ref('')
   const deletingThreadId = ref('')
   const isSubmittingComment = ref(false)
+  const isSubmittingStep = ref(false)
   const isSavingThreadEdit = ref(false)
   const lastFailedCommentDraft = ref('')
   const commentImageFiles = ref<File[]>([])
@@ -840,10 +841,20 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
       return
     }
 
-    const added = await wishStore.addWishStep(selectedWish.value.id, stepDraft.value)
+    if (isSubmittingStep.value) {
+      return
+    }
 
-    if (added) {
-      stepDraft.value = ''
+    isSubmittingStep.value = true
+
+    try {
+      const added = await wishStore.addWishStep(selectedWish.value.id, stepDraft.value)
+
+      if (added) {
+        stepDraft.value = ''
+      }
+    } finally {
+      isSubmittingStep.value = false
     }
   }
 
@@ -1248,6 +1259,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     isSavingThreadEdit,
     isSelectingImages,
     isSubmittingComment,
+    isSubmittingStep,
     isSubmittingReward,
     isThreadReactionActive,
     isThreadReactionExpanded,

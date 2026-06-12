@@ -1813,6 +1813,14 @@ export const useWishStore = defineStore('wishes', () => {
     scheduleRealtimeSync('愿望')
   }
 
+  function handleWishStepRealtimeEvent(payload: { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null }) {
+    const visibleWishIds = new Set(wishes.value.map((wish) => wish.id))
+
+    if (shouldSyncForWishRealtimeEvent(payload, visibleWishIds)) {
+      scheduleRealtimeSync('小步骤')
+    }
+  }
+
   function handleImageRealtimeEvent(payload: { eventType?: unknown; new?: Record<string, unknown> | null; old?: Record<string, unknown> | null }) {
     const nextImageId = typeof payload.new?.id === 'string' ? payload.new.id : null
     const nextStoragePath = typeof payload.new?.storage_path === 'string' ? payload.new.storage_path : null
@@ -1928,6 +1936,15 @@ export const useWishStore = defineStore('wishes', () => {
           onEvent: (payload) => {
             if (payload) {
               handleCommentRealtimeEvent(payload)
+            }
+          },
+        },
+        {
+          table: 'wish_steps',
+          capabilityKey: 'hasWishProgress',
+          onEvent: (payload) => {
+            if (payload) {
+              handleWishStepRealtimeEvent(payload)
             }
           },
         },
@@ -2616,8 +2633,23 @@ export const useWishStore = defineStore('wishes', () => {
       },
     })
 
-    if (result && typeof result === 'object' && 'localWish' in result) {
-      wishes.value = wishes.value.map((wish) => wish.id === wishId ? result.localWish : wish)
+    if (result && typeof result === 'object' && 'createdStep' in result) {
+      const now = new Date().toISOString()
+
+      wishes.value = wishes.value.map((wish) => {
+        if (wish.id !== wishId || wish.progressMode !== 'steps') {
+          return wish
+        }
+
+        const stepsById = new Map(wish.steps.map((step) => [step.id, step]))
+        stepsById.set(result.createdStep.id, result.createdStep)
+
+        return {
+          ...wish,
+          steps: Array.from(stepsById.values()).sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()),
+          updatedAt: now,
+        }
+      })
       syncMessage.value = result.message
       return true
     }
