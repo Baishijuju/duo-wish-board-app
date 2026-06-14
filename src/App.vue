@@ -216,7 +216,7 @@ function isActivePath(targetPath: string) {
   position: fixed;
   left: 12px;
   right: 12px;
-  bottom: 12px;
+  bottom: max(12px, env(safe-area-inset-bottom, 0px));
   z-index: 50;
   display: none;
   grid-template-columns: 1fr 1fr 64px 1fr 1fr;
@@ -250,7 +250,7 @@ function isActivePath(targetPath: string) {
 @media (max-width: 720px) {
   .app-shell {
     width: min(100%, calc(100% - 1rem));
-    padding-bottom: 6.8rem;
+    padding-bottom: calc(6.8rem + env(safe-area-inset-bottom, 0px));
   }
 
   .shell-topbar {

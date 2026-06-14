@@ -164,6 +164,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  min-height: 100svh;
   color: var(--text-main);
   background:
     radial-gradient(circle at 18% 0%, var(--warm-glow), transparent 33%),
@@ -248,6 +249,7 @@ textarea {
 
 #app {
   min-height: 100vh;
+  min-height: 100svh;
 }
 
 .page-card {

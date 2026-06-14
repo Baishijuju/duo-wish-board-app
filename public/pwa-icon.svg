@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="愿望清单图标">
+  <rect width="512" height="512" rx="112" fill="#fff6eb" />
+  <path d="M128 170c0-47 36-82 82-82 26 0 50 12 66 33 16-21 40-33 66-33 46 0 82 35 82 82 0 87-116 157-148 176-32-19-148-89-148-176Z" fill="#c96f4a" />
+  <path d="M158 366h236" stroke="#5f4a37" stroke-width="28" stroke-linecap="round" />
+  <path d="M180 414h192" stroke="#8fa681" stroke-width="22" stroke-linecap="round" />
+  <circle cx="180" cy="166" r="18" fill="#fff6eb" opacity="0.85" />
+</svg>
