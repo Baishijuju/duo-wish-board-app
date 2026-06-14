@@ -1335,7 +1335,7 @@ async function confirmDeleteWish() {
   justify-content: space-between;
   align-items: center;
   padding: 0.9rem 1rem;
-  background: rgba(255, 252, 246, 0.82);
+  background: var(--warm-panel-strong);
 }
 
 .detail-atelier-marquee p,
@@ -1350,7 +1350,7 @@ async function confirmDeleteWish() {
 .detail-atelier-meter-head span {
   margin: 0;
   font-family: var(--font-body);
-  color: rgba(70, 53, 45, 0.66);
+  color: var(--text-soft);
   font-size: var(--type-eyebrow-size);
   font-weight: 600;
   line-height: 1.4;
@@ -1388,23 +1388,23 @@ async function confirmDeleteWish() {
 .detail-atelier-reaction-button,
 .chip-button {
   padding: 0.56rem 0.9rem;
-  border: 1px solid rgba(126, 96, 76, 0.14);
-  background: rgba(255, 255, 255, 0.78);
-  color: #392922;
+  border: 1px solid var(--warm-border);
+  background: var(--warm-panel-strong);
+  color: var(--text-main);
 }
 
 .detail-atelier-primary {
   min-height: 44px;
   padding: 0.66rem 1.12rem;
   border: 0;
-  background: linear-gradient(135deg, #c97c61, #9f5d50);
-  color: #fffaf5;
-  box-shadow: 0 14px 28px rgba(163, 91, 73, 0.22);
+  background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+  color: var(--accent-contrast);
+  box-shadow: 0 14px 28px var(--accent-shadow);
 }
 
 .detail-atelier-secondary-action {
-  background: rgba(255, 250, 244, 0.72);
-  color: rgba(57, 41, 34, 0.84);
+  background: var(--warm-panel-strong);
+  color: var(--text-muted);
   box-shadow: none;
 }
 
@@ -1465,7 +1465,7 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-kicker-bilingual span {
-  color: rgba(70, 53, 45, 0.42);
+  color: var(--text-faint);
   font-size: var(--type-kicker-sub-size);
   letter-spacing: var(--type-kicker-sub-spacing);
   text-transform: uppercase;
@@ -1478,9 +1478,9 @@ async function confirmDeleteWish() {
 
 .detail-atelier-story-card {
   background:
-    radial-gradient(circle at top right, rgba(226, 193, 206, 0.18), transparent 24%),
-    radial-gradient(circle at bottom left, rgba(232, 216, 166, 0.18), transparent 26%),
-    linear-gradient(180deg, rgba(255, 248, 243, 0.96), rgba(255, 255, 255, 0.74));
+    radial-gradient(circle at top right, var(--danger-panel), transparent 24%),
+    radial-gradient(circle at bottom left, color-mix(in srgb, var(--accent-gold) 28%, transparent), transparent 26%),
+    linear-gradient(180deg, var(--surface-card), var(--warm-panel-strong));
   gap: 1.1rem;
 }
 
@@ -1491,8 +1491,8 @@ async function confirmDeleteWish() {
   align-items: start;
   padding: 0.68rem;
   border-radius: 22px;
-  border: 1px solid rgba(126, 96, 76, 0.1);
-  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid var(--warm-border-soft);
+  background: var(--warm-panel);
 }
 
 .detail-atelier-cover-slot {
@@ -1523,7 +1523,7 @@ async function confirmDeleteWish() {
   aspect-ratio: 1;
   object-fit: cover;
   border-radius: 20px;
-  border: 1px solid rgba(126, 96, 76, 0.14);
+  border: 1px solid var(--warm-border);
   box-shadow: var(--shadow-card);
 }
 
@@ -1537,8 +1537,8 @@ async function confirmDeleteWish() {
   display: grid;
   place-items: center;
   border-radius: 20px;
-  border: 1px dashed rgba(126, 96, 76, 0.22);
-  background: rgba(255, 255, 255, 0.66);
+  border: 1px dashed var(--warm-border-strong);
+  background: var(--warm-panel);
   cursor: pointer;
 }
 
@@ -1563,7 +1563,7 @@ async function confirmDeleteWish() {
 
 .detail-atelier-mobile-cover-empty strong,
 .detail-atelier-mobile-glance-copy strong {
-  color: #2e1f19;
+  color: var(--text-main);
   font-family: var(--font-heading);
   font-size: var(--type-l5-size);
   font-weight: 600;
@@ -1579,7 +1579,7 @@ async function confirmDeleteWish() {
 
 .detail-atelier-mobile-glance-copy p {
   margin: 0;
-  color: rgba(76, 59, 50, 0.68);
+  color: var(--text-soft);
   font-family: var(--font-body);
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
@@ -1591,8 +1591,8 @@ async function confirmDeleteWish() {
   gap: 0.82rem;
   padding: 0.9rem 0.95rem;
   border-radius: var(--radius-xl);
-  border: 1px solid rgba(126, 96, 76, 0.12);
-  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid var(--warm-border);
+  background: var(--warm-panel);
 }
 
 .detail-atelier-mobile-more-summary {
@@ -1610,8 +1610,8 @@ async function confirmDeleteWish() {
   width: 0.42rem;
   height: 0.42rem;
   flex: 0 0 auto;
-  border-right: 1.5px solid rgba(76, 59, 50, 0.62);
-  border-bottom: 1.5px solid rgba(76, 59, 50, 0.62);
+  border-right: 1.5px solid var(--text-soft);
+  border-bottom: 1.5px solid var(--text-soft);
   transform: rotate(45deg) translateY(-1px);
   transition: transform 160ms ease;
 }
@@ -1626,7 +1626,7 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-mobile-more-summary span {
-  color: rgba(70, 53, 45, 0.6);
+  color: var(--text-soft);
   font-family: var(--font-body);
   font-size: var(--type-eyebrow-size);
   font-weight: 600;
@@ -1636,7 +1636,7 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-mobile-more-summary strong {
-  color: rgba(57, 41, 34, 0.86);
+  color: var(--text-main);
   font-family: var(--font-heading);
   font-size: var(--type-l6-size);
   font-weight: 600;
@@ -1660,9 +1660,9 @@ async function confirmDeleteWish() {
 .detail-atelier-hero-top .detail-atelier-mini-link {
   min-height: auto;
   padding: 0.18rem 0.62rem;
-  border: 1px solid rgba(126, 96, 76, 0.22);
-  background: rgba(255, 255, 255, 0.7);
-  color: rgba(86, 63, 52, 0.84);
+  border: 1px solid var(--warm-border-strong);
+  background: var(--warm-panel-strong);
+  color: var(--text-muted);
   justify-content: flex-start;
 }
 
@@ -1673,22 +1673,22 @@ async function confirmDeleteWish() {
 
 .detail-atelier-compose-card {
   background:
-    linear-gradient(180deg, rgba(255, 250, 244, 0.96), rgba(255, 255, 255, 0.76)),
-    radial-gradient(circle at top right, rgba(216, 231, 220, 0.24), transparent 24%),
-    radial-gradient(circle at bottom left, rgba(241, 214, 202, 0.2), transparent 26%);
+    linear-gradient(180deg, var(--surface-card), var(--warm-panel-strong)),
+    radial-gradient(circle at top right, var(--sage-glow), transparent 24%),
+    radial-gradient(circle at bottom left, var(--danger-panel), transparent 26%);
 }
 
 .detail-atelier-thread-card {
   background:
-    linear-gradient(180deg, rgba(255, 249, 243, 0.96), rgba(255, 255, 255, 0.74)),
-    radial-gradient(circle at top right, rgba(226, 193, 206, 0.16), transparent 28%);
+    linear-gradient(180deg, var(--surface-card), var(--warm-panel-strong)),
+    radial-gradient(circle at top right, var(--danger-panel), transparent 28%);
 }
 
 .detail-atelier-image-card {
   align-content: start;
   background:
-    linear-gradient(180deg, rgba(255, 249, 243, 0.97), rgba(255, 255, 255, 0.76)),
-    radial-gradient(circle at bottom right, rgba(216, 231, 220, 0.18), transparent 28%);
+    linear-gradient(180deg, var(--surface-card), var(--warm-panel-strong)),
+    radial-gradient(circle at bottom right, var(--sage-glow), transparent 28%);
 }
 
 .detail-atelier-story-card h1,
@@ -1700,7 +1700,7 @@ async function confirmDeleteWish() {
 .detail-atelier-lightbox h3,
 .detail-atelier-empty-card h2 {
   margin: 0;
-  color: #281c17;
+  color: var(--text-main);
 }
 
 .detail-atelier-story-card h1 {
@@ -1735,7 +1735,7 @@ async function confirmDeleteWish() {
 .detail-atelier-image-note {
   margin: 0;
   font-family: var(--font-body);
-  color: rgba(61, 46, 40, 0.76);
+  color: var(--text-muted);
   font-size: var(--type-body-size);
   line-height: var(--type-body-line);
 }
@@ -1747,7 +1747,7 @@ async function confirmDeleteWish() {
 .detail-atelier-choice-card p {
   margin: 0;
   font-family: var(--font-body);
-  color: rgba(61, 46, 40, 0.62);
+  color: var(--text-soft);
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
   letter-spacing: var(--type-supporting-spacing);
@@ -1777,12 +1777,12 @@ async function confirmDeleteWish() {
   gap: 0.26rem;
   padding: 0.76rem 0.82rem;
   border-radius: 18px;
-  border: 1px solid rgba(126, 96, 76, 0.1);
-  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid var(--warm-border-soft);
+  background: var(--warm-panel);
 }
 
 .detail-atelier-meta-item strong {
-  color: #2e1f19;
+  color: var(--text-main);
   font-family: var(--font-heading);
   font-size: var(--type-l6-size);
   font-weight: 600;
@@ -1797,7 +1797,7 @@ async function confirmDeleteWish() {
 .detail-atelier-danger-copy {
   margin: 0;
   font-family: var(--font-body);
-  color: rgba(76, 59, 50, 0.62);
+  color: var(--text-soft);
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
   letter-spacing: var(--type-supporting-spacing);
@@ -1811,18 +1811,18 @@ async function confirmDeleteWish() {
 .detail-atelier-danger-row {
   gap: 0.64rem;
   padding-top: 0.78rem;
-  border-top: 1px dashed rgba(126, 96, 76, 0.16);
+  border-top: 1px dashed var(--warm-border);
 }
 
 .detail-atelier-tools-card {
-  background: rgba(255, 252, 247, 0.82);
+  background: var(--warm-panel-strong);
 }
 
 .detail-atelier-tools-section {
   display: grid;
   gap: 0.6rem;
   padding-top: 0.78rem;
-  border-top: 1px dashed rgba(126, 96, 76, 0.16);
+  border-top: 1px dashed var(--warm-border);
 }
 
 .detail-atelier-tools-copy {
@@ -1832,7 +1832,7 @@ async function confirmDeleteWish() {
 
 .detail-atelier-tools-copy span {
   margin: 0;
-  color: rgba(70, 53, 45, 0.68);
+  color: var(--text-soft);
   font-family: var(--font-body);
   font-size: var(--type-eyebrow-size);
   font-weight: 600;
@@ -1844,7 +1844,7 @@ async function confirmDeleteWish() {
 .detail-atelier-tools-copy p {
   margin: 0;
   font-family: var(--font-body);
-  color: rgba(76, 59, 50, 0.62);
+  color: var(--text-soft);
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
   letter-spacing: var(--type-supporting-spacing);
@@ -1863,7 +1863,7 @@ async function confirmDeleteWish() {
   width: 100%;
   cursor: pointer;
   list-style: none;
-  color: rgba(76, 59, 50, 0.62);
+  color: var(--text-soft);
   font-family: var(--font-body);
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
@@ -1875,11 +1875,11 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-danger-summary span {
-  color: rgba(70, 53, 45, 0.56);
+  color: var(--text-faint);
 }
 
 .detail-atelier-danger-summary strong {
-  color: rgba(122, 77, 64, 0.78);
+  color: var(--danger);
   font-weight: 500;
 }
 
@@ -1909,8 +1909,8 @@ async function confirmDeleteWish() {
 
 .detail-atelier-danger-chip {
   min-height: 38px;
-  background: rgba(249, 238, 232, 0.84);
-  color: rgba(122, 77, 64, 0.88);
+  background: var(--danger-panel);
+  color: var(--danger);
 }
 
 .detail-atelier-cover-card {
@@ -1989,8 +1989,8 @@ async function confirmDeleteWish() {
 
 .detail-atelier-summary-card-featured {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(255, 248, 241, 0.7)),
-    radial-gradient(circle at top right, rgba(241, 214, 202, 0.2), transparent 26%);
+    linear-gradient(180deg, var(--warm-panel-strong), var(--accent-panel)),
+    radial-gradient(circle at top right, var(--danger-panel), transparent 26%);
 }
 
 .detail-atelier-summary-card strong,
@@ -1998,7 +1998,7 @@ async function confirmDeleteWish() {
 .detail-atelier-member-card strong,
 .detail-atelier-choice-card strong,
 .detail-atelier-star-card strong {
-  color: #2e1f19;
+  color: var(--text-main);
   font-family: var(--font-heading);
   font-size: var(--type-card-title-size);
   font-weight: 600;
@@ -2027,7 +2027,7 @@ async function confirmDeleteWish() {
 
 .detail-atelier-meter-card {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(250, 243, 235, 0.72));
+    linear-gradient(180deg, var(--warm-panel-strong), var(--surface-soft));
 }
 
 .detail-atelier-progress-quick-action {
@@ -2037,8 +2037,8 @@ async function confirmDeleteWish() {
   align-items: center;
   padding: 0.88rem 0.92rem;
   border-radius: 20px;
-  border: 1px solid rgba(126, 96, 76, 0.12);
-  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid var(--warm-border);
+  background: var(--warm-panel);
 }
 
 .detail-atelier-progress-quick-copy {
@@ -2047,7 +2047,7 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-progress-quick-copy strong {
-  color: #2e1f19;
+  color: var(--text-main);
   font-family: var(--font-heading);
   font-size: var(--type-l5-size);
   font-weight: 600;
@@ -2057,7 +2057,7 @@ async function confirmDeleteWish() {
 
 .detail-atelier-progress-quick-copy p {
   margin: 0;
-  color: rgba(76, 59, 50, 0.62);
+  color: var(--text-soft);
   font-family: var(--font-body);
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
@@ -2082,13 +2082,13 @@ async function confirmDeleteWish() {
   height: 12px;
   border-radius: 999px;
   overflow: hidden;
-  background: rgba(79, 49, 35, 0.08);
+  background: var(--line-soft);
 }
 
 .detail-atelier-progress-fill {
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(135deg, rgba(215, 133, 95, 0.9), rgba(216, 231, 220, 0.92));
+  background: linear-gradient(135deg, var(--accent), var(--sage));
 }
 
 .detail-atelier-inline-form,
@@ -2105,7 +2105,7 @@ async function confirmDeleteWish() {
 
 .detail-atelier-comment-form.is-front > * + * {
   padding-top: 0.88rem;
-  border-top: 1px solid rgba(126, 96, 76, 0.1);
+  border-top: 1px solid var(--warm-border-soft);
 }
 
 .detail-atelier-compose-attachment-copy {
@@ -2116,7 +2116,7 @@ async function confirmDeleteWish() {
 .detail-atelier-compose-author-note {
   margin: 0;
   font-family: var(--font-body);
-  color: rgba(76, 59, 50, 0.62);
+  color: var(--text-soft);
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
   letter-spacing: var(--type-supporting-spacing);
@@ -2131,16 +2131,16 @@ async function confirmDeleteWish() {
 .detail-atelier-compose-attachment-panel {
   padding: 0.72rem 0.78rem;
   border-radius: 18px;
-  border: 1px solid rgba(126, 96, 76, 0.12);
-  background: rgba(255, 255, 255, 0.56);
+  border: 1px solid var(--warm-border);
+  background: var(--warm-panel);
 }
 
 .detail-atelier-compose-attachment-details.is-disabled {
-  background: rgba(250, 244, 237, 0.54);
+  background: var(--surface-soft);
 }
 
 .detail-atelier-compose-attachment-panel.is-disabled {
-  background: rgba(250, 244, 237, 0.54);
+  background: var(--surface-soft);
 }
 
 .detail-atelier-upload-unavailable {
@@ -2150,8 +2150,8 @@ async function confirmDeleteWish() {
   align-items: center;
   padding: 0.4rem 0.72rem;
   border-radius: 999px;
-  border: 1px dashed rgba(126, 96, 76, 0.18);
-  color: rgba(76, 59, 50, 0.62);
+  border: 1px dashed var(--warm-border);
+  color: var(--text-soft);
   font-family: var(--font-body);
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
@@ -2167,7 +2167,7 @@ async function confirmDeleteWish() {
 
 .detail-atelier-compose-card textarea {
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--surface-popover);
 }
 
 .detail-atelier-compose-card textarea {
@@ -2179,7 +2179,7 @@ async function confirmDeleteWish() {
   align-items: center;
   gap: 0.45rem;
   width: fit-content;
-  color: rgba(76, 59, 50, 0.72);
+  color: var(--text-soft);
   font-family: var(--font-body);
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
@@ -2214,12 +2214,12 @@ async function confirmDeleteWish() {
   align-items: center;
   padding: 0.72rem 0.78rem;
   border-radius: 18px;
-  border: 1px solid rgba(126, 96, 76, 0.1);
-  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--warm-border-soft);
+  background: var(--warm-panel);
 }
 
 .detail-atelier-step-manage-row span {
-  color: #2e1f19;
+  color: var(--text-main);
   font-family: var(--font-body);
   font-size: var(--type-body-size);
   line-height: var(--type-body-line);
@@ -2236,12 +2236,12 @@ async function confirmDeleteWish() {
   align-items: center;
   padding: 0.72rem 0.78rem;
   border-radius: 18px;
-  border: 1px solid rgba(126, 96, 76, 0.12);
-  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--warm-border);
+  background: var(--warm-panel-strong);
 }
 
 .detail-atelier-step-card.done {
-  background: rgba(216, 231, 220, 0.28);
+  background: var(--success-panel);
 }
 
 .detail-atelier-step-copy {
@@ -2250,7 +2250,7 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-step-copy strong {
-  color: #2e1f19;
+  color: var(--text-main);
   font-family: var(--font-heading);
   font-size: var(--type-l5-size);
   font-weight: 600;
@@ -2270,10 +2270,10 @@ async function confirmDeleteWish() {
   gap: 0.9rem;
   padding: 0.95rem 1rem 1rem;
   border-radius: 24px;
-  border: 1px solid rgba(126, 96, 76, 0.12);
+  border: 1px solid var(--warm-border);
   background:
-    linear-gradient(180deg, rgba(255, 252, 248, 0.92), rgba(255, 247, 239, 0.68)),
-    radial-gradient(circle at top right, rgba(232, 216, 166, 0.14), transparent 30%);
+    linear-gradient(180deg, var(--surface-card), var(--accent-panel)),
+    radial-gradient(circle at top right, color-mix(in srgb, var(--accent-gold) 24%, transparent), transparent 30%);
 }
 
 .detail-atelier-image-toolbar-copy,
@@ -2289,7 +2289,7 @@ async function confirmDeleteWish() {
 .detail-atelier-image-toolbar-copy span {
   margin: 0;
   font-family: var(--font-body);
-  color: rgba(70, 53, 45, 0.68);
+  color: var(--text-soft);
   font-size: var(--type-eyebrow-size);
   font-weight: 600;
   line-height: 1.4;
@@ -2300,7 +2300,7 @@ async function confirmDeleteWish() {
 .detail-atelier-image-toolbar-copy p {
   margin: 0;
   font-family: var(--font-body);
-  color: rgba(76, 59, 50, 0.74);
+  color: var(--text-muted);
   font-size: var(--type-body-size);
   line-height: var(--type-body-line);
 }
@@ -2319,21 +2319,21 @@ async function confirmDeleteWish() {
   gap: 0.4rem;
   padding: 0.88rem 0.92rem;
   border-radius: 20px;
-  border: 1px solid rgba(126, 96, 76, 0.12);
-  background: rgba(255, 255, 255, 0.66);
+  border: 1px solid var(--warm-border);
+  background: var(--warm-panel);
 }
 
 .detail-atelier-image-memory-card span,
 .detail-atelier-image-memory-note span {
   margin: 0;
-  color: rgba(70, 53, 45, 0.66);
+  color: var(--text-soft);
   font-size: var(--type-l7-size);
   letter-spacing: var(--type-l7-spacing);
   text-transform: uppercase;
 }
 
 .detail-atelier-image-memory-card strong {
-  color: #2e1f19;
+  color: var(--text-main);
   font-family: var(--font-heading);
   font-size: var(--type-l5-size);
   font-weight: 600;
@@ -2344,7 +2344,7 @@ async function confirmDeleteWish() {
 .detail-atelier-image-memory-card p {
   margin: 0;
   font-family: var(--font-body);
-  color: rgba(76, 59, 50, 0.72);
+  color: var(--text-soft);
   font-size: var(--type-body-size);
   line-height: var(--type-body-line);
 }
@@ -2359,7 +2359,7 @@ async function confirmDeleteWish() {
   gap: 0.88rem;
   padding: 0.92rem;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(250, 243, 235, 0.8));
+    linear-gradient(180deg, var(--warm-panel-strong), var(--surface-soft));
 }
 
 .detail-atelier-image-figure.is-cover {
@@ -2367,10 +2367,10 @@ async function confirmDeleteWish() {
   grid-column: 1 / -1;
   grid-template-columns: minmax(0, 1.14fr) minmax(250px, 0.86fr);
   align-items: start;
-  box-shadow: 0 0 0 2px rgba(201, 111, 74, 0.16) inset;
+  box-shadow: 0 0 0 2px var(--accent-ring) inset;
   background:
-    linear-gradient(180deg, rgba(255, 250, 246, 0.94), rgba(255, 244, 237, 0.82)),
-    radial-gradient(circle at top right, rgba(241, 214, 202, 0.24), transparent 28%);
+    linear-gradient(180deg, var(--surface-card), var(--accent-panel)),
+    radial-gradient(circle at top right, var(--danger-panel), transparent 28%);
 }
 
 .detail-atelier-image-figure.is-dragging {
@@ -2446,7 +2446,7 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-image-caption strong {
-  color: #2e1f19;
+  color: var(--text-main);
   font-family: var(--font-heading);
   font-weight: 600;
   line-height: 1.46;
@@ -2461,12 +2461,12 @@ async function confirmDeleteWish() {
   gap: 0.4rem;
   padding: 0.78rem 0.82rem;
   border-radius: 18px;
-  border: 1px solid rgba(126, 96, 76, 0.1);
-  background: rgba(244, 237, 229, 0.62);
+  border: 1px solid var(--warm-border-soft);
+  background: var(--surface-soft);
 }
 
 .detail-atelier-image-memory-note.is-empty {
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--warm-panel);
 }
 
 .detail-atelier-image-actions {
@@ -2535,7 +2535,7 @@ async function confirmDeleteWish() {
 
 .detail-atelier-mobile-thread-tools-summary span,
 .detail-atelier-mobile-thread-more-summary span {
-  color: rgba(70, 53, 45, 0.58);
+  color: var(--text-faint);
   font-family: var(--font-body);
   font-size: var(--type-l7-size);
   font-weight: 600;
@@ -2545,7 +2545,7 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-mobile-thread-more-summary strong {
-  color: rgba(57, 41, 34, 0.82);
+  color: var(--text-main);
   font-family: var(--font-body);
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
@@ -2577,7 +2577,7 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-thread-meta time {
-  color: rgba(76, 59, 50, 0.72);
+  color: var(--text-soft);
   font-family: var(--font-body);
   font-size: var(--type-meta-size);
   line-height: var(--type-meta-line);
@@ -2604,7 +2604,7 @@ async function confirmDeleteWish() {
 .detail-atelier-reaction-copy p {
   margin: 0;
   font-family: var(--font-body);
-  color: rgba(76, 59, 50, 0.62);
+  color: var(--text-soft);
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
   letter-spacing: var(--type-supporting-spacing);
@@ -2637,8 +2637,8 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-reaction-pill.active {
-  border-color: rgba(185, 120, 53, 0.24);
-  background: rgba(255, 243, 231, 0.88);
+  border-color: var(--accent-border);
+  background: var(--accent-panel);
 }
 
 .detail-atelier-reaction-members-stack {
@@ -2650,7 +2650,7 @@ async function confirmDeleteWish() {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
-  color: rgba(76, 59, 50, 0.62);
+  color: var(--text-soft);
   font-family: var(--font-body);
   font-size: var(--type-meta-size);
   line-height: var(--type-meta-line);
@@ -2662,7 +2662,7 @@ async function confirmDeleteWish() {
   min-height: 1.7rem;
   padding: 0.22rem 0.5rem;
   border-radius: 999px;
-  background: rgba(248, 244, 237, 0.74);
+  background: var(--surface-soft);
 }
 
 .detail-atelier-reaction-list.is-extended {
@@ -2677,7 +2677,7 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-reaction-summary {
-  color: rgba(76, 59, 50, 0.56);
+  color: var(--text-faint);
   font-family: var(--font-body);
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
@@ -2698,7 +2698,7 @@ async function confirmDeleteWish() {
 
 .detail-atelier-reaction-name {
   overflow: hidden;
-  color: rgba(76, 59, 50, 0.68);
+  color: var(--text-soft);
   font-family: var(--font-body);
   font-size: var(--type-meta-size);
   line-height: var(--type-meta-line);
@@ -2707,14 +2707,14 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-reaction-button.active {
-  background: rgba(210, 121, 87, 0.14);
-  border-color: rgba(210, 121, 87, 0.24);
-  box-shadow: 0 10px 20px rgba(201, 111, 74, 0.1);
+  background: var(--accent-panel);
+  border-color: var(--accent-border);
+  box-shadow: 0 10px 20px var(--accent-shadow-soft);
 }
 
 .detail-atelier-reaction-button.is-pending {
-  background: rgba(243, 222, 210, 0.72);
-  border-color: rgba(201, 111, 74, 0.24);
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
 }
 
 .detail-atelier-reaction-button:disabled {
@@ -2728,7 +2728,7 @@ async function confirmDeleteWish() {
   font-size: var(--type-meta-size);
   line-height: var(--type-meta-line);
   text-align: center;
-  color: rgba(76, 59, 50, 0.72);
+  color: var(--text-soft);
 }
 
 .detail-atelier-reaction-count.is-empty {
@@ -2736,7 +2736,7 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-reaction-count.is-loading {
-  color: #9f5d50;
+  color: var(--accent-dark);
   opacity: 1;
 }
 
@@ -2746,7 +2746,7 @@ async function confirmDeleteWish() {
   display: grid;
   align-items: end;
   padding: 1rem;
-  background: rgba(36, 27, 22, 0.28);
+  background: color-mix(in srgb, var(--text-main) 28%, transparent);
   backdrop-filter: blur(10px);
   z-index: 110;
   animation: detail-sheet-backdrop-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -2760,10 +2760,10 @@ async function confirmDeleteWish() {
   gap: 0.88rem;
   overflow: auto;
   padding: 0.72rem 0.9rem calc(0.92rem + env(safe-area-inset-bottom, 0px));
-  border: 1px solid rgba(126, 96, 76, 0.14);
+  border: 1px solid var(--warm-border);
   border-radius: 26px 26px 22px 22px;
-  background: rgba(255, 252, 247, 0.98);
-  box-shadow: 0 -18px 48px rgba(64, 43, 34, 0.18);
+  background: var(--surface-popover);
+  box-shadow: var(--shadow-raised);
   animation: detail-sheet-in 260ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -2772,7 +2772,7 @@ async function confirmDeleteWish() {
   height: 0.24rem;
   justify-self: center;
   border-radius: 999px;
-  background: rgba(126, 96, 76, 0.24);
+  background: var(--warm-border-strong);
 }
 
 .detail-atelier-reaction-sheet-head {
@@ -2790,7 +2790,7 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-reaction-sheet-head h3 {
-  color: #2e1f19;
+  color: var(--text-main);
   font-family: var(--font-heading);
   font-size: var(--type-l4-size);
   font-weight: 600;
@@ -2802,7 +2802,7 @@ async function confirmDeleteWish() {
   display: -webkit-box;
   overflow: hidden;
   margin-top: 0.24rem;
-  color: rgba(76, 59, 50, 0.62);
+  color: var(--text-soft);
   font-family: var(--font-body);
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
@@ -2824,13 +2824,13 @@ async function confirmDeleteWish() {
   align-items: center;
   justify-content: space-between;
   padding: 0.58rem 0.68rem;
-  border: 1px solid rgba(126, 96, 76, 0.1);
+  border: 1px solid var(--warm-border-soft);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.64);
+  background: var(--warm-panel);
 }
 
 .detail-atelier-reaction-sheet-status p {
-  color: rgba(76, 59, 50, 0.64);
+  color: var(--text-soft);
   font-family: var(--font-body);
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
@@ -2845,7 +2845,7 @@ async function confirmDeleteWish() {
 
 .detail-atelier-reaction-picker-section {
   padding-top: 0.78rem;
-  border-top: 1px solid rgba(126, 96, 76, 0.12);
+  border-top: 1px solid var(--warm-border);
 }
 
 .detail-atelier-reaction-picker-section-head {
@@ -2861,7 +2861,7 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-reaction-picker-section-head strong {
-  color: #2e1f19;
+  color: var(--text-main);
   font-size: var(--type-body-size);
   font-weight: 700;
   line-height: var(--type-body-line);
@@ -2869,7 +2869,7 @@ async function confirmDeleteWish() {
 }
 
 .detail-atelier-reaction-picker-section-head span {
-  color: rgba(76, 59, 50, 0.54);
+  color: var(--text-faint);
   font-size: var(--type-meta-size);
   line-height: var(--type-meta-line);
   letter-spacing: var(--type-meta-spacing);
@@ -2943,8 +2943,8 @@ async function confirmDeleteWish() {
 
 .detail-atelier-choice-card.active,
 .detail-atelier-secondary.active {
-  background: rgba(210, 121, 87, 0.12);
-  border-color: rgba(210, 121, 87, 0.22);
+  background: var(--accent-panel);
+  border-color: var(--accent-border);
 }
 
 .detail-atelier-overlay {
@@ -2953,7 +2953,7 @@ async function confirmDeleteWish() {
   display: grid;
   place-items: center;
   padding: 1.5rem;
-  background: rgba(36, 27, 22, 0.34);
+  background: color-mix(in srgb, var(--text-main) 34%, transparent);
   backdrop-filter: blur(12px);
   z-index: 90;
 }
@@ -3012,16 +3012,16 @@ async function confirmDeleteWish() {
   max-height: 68vh;
   object-fit: contain;
   border-radius: 22px;
-  background: rgba(251, 244, 234, 0.9);
+  background: var(--surface-soft);
 }
 
 .detail-atelier-feedback {
   margin: 0;
   padding: 0.68rem 0.78rem;
   border-radius: var(--radius-lg);
-  border: 1px solid rgba(126, 96, 76, 0.12);
-  background: rgba(255, 255, 255, 0.68);
-  color: rgba(61, 46, 40, 0.72);
+  border: 1px solid var(--warm-border);
+  background: var(--warm-panel);
+  color: var(--text-soft);
   font-family: var(--font-body);
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
@@ -3030,14 +3030,14 @@ async function confirmDeleteWish() {
 
 .detail-atelier-feedback.success {
   color: var(--success);
-  border-color: rgba(75, 129, 96, 0.18);
-  background: rgba(226, 239, 229, 0.72);
+  border-color: var(--success-border);
+  background: var(--success-panel);
 }
 
 .detail-atelier-feedback.danger {
   color: var(--danger);
-  border-color: rgba(142, 91, 73, 0.18);
-  background: rgba(249, 238, 232, 0.8);
+  border-color: var(--danger-border);
+  background: var(--danger-panel);
 }
 
 .detail-atelier-step-feedback {
@@ -3490,7 +3490,7 @@ async function confirmDeleteWish() {
   .detail-atelier-mobile-thread-title strong {
     display: -webkit-box;
     overflow: hidden;
-    color: #2e1f19;
+    color: var(--text-main);
     font-family: var(--font-heading);
     font-size: var(--type-l5-size);
     font-weight: 600;
@@ -3502,7 +3502,7 @@ async function confirmDeleteWish() {
   }
 
   .detail-atelier-mobile-thread-title time {
-    color: rgba(76, 59, 50, 0.58);
+    color: var(--text-faint);
     font-size: var(--type-l7-size);
     line-height: 1.25;
     letter-spacing: var(--type-l7-spacing);

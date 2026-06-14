@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import { useAppearanceTheme, type AppearanceThemeId } from '../composables/useAppearanceTheme'
+import { clearStoredColorTokenDraft } from '../composables/useColorTokenDashboard'
 import { useSpacePageState } from '../composables/useSpacePageState'
 
 const space = reactive(useSpacePageState())
+const { appearanceThemes, selectedAppearanceId, selectedTheme, setAppearanceTheme } = useAppearanceTheme()
 
 type RewardHubTab = 'claim' | 'editor'
 
@@ -76,6 +79,11 @@ function toggleRewardItemCollapse(itemId: string) {
   collapsedRewardItemIds.value = isRewardItemCollapsed(itemId)
     ? collapsedRewardItemIds.value.filter((id) => id !== itemId)
     : [...collapsedRewardItemIds.value, itemId]
+}
+
+function chooseAppearanceTheme(id: AppearanceThemeId) {
+  clearStoredColorTokenDraft()
+  setAppearanceTheme(id)
 }
 </script>
 
@@ -987,6 +995,38 @@ function toggleRewardItemCollapse(itemId: string) {
           </div>
         </div>
       </details>
+
+      <article class="page-card space-shell-card space-main-card space-appearance-card" aria-labelledby="space-appearance-title">
+        <div class="space-subsection-heading">
+          <div>
+            <p class="eyebrow">外观</p>
+            <h3 id="space-appearance-title" class="space-panel-title">选择这台设备的页面颜色</h3>
+          </div>
+          <span class="badge">当前：{{ selectedTheme.label }}</span>
+        </div>
+
+        <p class="space-card-intro">这里会保存到当前浏览器。切换正式外观时，会清掉调色工作台的临时草稿。</p>
+
+        <div class="space-appearance-options" role="group" aria-label="外观切换">
+          <button
+            v-for="theme in appearanceThemes"
+            :key="theme.id"
+            type="button"
+            class="space-appearance-option"
+            :class="{ active: selectedAppearanceId === theme.id }"
+            :aria-pressed="selectedAppearanceId === theme.id"
+            @click="chooseAppearanceTheme(theme.id)"
+          >
+            <span class="space-appearance-preview" aria-hidden="true">
+              <span v-for="color in theme.preview" :key="`${theme.id}-${color}`" :style="{ background: color }"></span>
+            </span>
+            <span class="space-appearance-copy">
+              <strong>{{ theme.label }}</strong>
+              <small>{{ theme.description }}</small>
+            </span>
+          </button>
+        </div>
+      </article>
     </div>
   </section>
 </template>
@@ -1046,19 +1086,92 @@ function toggleRewardItemCollapse(itemId: string) {
 
 .space-united-card {
   background:
-    radial-gradient(circle at 84% 18%, rgba(216, 231, 220, 0.42), transparent 28%),
-    radial-gradient(circle at 0% 100%, rgba(233, 209, 178, 0.28), transparent 30%),
-    linear-gradient(142deg, rgba(255, 253, 249, 0.98), rgba(249, 240, 229, 0.94));
-  border-color: rgba(201, 111, 74, 0.16);
-  box-shadow: 0 24px 48px rgba(104, 73, 52, 0.08);
+    radial-gradient(circle at 84% 18%, var(--sage-glow), transparent 28%),
+    radial-gradient(circle at 0% 100%, var(--warning-panel), transparent 30%),
+    linear-gradient(142deg, var(--card-bg-popover), var(--card-bg-soft));
+  border-color: var(--active-item-border);
+  box-shadow: var(--shadow-raised);
 }
 
 .space-reward-hub {
   background:
-    radial-gradient(circle at top right, rgba(241, 214, 202, 0.22), transparent 22%),
-    radial-gradient(circle at top left, rgba(216, 231, 220, 0.24), transparent 24%),
-    linear-gradient(180deg, rgba(255, 251, 246, 0.97), rgba(247, 240, 231, 0.92));
+    radial-gradient(circle at top right, var(--danger-panel), transparent 22%),
+    radial-gradient(circle at top left, var(--sage-glow), transparent 24%),
+    linear-gradient(180deg, var(--card-bg), var(--card-bg-soft));
   gap: 0.95rem;
+}
+
+.space-appearance-card {
+  gap: 0.85rem;
+  background:
+    radial-gradient(circle at 100% 0%, var(--accent-panel), transparent 26%),
+    linear-gradient(180deg, var(--card-bg), var(--card-bg-soft));
+}
+
+.space-appearance-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.72rem;
+}
+
+.space-appearance-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.78rem;
+  align-items: center;
+  min-height: 5.2rem;
+  padding: 0.82rem;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-bg);
+  color: var(--text-main);
+  text-align: left;
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.space-appearance-option:hover {
+  transform: translateY(-1px);
+  border-color: var(--active-item-border);
+  background: var(--card-bg-popover);
+}
+
+.space-appearance-option.active {
+  border-color: var(--active-item-border);
+  background: var(--active-item-bg);
+  box-shadow: 0 12px 24px var(--accent-shadow-soft);
+}
+
+.space-appearance-preview {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  width: 4.1rem;
+  height: 3.2rem;
+  overflow: hidden;
+  border: 1px solid var(--card-border-soft);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+.space-appearance-preview span {
+  min-width: 0;
+}
+
+.space-appearance-copy {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.space-appearance-copy strong {
+  font-family: var(--font-heading);
+  font-size: var(--type-l5-size);
+  line-height: var(--type-l5-line);
+}
+
+.space-appearance-copy small {
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line);
 }
 
 .space-reward-hub-head {
@@ -1106,10 +1219,10 @@ function toggleRewardItemCollapse(itemId: string) {
   gap: 0.82rem;
   padding: 1rem 1.02rem;
   border-radius: 24px;
-  border: 1px solid rgba(201, 124, 97, 0.16);
+  border: 1px solid var(--active-item-border);
   background:
-    linear-gradient(180deg, rgba(255, 250, 244, 0.94), rgba(255, 255, 255, 0.82)),
-    radial-gradient(circle at top right, rgba(241, 214, 202, 0.18), transparent 30%);
+    linear-gradient(180deg, var(--card-bg-popover), var(--panel-bg-strong)),
+    radial-gradient(circle at top right, var(--danger-panel), transparent 30%);
 }
 
 .space-current-catch-copy {
@@ -1478,8 +1591,8 @@ function toggleRewardItemCollapse(itemId: string) {
 .space-reward-member-card,
 .space-empty-card {
   border-radius: 22px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid var(--card-border);
+  background: var(--panel-bg);
   box-shadow: var(--shadow-card);
   padding: 1rem;
 }
@@ -1986,7 +2099,7 @@ function toggleRewardItemCollapse(itemId: string) {
   gap: 0.78rem;
   align-content: start;
   padding: 0.98rem;
-  background: linear-gradient(180deg, rgba(255, 253, 249, 0.86), rgba(249, 241, 232, 0.82));
+  background: linear-gradient(180deg, var(--panel-bg-strong), var(--card-bg-soft));
 }
 
 .space-reward-form-grid {
@@ -2029,7 +2142,7 @@ function toggleRewardItemCollapse(itemId: string) {
 .reward-form-submit-row {
   gap: 0.62rem;
   padding-top: 0.68rem;
-  border-top: 1px dashed rgba(95, 74, 55, 0.12);
+  border-top: 1px dashed var(--card-border-soft);
 }
 
 .reward-form-actions {
@@ -2053,16 +2166,16 @@ function toggleRewardItemCollapse(itemId: string) {
 }
 
 .reward-shelf-card {
-  background: linear-gradient(180deg, rgba(255, 252, 248, 0.76), rgba(248, 240, 231, 0.72));
+  background: linear-gradient(180deg, var(--panel-bg-strong), var(--card-bg-soft));
 }
 
 .reward-shelf-card-premium {
-  background: linear-gradient(180deg, rgba(255, 249, 244, 0.84), rgba(246, 238, 226, 0.76));
+  background: linear-gradient(180deg, var(--warning-panel), var(--card-bg-soft));
 }
 
 .reward-card {
   gap: 0.82rem;
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--panel-bg-strong);
 }
 
 .reward-card-actions {
@@ -2096,16 +2209,16 @@ function toggleRewardItemCollapse(itemId: string) {
   align-items: center;
   padding: 0.76rem 0.86rem;
   border-radius: 20px;
-  border: 1px solid rgba(95, 74, 55, 0.1);
-  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--card-border-soft);
+  background: var(--panel-bg);
 }
 
 .reward-compact-row-premium {
-  border-color: rgba(181, 138, 56, 0.26);
+  border-color: var(--warning-border);
   background:
-    linear-gradient(135deg, rgba(255, 252, 246, 0.96), rgba(246, 239, 229, 0.82)),
-    radial-gradient(circle at top right, rgba(232, 216, 166, 0.28), transparent 34%);
-  box-shadow: 0 12px 24px rgba(163, 118, 35, 0.12);
+    linear-gradient(135deg, var(--card-bg-popover), var(--warning-panel)),
+    radial-gradient(circle at top right, var(--accent-gold), transparent 34%);
+  box-shadow: var(--shadow-card);
 }
 
 .reward-compact-row.is-collapsed {
@@ -2160,8 +2273,8 @@ function toggleRewardItemCollapse(itemId: string) {
   align-items: start;
   padding: 0.78rem 0.84rem;
   border-radius: 18px;
-  border: 1px solid rgba(95, 74, 55, 0.1);
-  background: linear-gradient(135deg, rgba(255, 253, 249, 0.84), rgba(248, 241, 233, 0.76));
+  border: 1px solid var(--card-border-soft);
+  background: linear-gradient(135deg, var(--panel-bg-strong), var(--card-bg-soft));
   box-shadow: var(--shadow-card);
 }
 
@@ -2189,8 +2302,8 @@ function toggleRewardItemCollapse(itemId: string) {
   width: 2.12rem;
   height: 2.12rem;
   border-radius: 999px;
-  background: rgba(216, 231, 220, 0.76);
-  color: rgba(83, 71, 57, 0.88);
+  background: var(--success-panel);
+  color: var(--text-main);
   font-family: var(--font-heading);
   font-weight: 700;
 }
@@ -2207,8 +2320,8 @@ function toggleRewardItemCollapse(itemId: string) {
   min-width: 3.45rem;
   padding: 0.34rem 0.48rem;
   border-radius: 14px;
-  border: 1px solid rgba(95, 74, 55, 0.08);
-  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid var(--card-border-soft);
+  background: var(--panel-bg);
   color: var(--text-soft);
   font-family: var(--font-body);
   font-size: var(--type-meta-size);
@@ -2487,6 +2600,7 @@ function toggleRewardItemCollapse(itemId: string) {
   .space-reward-form-grid,
   .space-reward-shelf-grid,
   .space-reward-hub-tabs,
+  .space-appearance-options,
   .space-access-grid,
   .space-member-grid,
   .space-reward-member-grid,

@@ -360,8 +360,8 @@ function toggleSupplementaryFields() {
   gap: 0.82rem;
   padding: clamp(0.88rem, 1.8vw, 1.08rem);
   background:
-    radial-gradient(circle at 100% 0%, rgba(216, 231, 220, 0.56), transparent 28%),
-    linear-gradient(160deg, rgba(255, 252, 247, 0.96), rgba(247, 242, 233, 0.94));
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--sage) 56%, transparent), transparent 28%),
+    linear-gradient(160deg, var(--warm-panel-strong), var(--surface-soft));
 }
 
 .compose-preview-hero {
@@ -394,7 +394,7 @@ function toggleSupplementaryFields() {
 }
 
 .compose-atelier-hero-name {
-  color: rgba(47, 33, 27, 0.88);
+  color: var(--text-main);
   font-family: var(--font-heading);
   font-size: var(--type-card-title-size);
   font-weight: 600;
@@ -409,7 +409,7 @@ function toggleSupplementaryFields() {
 .compose-preview-hero-copy-note {
   margin: 0;
   max-width: 33ch;
-  color: rgba(61, 46, 40, 0.82);
+  color: var(--text-muted);
   font-size: var(--type-lead-size);
   line-height: var(--type-lead-line);
 }
@@ -432,9 +432,9 @@ function toggleSupplementaryFields() {
 
 .compose-preview-form-stage {
   padding: 0.88rem;
-  border: 1px solid rgba(95, 74, 55, 0.08);
+  border: 1px solid var(--line-soft);
   border-radius: 22px;
-  background: rgba(255, 255, 255, 0.62);
+  background: var(--warm-panel);
 }
 
 .compose-preview-core-stage,
@@ -445,7 +445,7 @@ function toggleSupplementaryFields() {
 
 .compose-preview-supplementary-stage {
   padding-top: 0.8rem;
-  border-top: 1px solid rgba(95, 74, 55, 0.08);
+  border-top: 1px solid var(--line-soft);
 }
 
 .compose-preview-supplementary-head {
@@ -493,9 +493,9 @@ function toggleSupplementaryFields() {
 .compose-field input,
 .compose-field textarea {
   width: 100%;
-  border: 1px solid rgba(95, 74, 55, 0.1);
+  border: 1px solid var(--warm-border-soft);
   border-radius: 16px;
-  background: rgba(255, 251, 246, 0.94);
+  background: var(--surface-raised);
   color: var(--text-main);
   font: inherit;
   font-size: var(--type-l5-size);
@@ -511,9 +511,9 @@ function toggleSupplementaryFields() {
 .compose-field input:focus,
 .compose-field textarea:focus {
   outline: none;
-  border-color: rgba(201, 111, 74, 0.26);
-  box-shadow: 0 0 0 4px rgba(201, 111, 74, 0.08);
-  background: #fffdf9;
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 4px var(--accent-ring);
+  background: var(--surface-popover);
 }
 
 .compose-field-title input {
@@ -541,7 +541,7 @@ function toggleSupplementaryFields() {
 .compose-secondary-button,
 .compose-primary-button,
 .compose-option-card {
-  border: 1px solid rgba(95, 74, 55, 0.1);
+  border: 1px solid var(--warm-border-soft);
   font: inherit;
 }
 
@@ -556,7 +556,7 @@ function toggleSupplementaryFields() {
   min-height: 34px;
   padding: 0.42rem 0.68rem;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.76);
+  background: var(--warm-panel-strong);
   color: var(--text-main);
   font-size: var(--type-l7-size);
   text-decoration: none;
@@ -564,8 +564,8 @@ function toggleSupplementaryFields() {
 
 .compose-chip.active,
 .compose-member-chip.active {
-  border-color: rgba(201, 111, 74, 0.24);
-  background: rgba(255, 241, 232, 0.94);
+  border-color: var(--accent-border);
+  background: var(--accent-panel);
   color: var(--accent-dark);
 }
 
@@ -573,7 +573,7 @@ function toggleSupplementaryFields() {
   display: grid;
   gap: 0.7rem;
   padding-top: 0.72rem;
-  border-top: 1px solid rgba(95, 74, 55, 0.08);
+  border-top: 1px solid var(--line-soft);
 }
 
 .compose-preview-section.compact {
@@ -620,7 +620,7 @@ function toggleSupplementaryFields() {
   min-height: 34px;
   padding: 0.48rem 0.3rem;
   border-radius: 999px;
-  background: rgba(255, 251, 246, 0.92);
+  background: var(--surface-raised);
   text-align: center;
 }
 
@@ -632,8 +632,8 @@ function toggleSupplementaryFields() {
 }
 
 .compose-option-card.active {
-  border-color: rgba(201, 111, 74, 0.24);
-  background: linear-gradient(155deg, rgba(255, 245, 237, 0.98), rgba(253, 237, 223, 0.95));
+  border-color: var(--accent-border);
+  background: linear-gradient(155deg, var(--accent-panel), var(--accent-soft));
 }
 
 .compose-preview-count-grid,
@@ -659,8 +659,8 @@ function toggleSupplementaryFields() {
 }
 
 .compose-field-readonly input {
-  color: rgba(76, 59, 50, 0.64);
-  background: rgba(247, 241, 233, 0.84);
+  color: var(--text-faint);
+  background: var(--surface-soft);
 }
 
 .compose-field-date {
@@ -704,8 +704,8 @@ function toggleSupplementaryFields() {
 .compose-preview-step-notice {
   padding: 0.8rem;
   border-radius: 18px;
-  border: 1px solid rgba(95, 74, 55, 0.08);
-  background: rgba(255, 251, 246, 0.76);
+  border: 1px solid var(--line-soft);
+  background: var(--warm-panel-strong);
 }
 
 .compose-preview-step-notice strong {
@@ -748,16 +748,16 @@ function toggleSupplementaryFields() {
 
 .compose-primary-button {
   background: linear-gradient(135deg, var(--accent), var(--accent-dark));
-  color: #fffaf2;
-  box-shadow: 0 14px 28px rgba(191, 101, 66, 0.18);
+  color: var(--accent-contrast);
+  box-shadow: 0 14px 28px var(--accent-shadow);
 }
 
 .compose-preview-summary-stage {
   align-content: start;
   padding: 0.88rem;
-  border: 1px solid rgba(95, 74, 55, 0.08);
+  border: 1px solid var(--line-soft);
   border-radius: 22px;
-  background: linear-gradient(160deg, rgba(255, 249, 242, 0.98), rgba(246, 240, 231, 0.96));
+  background: linear-gradient(160deg, var(--surface-card), var(--surface-soft));
 }
 
 @media (min-width: 961px) {
@@ -789,7 +789,7 @@ function toggleSupplementaryFields() {
   grid-template-columns: 4rem 1fr;
   gap: 0.6rem;
   padding-top: 0.6rem;
-  border-top: 1px solid rgba(95, 74, 55, 0.08);
+  border-top: 1px solid var(--line-soft);
 }
 
 .compose-preview-meta-list dd {
@@ -808,8 +808,8 @@ function toggleSupplementaryFields() {
   gap: 0.36rem;
   padding: 0.8rem;
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(95, 74, 55, 0.08);
+  background: var(--warm-panel-strong);
+  border: 1px solid var(--line-soft);
 }
 
 .compose-preview-mini-card span {
@@ -844,8 +844,8 @@ function toggleSupplementaryFields() {
   margin: 0;
   padding: 0.62rem 0.76rem;
   border-radius: var(--radius-lg);
-  border: 1px solid rgba(95, 74, 55, 0.08);
-  background: rgba(255, 255, 255, 0.64);
+  border: 1px solid var(--line-soft);
+  background: var(--warm-panel);
   color: var(--text-soft);
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
@@ -854,26 +854,26 @@ function toggleSupplementaryFields() {
 
 .compose-preview-feedback-success {
   color: var(--success);
-  border-color: rgba(75, 129, 96, 0.16);
-  background: rgba(216, 231, 220, 0.44);
+  border-color: var(--success-border);
+  background: var(--success-panel);
 }
 
 .compose-preview-feedback-danger {
   color: var(--danger);
-  border-color: rgba(142, 91, 73, 0.16);
-  background: rgba(241, 214, 202, 0.44);
+  border-color: var(--danger-border);
+  background: var(--danger-panel);
 }
 
 .compose-preview-feedback-info {
-  color: rgba(76, 59, 50, 0.76);
-  border-color: rgba(126, 96, 76, 0.14);
-  background: rgba(255, 250, 244, 0.7);
+  color: var(--text-muted);
+  border-color: var(--warm-border);
+  background: var(--warm-panel-strong);
 }
 
 .compose-preview-feedback-warning {
   color: var(--warning);
-  border-color: rgba(185, 126, 65, 0.18);
-  background: rgba(252, 238, 214, 0.54);
+  border-color: var(--warning-border);
+  background: var(--warning-panel);
 }
 
 .priority-row .compose-member-chip {

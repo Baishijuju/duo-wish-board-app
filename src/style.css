@@ -78,8 +78,30 @@
   --surface-strong: #fffdf8;
   --surface-soft: #f9f1e7;
   --surface-popover: #fffefa;
+  --card-bg: #fffaf3;
+  --card-bg-raised: #fffdf8;
+  --card-bg-soft: #f9f1e7;
+  --card-bg-popover: #fffefa;
+  --card-border: rgba(86, 64, 49, 0.13);
+  --card-border-soft: rgba(79, 49, 35, 0.08);
+  --panel-bg: rgba(255, 255, 255, 0.62);
+  --panel-bg-strong: rgba(255, 252, 247, 0.82);
+  --input-bg: #fffdf8;
+  --input-focus-bg: #fffefa;
+  --active-item-bg: #fff2e9;
+  --active-item-border: rgba(215, 133, 95, 0.38);
   --line: rgba(86, 64, 49, 0.13);
   --line-strong: rgba(86, 64, 49, 0.2);
+  --line-soft: rgba(79, 49, 35, 0.08);
+  --warm-border-soft: rgba(126, 96, 76, 0.1);
+  --warm-border: rgba(126, 96, 76, 0.14);
+  --warm-border-strong: rgba(126, 96, 76, 0.22);
+  --warm-panel: rgba(255, 255, 255, 0.62);
+  --warm-panel-strong: rgba(255, 252, 247, 0.82);
+  --warm-glow: rgba(255, 238, 218, 0.42);
+  --cool-glow: rgba(220, 237, 229, 0.26);
+  --accent-glow: rgba(201, 111, 74, 0.22);
+  --sage-glow: rgba(216, 231, 220, 0.28);
   --shadow: 0 12px 30px rgba(78, 55, 39, 0.075);
   --shadow-soft: 0 8px 18px rgba(78, 55, 39, 0.055);
   --shadow-card: 0 4px 14px rgba(78, 55, 39, 0.045);
@@ -89,7 +111,16 @@
   --accent-soft: #f3ded2;
   --accent-sun: #d17a54;
   --accent-coral: #cf7b59;
+  --accent-gradient-end: #bf6542;
+  --accent-panel: #fff2e9;
+  --accent-border: rgba(215, 133, 95, 0.38);
+  --accent-ring: rgba(215, 133, 95, 0.12);
+  --accent-shadow-soft: rgba(191, 101, 66, 0.1);
+  --accent-shadow: rgba(191, 101, 66, 0.22);
+  --accent-contrast: #fff9f2;
   --accent-teal: #9fbeae;
+  --accent-teal-soft: rgba(46, 142, 131, 0.14);
+  --accent-teal-border: rgba(46, 142, 131, 0.26);
   --accent-gold: #e8d8a6;
   --sage: #d8e7dc;
   --cream: #f1e8c8;
@@ -100,7 +131,14 @@
   --text-muted: #5f5048;
   --text-faint: #9a8577;
   --success: #6d9778;
+  --success-panel: rgba(226, 239, 229, 0.72);
+  --success-border: rgba(75, 129, 96, 0.18);
+  --warning: #b97e41;
+  --warning-panel: rgba(252, 238, 214, 0.54);
+  --warning-border: rgba(185, 126, 65, 0.18);
   --danger: #8e5b49;
+  --danger-panel: rgba(249, 238, 232, 0.8);
+  --danger-border: rgba(142, 91, 73, 0.18);
   --radius-xl: 18px;
   --radius-lg: 14px;
   --radius-md: 12px;
@@ -128,8 +166,8 @@ body {
   min-height: 100vh;
   color: var(--text-main);
   background:
-    radial-gradient(circle at 18% 0%, rgba(255, 238, 218, 0.42), transparent 33%),
-    radial-gradient(circle at 90% 14%, rgba(220, 237, 229, 0.26), transparent 28%),
+    radial-gradient(circle at 18% 0%, var(--warm-glow), transparent 33%),
+    radial-gradient(circle at 90% 14%, var(--cool-glow), transparent 28%),
     linear-gradient(180deg, var(--bg) 0%, var(--bg-deep) 100%);
 }
 
@@ -149,13 +187,13 @@ body::after {
 body::before {
   left: -8rem;
   bottom: 7rem;
-  background: rgba(201, 111, 74, 0.22);
+  background: var(--accent-glow);
 }
 
 body::after {
   right: -10rem;
   top: 4rem;
-  background: rgba(216, 231, 220, 0.28);
+  background: var(--sage-glow);
 }
 
 a {
@@ -186,9 +224,9 @@ input,
 select,
 textarea {
   width: 100%;
-  border: 1px solid var(--line);
+  border: 1px solid var(--card-border);
   border-radius: var(--radius-md);
-  background: var(--surface-raised);
+  background: var(--input-bg);
   color: var(--text-main);
   padding: 0.88rem 1rem;
   transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
@@ -198,9 +236,9 @@ input:focus,
 select:focus,
 textarea:focus {
   outline: none;
-  border-color: rgba(215, 133, 95, 0.38);
-  box-shadow: 0 0 0 4px rgba(215, 133, 95, 0.12);
-  background: var(--surface-popover);
+  border-color: var(--active-item-border);
+  box-shadow: 0 0 0 4px var(--accent-ring);
+  background: var(--input-focus-bg);
 }
 
 textarea {
@@ -215,78 +253,11 @@ textarea {
 .page-card {
   position: relative;
   overflow: hidden;
-  border: 1px solid var(--line);
+  border: 1px solid var(--card-border);
   border-radius: var(--radius-xl);
-  background: var(--surface-card);
+  background: var(--card-bg);
   box-shadow: var(--shadow-card);
   padding: var(--space-5);
-}
-
-.visual-preview-mode {
-  --preview-ink: #101614;
-  --preview-ink-soft: #4e5d55;
-  --preview-paper: #f6f1df;
-  --preview-line: rgba(19, 35, 29, 0.16);
-  --preview-copper: #b66b3f;
-  --preview-signal: #c7f05b;
-  --preview-blue: #1b59d8;
-  --preview-red: #c72f2f;
-  position: relative;
-  color: var(--preview-ink);
-}
-
-.visual-preview-mode::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: -2;
-  pointer-events: none;
-  background:
-    radial-gradient(circle at 16% 10%, rgba(199, 240, 91, 0.16), transparent 28rem),
-    radial-gradient(circle at 86% 6%, rgba(182, 107, 63, 0.18), transparent 24rem),
-    linear-gradient(145deg, #f0ead1 0%, #dfe6d0 48%, #efe8d4 100%);
-}
-
-.visual-preview-mode::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  opacity: 0.33;
-  background-image:
-    linear-gradient(rgba(16, 22, 20, 0.065) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(16, 22, 20, 0.055) 1px, transparent 1px);
-  background-size: 42px 42px;
-  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), transparent 82%);
-}
-
-.visual-preview-mode .page-card {
-  border-color: var(--preview-line);
-  border-radius: 10px;
-  background: rgba(246, 241, 223, 0.92);
-  box-shadow: 0 18px 42px rgba(19, 35, 29, 0.1);
-}
-
-.visual-preview-mode .eyebrow {
-  color: var(--preview-copper);
-  letter-spacing: 0.14em;
-}
-
-.visual-preview-mode input,
-.visual-preview-mode select,
-.visual-preview-mode textarea {
-  border-color: rgba(19, 35, 29, 0.18);
-  border-radius: 8px;
-  background: rgba(255, 253, 240, 0.86);
-  color: var(--preview-ink);
-}
-
-.visual-preview-mode input:focus,
-.visual-preview-mode select:focus,
-.visual-preview-mode textarea:focus {
-  border-color: rgba(27, 89, 216, 0.42);
-  box-shadow: 0 0 0 4px rgba(27, 89, 216, 0.13);
 }
 
 .eyebrow {
@@ -376,8 +347,8 @@ textarea {
   gap: 0.35rem;
   padding: 0.38rem 0.8rem;
   border-radius: var(--radius-pill);
-  background: var(--surface-raised);
-  border: 1px solid var(--line);
+  background: var(--card-bg-raised);
+  border: 1px solid var(--card-border);
   color: var(--text-main);
   font-family: var(--font-body);
   font-size: var(--type-meta-size);
@@ -386,8 +357,8 @@ textarea {
 }
 
 .pill.active {
-  background: rgba(46, 142, 131, 0.14);
-  border-color: rgba(46, 142, 131, 0.26);
+  background: var(--active-item-bg);
+  border-color: var(--active-item-border);
 }
 
 .summary-grid {
@@ -401,8 +372,8 @@ textarea {
   overflow: hidden;
   padding: 1rem 1.05rem;
   border-radius: var(--radius-lg);
-  background: var(--surface-raised);
-  border: 1px solid var(--line);
+  background: var(--card-bg-raised);
+  border: 1px solid var(--card-border);
   box-shadow: var(--shadow-card);
 }
 
@@ -490,15 +461,15 @@ textarea {
 }
 
 .button-solid {
-  background: linear-gradient(135deg, #d17a54, #bf6542);
-  color: #fff9f2;
-  box-shadow: 0 10px 22px rgba(191, 101, 66, 0.22);
+  background: linear-gradient(135deg, var(--accent-sun), var(--accent-gradient-end));
+  color: var(--accent-contrast);
+  box-shadow: 0 10px 22px var(--accent-shadow);
 }
 
 .button-subtle,
 .button-link {
-  background: rgba(255, 255, 255, 0.55);
-  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--card-bg-raised) 55%, transparent);
+  border: 1px solid var(--card-border);
 }
 
 .stats-grid,
@@ -523,8 +494,8 @@ textarea {
 .stat-card {
   padding: 1rem;
   border-radius: var(--radius-lg);
-  background: var(--surface-soft);
-  border: 1px solid rgba(79, 49, 35, 0.08);
+  background: var(--card-bg-soft);
+  border: 1px solid var(--card-border-soft);
 }
 
 .stat-card span {
@@ -553,8 +524,8 @@ textarea {
 .stack-item {
   padding: 1rem;
   border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.62);
-  border: 1px solid rgba(79, 49, 35, 0.08);
+  background: color-mix(in srgb, var(--card-bg-raised) 62%, transparent);
+  border: 1px solid var(--card-border-soft);
 }
 
 .stack-item h3,
@@ -574,212 +545,5 @@ textarea {
   .split-grid,
   .two-up-grid {
     grid-template-columns: 1fr;
-  }
-}
-
-.visual-preview-mode .atelier-home-page {
-  color: oklch(20% 0.035 165);
-}
-
-.visual-preview-mode .atelier-home-page .panel:not(.wish-bottle-card) {
-  border: 1px solid oklch(33% 0.06 157 / 0.22);
-  border-radius: 12px;
-  background:
-    linear-gradient(135deg, oklch(94% 0.035 103 / 0.94), oklch(88% 0.055 145 / 0.78)),
-    linear-gradient(90deg, oklch(82% 0.13 89 / 0.18), transparent);
-  box-shadow: 0 22px 48px oklch(24% 0.04 160 / 0.12);
-}
-
-.visual-preview-mode .atelier-home-page .atelier-hero {
-  min-height: 210px;
-  background:
-    radial-gradient(circle at 84% 16%, oklch(76% 0.16 84 / 0.28), transparent 16rem),
-    linear-gradient(135deg, oklch(20% 0.045 160), oklch(31% 0.06 165));
-  color: oklch(94% 0.035 100);
-}
-
-.visual-preview-mode .atelier-home-page .atelier-kicker,
-.visual-preview-mode .atelier-home-page .atelier-hero-name {
-  color: oklch(82% 0.14 88);
-}
-
-.visual-preview-mode .atelier-home-page .atelier-hero-promise,
-.visual-preview-mode .atelier-home-page .priority-body h2,
-.visual-preview-mode .atelier-home-page .atelier-journal-title h2,
-.visual-preview-mode .atelier-home-page .atelier-agenda-title h2 {
-  letter-spacing: 0;
-}
-
-.visual-preview-mode .atelier-home-page .atelier-stage-note,
-.visual-preview-mode .atelier-home-page .atelier-stage-copy,
-.visual-preview-mode .atelier-home-page .atelier-stage-metrics {
-  color: oklch(92% 0.035 100);
-}
-
-.visual-preview-mode .list-board-page {
-  color: oklch(18% 0.015 248);
-}
-
-.visual-preview-mode .list-board-page .page-card {
-  border-radius: 4px;
-  border-color: oklch(23% 0.02 248 / 0.22);
-  background: oklch(98% 0.006 235 / 0.94);
-  box-shadow: 0 1px 0 oklch(23% 0.02 248 / 0.16);
-}
-
-.visual-preview-mode .list-board-page .list-board-hero-card {
-  background:
-    linear-gradient(90deg, oklch(18% 0.018 248) 0 42%, oklch(96% 0.01 238) 42% 100%);
-  color: oklch(96% 0.012 235);
-}
-
-.visual-preview-mode .list-board-page .list-board-hero-promise,
-.visual-preview-mode .list-board-page .list-board-hero-name {
-  color: inherit;
-}
-
-.visual-preview-mode .list-board-page .list-board-kicker,
-.visual-preview-mode .list-board-page .list-board-filter-chip.active,
-.visual-preview-mode .list-board-page .list-board-button.is-solid {
-  color: oklch(86% 0.19 190);
-}
-
-.visual-preview-mode .list-board-page .list-board-button,
-.visual-preview-mode .list-board-page .list-board-filter-chip,
-.visual-preview-mode .list-board-page .list-board-card {
-  border-radius: 6px;
-}
-
-.visual-preview-mode .compose-preview-page {
-  color: oklch(20% 0.02 28);
-}
-
-.visual-preview-mode .compose-preview-page .compose-preview-shell {
-  border-color: oklch(48% 0.18 29 / 0.22);
-  border-radius: 18px 6px 18px 6px;
-  background:
-    linear-gradient(90deg, oklch(98% 0.025 88) 0 64%, oklch(91% 0.04 58) 64% 100%);
-}
-
-.visual-preview-mode .compose-preview-page .compose-preview-hero {
-  border-bottom: 2px solid oklch(51% 0.19 29 / 0.28);
-}
-
-.visual-preview-mode .compose-preview-page .compose-atelier-hero-name,
-.visual-preview-mode .compose-preview-page .compose-option-card.active strong,
-.visual-preview-mode .compose-preview-page .compose-member-chip.active {
-  color: oklch(49% 0.2 28);
-}
-
-.visual-preview-mode .compose-preview-page .compose-field input,
-.visual-preview-mode .compose-preview-page .compose-field textarea,
-.visual-preview-mode .compose-preview-page .compose-option-card,
-.visual-preview-mode .compose-preview-page .compose-member-chip {
-  border-radius: 5px;
-}
-
-.visual-preview-mode .detail-atelier-page {
-  color: oklch(22% 0.035 126);
-}
-
-.visual-preview-mode .detail-atelier-page .page-card {
-  border-radius: 7px;
-  border-color: oklch(38% 0.055 124 / 0.2);
-  background:
-    linear-gradient(180deg, oklch(95% 0.03 94 / 0.96), oklch(89% 0.035 111 / 0.9));
-}
-
-.visual-preview-mode .detail-atelier-page .detail-atelier-story-card {
-  background:
-    linear-gradient(90deg, oklch(25% 0.05 132), oklch(34% 0.06 123));
-  color: oklch(94% 0.035 95);
-}
-
-.visual-preview-mode .detail-atelier-page .detail-atelier-kicker,
-.visual-preview-mode .detail-atelier-page .detail-atelier-mini-link,
-.visual-preview-mode .detail-atelier-page .detail-atelier-chip {
-  color: oklch(82% 0.11 84);
-}
-
-.visual-preview-mode .detail-atelier-page .detail-atelier-section-head,
-.visual-preview-mode .detail-atelier-page .detail-atelier-thread-entry,
-.visual-preview-mode .detail-atelier-page .detail-atelier-step-row {
-  border-radius: 6px;
-}
-
-.visual-preview-mode .review-page {
-  color: oklch(18% 0.025 24);
-}
-
-.visual-preview-mode .review-page .page-card {
-  border-radius: 2px;
-  border-color: oklch(31% 0.08 25 / 0.18);
-  background: oklch(97% 0.02 83 / 0.94);
-}
-
-.visual-preview-mode .review-page .review-story-card {
-  background:
-    linear-gradient(90deg, oklch(31% 0.1 24) 0 34%, oklch(97% 0.02 83) 34% 100%);
-}
-
-.visual-preview-mode .review-page .review-story-copy .eyebrow,
-.visual-preview-mode .review-page .review-story-copy .section-title,
-.visual-preview-mode .review-page .review-copy,
-.visual-preview-mode .review-page .review-story-subnote {
-  color: oklch(96% 0.015 83);
-}
-
-.visual-preview-mode .review-page .review-card,
-.visual-preview-mode .review-page .review-thread-card,
-.visual-preview-mode .review-page .review-snapshot-card {
-  border-radius: 0;
-}
-
-.visual-preview-mode .space-page {
-  color: oklch(92% 0.012 95);
-}
-
-.visual-preview-mode .space-page .page-card {
-  border-color: oklch(83% 0.16 120 / 0.26);
-  background:
-    linear-gradient(135deg, oklch(22% 0.025 225), oklch(17% 0.022 242));
-  color: oklch(92% 0.012 95);
-  box-shadow: 0 24px 54px oklch(13% 0.02 242 / 0.24);
-}
-
-.visual-preview-mode .space-page .space-main-card {
-  background:
-    radial-gradient(circle at 86% 12%, oklch(83% 0.16 120 / 0.24), transparent 18rem),
-    linear-gradient(135deg, oklch(18% 0.02 242), oklch(27% 0.035 230));
-}
-
-.visual-preview-mode .space-page .eyebrow,
-.visual-preview-mode .space-page .space-main-kicker,
-.visual-preview-mode .space-page .pill,
-.visual-preview-mode .space-page .space-reward-tab.active {
-  color: oklch(83% 0.16 120);
-}
-
-.visual-preview-mode .space-page .pill,
-.visual-preview-mode .space-page .space-reward-tab,
-.visual-preview-mode .space-page input,
-.visual-preview-mode .space-page textarea {
-  border-color: oklch(83% 0.16 120 / 0.24);
-  background: oklch(92% 0.012 95 / 0.08);
-}
-
-@media (max-width: 720px) {
-  .visual-preview-mode .list-board-page .list-board-hero-card,
-  .visual-preview-mode .review-page .review-story-card,
-  .visual-preview-mode .compose-preview-page .compose-preview-shell {
-    background: oklch(96% 0.018 86 / 0.94);
-    color: var(--preview-ink);
-  }
-
-  .visual-preview-mode .review-page .review-story-copy .eyebrow,
-  .visual-preview-mode .review-page .review-story-copy .section-title,
-  .visual-preview-mode .review-page .review-copy,
-  .visual-preview-mode .review-page .review-story-subnote {
-    color: var(--preview-ink);
   }
 }

@@ -411,8 +411,8 @@ const {
 
 .review-story-card {
   background:
-    linear-gradient(135deg, rgba(255, 252, 246, 0.92), rgba(251, 244, 234, 0.9)),
-    radial-gradient(circle at top right, rgba(216, 231, 220, 0.3), transparent 36%);
+    linear-gradient(135deg, var(--warm-panel-strong), var(--surface-soft)),
+    radial-gradient(circle at top right, var(--sage-glow), transparent 36%);
 }
 
 .review-story-card .section-title {
@@ -446,7 +446,7 @@ const {
 .empty-card p,
 .journal-preview-item p,
 .snapshot-preview-item p {
-  color: rgba(76, 59, 50, 0.64);
+  color: var(--text-soft);
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
   letter-spacing: var(--type-supporting-spacing);
@@ -460,7 +460,7 @@ const {
 
 .review-story-subnote {
   max-width: 38rem;
-  color: rgba(76, 59, 50, 0.64);
+  color: var(--text-soft);
 }
 
 .review-story-head {
@@ -482,7 +482,7 @@ const {
 .review-empty-kicker,
 .review-preview-label {
   margin: 0;
-  color: rgba(70, 53, 45, 0.66);
+  color: var(--text-soft);
   font-family: var(--font-body);
   font-weight: 600;
   font-size: var(--type-eyebrow-size);
@@ -492,7 +492,7 @@ const {
 
 .review-card-chip {
   margin: 0;
-  color: rgba(70, 53, 45, 0.66);
+  color: var(--text-soft);
   font-family: var(--font-body);
   font-size: var(--type-meta-size);
   font-weight: 600;
@@ -508,8 +508,8 @@ const {
   width: max-content;
   padding: 0.35rem 0.68rem;
   border-radius: 999px;
-  border: 1px solid rgba(126, 96, 76, 0.12);
-  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid var(--warm-border);
+  background: var(--warm-panel);
 }
 
 .monthly-note-card h3,
@@ -567,17 +567,17 @@ const {
   padding: 0.95rem 1rem;
   border-radius: 20px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.58);
+  background: var(--warm-panel);
 }
 
 .review-member-summary.is-rose {
-  background: linear-gradient(180deg, rgba(255, 248, 243, 0.9), rgba(255, 255, 255, 0.72));
-  border-color: rgba(201, 124, 97, 0.16);
+  background: linear-gradient(180deg, var(--danger-panel), var(--warm-panel-strong));
+  border-color: var(--danger-border);
 }
 
 .review-member-summary.is-sage {
-  background: linear-gradient(180deg, rgba(245, 250, 246, 0.9), rgba(255, 255, 255, 0.72));
-  border-color: rgba(132, 161, 145, 0.16);
+  background: linear-gradient(180deg, var(--success-panel), var(--warm-panel-strong));
+  border-color: var(--success-border);
 }
 
 .review-member-summary-head,
@@ -592,7 +592,7 @@ const {
 
 .review-member-role {
   margin: 0 0 0.2rem;
-  color: rgba(70, 53, 45, 0.64);
+  color: var(--text-soft);
   font-family: var(--font-body);
   font-size: var(--type-l7-size);
   font-weight: 600;
@@ -617,7 +617,7 @@ const {
 }
 
 .review-member-summary-copy {
-  color: rgba(76, 59, 50, 0.74);
+  color: var(--text-muted);
   font-size: var(--type-body-size);
   line-height: var(--type-body-line);
 }
@@ -658,7 +658,7 @@ const {
 .review-tab-current p,
 .review-tab-button p {
   margin: 0;
-  color: rgba(76, 59, 50, 0.72);
+  color: var(--text-muted);
   font-family: var(--font-body);
   font-size: var(--type-body-size);
   line-height: var(--type-body-line);
@@ -670,14 +670,14 @@ const {
   padding: 0.96rem 1rem;
   border-radius: 22px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.66);
+  background: var(--warm-panel);
   text-align: left;
   transition: transform 180ms ease, background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 
 .review-tab-kicker {
   margin: 0;
-  color: rgba(70, 53, 45, 0.64);
+  color: var(--text-soft);
   font-family: var(--font-body);
   font-size: var(--type-meta-size);
   font-weight: 600;
@@ -692,8 +692,8 @@ const {
   min-height: 1.85rem;
   padding: 0.24rem 0.62rem;
   border-radius: 999px;
-  border: 1px solid rgba(126, 96, 76, 0.12);
-  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid var(--warm-border);
+  background: var(--warm-panel);
   color: var(--text-soft);
   font-family: var(--font-body);
   font-size: var(--type-meta-size);
@@ -711,9 +711,9 @@ const {
 }
 
 .review-tab-button.active {
-  background: rgba(255, 243, 231, 0.92);
-  border-color: rgba(185, 120, 53, 0.26);
-  box-shadow: 0 12px 24px rgba(172, 116, 87, 0.08);
+  background: var(--accent-panel);
+  border-color: var(--accent-border);
+  box-shadow: 0 12px 24px var(--accent-shadow-soft);
 }
 
 .review-panel-head {
@@ -746,7 +746,7 @@ const {
 .snapshot-card-note,
 .review-empty-step p {
   margin: 0;
-  color: rgba(76, 59, 50, 0.62);
+  color: var(--text-soft);
   font-family: var(--font-body);
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
@@ -760,7 +760,7 @@ const {
 
 .review-card-meter-value,
 .snapshot-metric-card strong {
-  color: #2f211a;
+  color: var(--text-main);
   font-family: var(--font-heading);
   font-size: var(--type-card-title-size);
   font-weight: 600;
@@ -770,7 +770,7 @@ const {
 
 .review-card-meter-label,
 .snapshot-metric-card span {
-  color: rgba(76, 59, 50, 0.68);
+  color: var(--text-soft);
   font-family: var(--font-body);
   font-size: var(--type-meta-size);
   line-height: var(--type-meta-line);
@@ -796,14 +796,14 @@ const {
 }
 
 .review-stat-card.is-primary {
-  background: linear-gradient(180deg, rgba(255, 250, 245, 0.96), rgba(255, 255, 255, 0.8));
+  background: linear-gradient(180deg, var(--surface-card), var(--warm-panel-strong));
 }
 
 .review-stat-kicker {
   position: relative;
   z-index: 1;
   margin: 0;
-  color: rgba(70, 53, 45, 0.68);
+  color: var(--text-soft);
   font-family: var(--font-body);
   font-size: var(--type-meta-size);
   font-weight: 600;
@@ -819,7 +819,7 @@ const {
 }
 
 .review-stat-label {
-  color: rgba(73, 55, 45, 0.72);
+  color: var(--text-muted);
   font-family: var(--font-body);
   font-size: var(--type-supporting-size);
   line-height: 1.35;
@@ -851,7 +851,7 @@ const {
   gap: 0.8rem;
   border-radius: 20px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.52);
+  background: var(--warm-panel);
   padding: 1rem;
 }
 
@@ -877,14 +877,14 @@ const {
 
 .journal-card {
   background:
-    linear-gradient(180deg, rgba(255, 250, 245, 0.92), rgba(255, 255, 255, 0.74)),
-    radial-gradient(circle at top right, rgba(241, 214, 202, 0.16), transparent 28%);
+    linear-gradient(180deg, var(--surface-card), var(--warm-panel-strong)),
+    radial-gradient(circle at top right, var(--danger-panel), transparent 28%);
 }
 
 .snapshot-card {
   background:
-    linear-gradient(135deg, rgba(255, 250, 244, 0.88), rgba(248, 245, 240, 0.86)),
-    linear-gradient(160deg, rgba(216, 231, 220, 0.12), transparent 56%);
+    linear-gradient(135deg, var(--warm-panel-strong), var(--surface-soft)),
+    linear-gradient(160deg, var(--success-panel), transparent 56%);
 }
 
 .review-item-head,
@@ -937,9 +937,9 @@ const {
   min-height: 1.9rem;
   padding: 0.28rem 0.58rem;
   border-radius: 999px;
-  border: 1px solid rgba(126, 96, 76, 0.12);
-  background: rgba(255, 255, 255, 0.72);
-  color: #392922;
+  border: 1px solid var(--warm-border);
+  background: var(--warm-panel-strong);
+  color: var(--text-main);
   font-family: var(--font-body);
   font-size: var(--type-meta-size);
   font-weight: 600;
@@ -953,8 +953,8 @@ const {
 }
 
 .review-reaction-pill[aria-expanded='true'] {
-  border-color: rgba(185, 120, 53, 0.24);
-  background: rgba(255, 243, 231, 0.86);
+  border-color: var(--accent-border);
+  background: var(--accent-panel);
 }
 
 .review-reaction-members {
@@ -973,7 +973,7 @@ const {
   min-height: 1.7rem;
   padding: 0.22rem 0.5rem;
   border-radius: 999px;
-  background: rgba(248, 244, 237, 0.72);
+  background: var(--surface-soft);
 }
 
 .review-meta-line {
@@ -993,9 +993,9 @@ const {
   min-height: 1.9rem;
   padding: 0.28rem 0.62rem;
   border-radius: 999px;
-  border: 1px solid rgba(95, 74, 55, 0.12);
-  background: rgba(255, 255, 255, 0.66);
-  color: rgba(70, 53, 45, 0.86);
+  border: 1px solid var(--warm-border);
+  background: var(--warm-panel);
+  color: var(--text-muted);
   font-family: var(--font-body);
   font-size: var(--type-meta-size);
   font-weight: 600;
@@ -1004,25 +1004,25 @@ const {
 }
 
 .review-member-pill.is-rose {
-  background: rgba(255, 243, 236, 0.88);
-  border-color: rgba(201, 124, 97, 0.18);
-  color: rgba(138, 80, 60, 0.92);
+  background: var(--danger-panel);
+  border-color: var(--danger-border);
+  color: var(--danger);
 }
 
 .review-member-pill.is-sage {
-  background: rgba(240, 248, 242, 0.88);
-  border-color: rgba(132, 161, 145, 0.18);
-  color: rgba(79, 111, 96, 0.92);
+  background: var(--success-panel);
+  border-color: var(--success-border);
+  color: var(--success);
 }
 
 .review-member-pill.is-shared {
-  background: rgba(248, 244, 237, 0.86);
-  border-color: rgba(150, 129, 111, 0.16);
-  color: rgba(106, 84, 72, 0.9);
+  background: var(--surface-soft);
+  border-color: var(--warm-border);
+  color: var(--text-muted);
 }
 
 .review-preview-kicker {
-  color: rgba(70, 53, 45, 0.68);
+  color: var(--text-soft);
   font-family: var(--font-body);
   font-size: var(--type-meta-size);
   font-weight: 600;
@@ -1033,8 +1033,8 @@ const {
 .journal-preview-item,
 .snapshot-preview-item {
   gap: 0.5rem;
-  border-color: rgba(95, 74, 55, 0.08);
-  background: rgba(255, 255, 255, 0.72);
+  border-color: var(--line-soft);
+  background: var(--warm-panel-strong);
 }
 
 .snapshot-metrics-grid {
@@ -1048,12 +1048,12 @@ const {
   gap: 0.35rem;
   padding: 0.85rem 0.92rem;
   border-radius: 18px;
-  border: 1px solid rgba(95, 74, 55, 0.08);
-  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--line-soft);
+  background: var(--warm-panel-strong);
 }
 
 .review-empty-step strong {
-  color: #2f211a;
+  color: var(--text-main);
   font-family: var(--font-heading);
   font-size: var(--type-l5-size);
   font-weight: 600;
@@ -1071,7 +1071,7 @@ const {
 }
 
 .empty-card {
-  background: rgba(255, 250, 244, 0.72);
+  background: var(--warm-panel-strong);
 }
 
 @media (max-width: 720px) {

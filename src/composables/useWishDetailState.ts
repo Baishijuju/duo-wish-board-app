@@ -66,7 +66,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
   const stepRewardFeedbackTargetId = ref('')
   const isCountProgressFeedback = ref(false)
   const isSubmittingReward = ref(false)
-  const shouldRecordCountProgressLog = ref(false)
+  const shouldRecordCountProgressLog = ref(true)
 
   const deletableImageCount = computed(() => selectedWish.value?.images.filter((image) => canDeleteImage(image.createdBy)).length ?? 0)
   const coinSnapshot = computed(() => {

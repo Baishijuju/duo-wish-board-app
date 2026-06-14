@@ -1072,18 +1072,18 @@ function formatRecentThreadTime(timestamp: string) {
 
 <style scoped>
 .atelier-home-page {
-  --atelier-bg: #f7efe4;
-  --atelier-paper: rgba(255, 251, 246, 0.9);
-  --atelier-paper-strong: rgba(255, 247, 240, 0.96);
-  --atelier-line: rgba(124, 98, 78, 0.14);
-  --atelier-line-strong: rgba(146, 112, 88, 0.22);
-  --atelier-ink: #392a24;
-  --atelier-ink-soft: rgba(57, 42, 36, 0.72);
-  --atelier-rose: #c97b7e;
-  --atelier-rose-deep: #9f575b;
-  --atelier-gold: #c39a5d;
-  --atelier-sage: #90a889;
-  --atelier-sky: #98aec7;
+  --atelier-bg: var(--bg);
+  --atelier-paper: var(--warm-panel-strong);
+  --atelier-paper-strong: var(--surface-card);
+  --atelier-line: var(--warm-border);
+  --atelier-line-strong: var(--warm-border-strong);
+  --atelier-ink: var(--text-main);
+  --atelier-ink-soft: var(--text-soft);
+  --atelier-rose: var(--accent-coral);
+  --atelier-rose-deep: var(--accent-dark);
+  --atelier-gold: var(--accent-gold);
+  --atelier-sage: var(--sage);
+  --atelier-sky: var(--mist);
   --atelier-display-font: var(--font-display);
   --atelier-heading-font: var(--font-heading);
   --atelier-body-font: var(--font-body);
@@ -1105,10 +1105,10 @@ function formatRecentThreadTime(timestamp: string) {
   overflow: hidden;
   border: 1px solid var(--atelier-line);
   background:
-    linear-gradient(180deg, var(--atelier-paper), rgba(248, 239, 231, 0.88)),
-    radial-gradient(circle at top left, rgba(255, 224, 218, 0.48), transparent 32%),
-    radial-gradient(circle at top right, rgba(211, 227, 247, 0.38), transparent 28%);
-  box-shadow: 0 24px 56px rgba(97, 71, 52, 0.08);
+    linear-gradient(180deg, var(--atelier-paper), var(--surface-soft)),
+    radial-gradient(circle at top left, var(--danger-panel), transparent 32%),
+    radial-gradient(circle at top right, var(--cool-glow), transparent 28%);
+  box-shadow: var(--shadow-raised);
 }
 
 .atelier-marquee {
@@ -1139,8 +1139,8 @@ function formatRecentThreadTime(timestamp: string) {
   min-height: 36px;
   padding: 0.45rem 0.82rem;
   border-radius: 999px;
-  border: 1px solid rgba(144, 117, 94, 0.14);
-  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid var(--atelier-line);
+  background: var(--warm-panel);
   color: var(--atelier-ink-soft);
   font-size: var(--type-l7-size);
   line-height: var(--type-l7-line);
@@ -1158,10 +1158,10 @@ function formatRecentThreadTime(timestamp: string) {
   padding: 1.24rem;
   border-radius: var(--radius-xl);
   background:
-    linear-gradient(180deg, rgba(255, 251, 247, 0.95), rgba(247, 237, 229, 0.9)),
-    radial-gradient(circle at 10% 10%, rgba(255, 216, 213, 0.42), transparent 26%),
-    radial-gradient(circle at 90% 12%, rgba(216, 229, 249, 0.36), transparent 24%),
-    radial-gradient(circle at 50% 100%, rgba(231, 238, 224, 0.3), transparent 30%);
+    linear-gradient(180deg, var(--surface-card), var(--surface-soft)),
+    radial-gradient(circle at 10% 10%, var(--danger-panel), transparent 26%),
+    radial-gradient(circle at 90% 12%, var(--cool-glow), transparent 24%),
+    radial-gradient(circle at 50% 100%, var(--sage-glow), transparent 30%);
 }
 
 .atelier-hero-copy {
@@ -1196,7 +1196,7 @@ function formatRecentThreadTime(timestamp: string) {
 
 .atelier-kicker span,
 .wish-bottle-story-kicker span {
-  color: rgba(57, 42, 36, 0.38);
+  color: var(--text-faint);
   font-size: var(--type-kicker-sub-size);
   letter-spacing: var(--type-kicker-sub-spacing);
   text-transform: uppercase;
@@ -1205,7 +1205,7 @@ function formatRecentThreadTime(timestamp: string) {
 .journal-feature-meta,
 .journal-time {
   margin: 0;
-  color: rgba(57, 42, 36, 0.76);
+  color: var(--text-muted);
   font-family: var(--atelier-body-font);
   font-size: var(--type-meta-size);
   font-weight: 600;
@@ -1253,7 +1253,7 @@ function formatRecentThreadTime(timestamp: string) {
 
 .atelier-hero-name {
   max-width: 7ch;
-  color: rgba(57, 42, 36, 0.88);
+  color: var(--atelier-ink);
   font-family: var(--atelier-heading-font);
   font-size: var(--type-card-title-size);
   font-weight: 600;
@@ -1304,7 +1304,7 @@ function formatRecentThreadTime(timestamp: string) {
 .journal-feature p,
 .journal-entry p,
 .section-head p {
-  color: rgba(57, 42, 36, 0.64);
+  color: var(--text-soft);
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
   letter-spacing: var(--type-supporting-spacing);
@@ -1330,9 +1330,9 @@ function formatRecentThreadTime(timestamp: string) {
 
 .priority-link,
 .lane-link {
-  background: rgba(255, 255, 255, 0.58);
+  background: var(--warm-panel);
   color: var(--atelier-ink);
-  border: 1px solid rgba(148, 115, 94, 0.14);
+  border: 1px solid var(--atelier-line);
 }
 
 .priority-card,
@@ -1340,8 +1340,8 @@ function formatRecentThreadTime(timestamp: string) {
 .journal-feature,
 .atelier-metric-card {
   border: 1px solid var(--atelier-line);
-  background: rgba(255, 255, 255, 0.58);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  background: var(--warm-panel);
+  box-shadow: var(--shadow-card);
 }
 
 .priority-card {
@@ -1354,10 +1354,10 @@ function formatRecentThreadTime(timestamp: string) {
 .priority-card.is-primary-focus {
   gap: 1rem;
   padding: 1.18rem;
-  border-color: rgba(201, 111, 74, 0.24);
+  border-color: var(--accent-border);
   background:
-    linear-gradient(180deg, rgba(255, 253, 249, 0.98), rgba(255, 246, 238, 0.94)),
-    radial-gradient(circle at 100% 0%, rgba(238, 196, 188, 0.22), transparent 38%);
+    linear-gradient(180deg, var(--surface-popover), var(--accent-panel)),
+    radial-gradient(circle at 100% 0%, var(--danger-panel), transparent 38%);
   box-shadow: var(--shadow-raised);
 }
 
@@ -1398,7 +1398,7 @@ function formatRecentThreadTime(timestamp: string) {
 
 .priority-copy {
   max-width: 34ch;
-  color: rgba(57, 42, 36, 0.7);
+  color: var(--text-muted);
   font-size: var(--type-l6-size);
   line-height: var(--type-l6-line);
   letter-spacing: var(--type-l6-spacing);
@@ -1419,7 +1419,7 @@ function formatRecentThreadTime(timestamp: string) {
   justify-items: start;
   align-items: start;
   padding-top: 0.14rem;
-  border-top: 1px solid rgba(124, 98, 78, 0.12);
+  border-top: 1px solid var(--warm-border-soft);
 }
 
 .priority-link,
@@ -1434,17 +1434,17 @@ function formatRecentThreadTime(timestamp: string) {
   padding: 0.62rem 1rem;
   background: linear-gradient(135deg, var(--atelier-rose), var(--atelier-rose-deep));
   border-color: transparent;
-  color: #fffaf6;
+  color: var(--accent-contrast);
   font-size: var(--type-body-size);
-  box-shadow: 0 10px 22px rgba(166, 90, 96, 0.18);
+  box-shadow: 0 10px 22px var(--accent-shadow);
 }
 
 .atelier-bottle-card {
   align-content: start;
   min-height: 100%;
   background:
-    linear-gradient(180deg, rgba(255, 252, 248, 0.9), rgba(249, 241, 234, 0.72)),
-    radial-gradient(circle at 80% 10%, rgba(216, 229, 249, 0.18), transparent 26%);
+    linear-gradient(180deg, var(--warm-panel-strong), var(--surface-soft)),
+    radial-gradient(circle at 80% 10%, var(--cool-glow), transparent 26%);
   box-shadow: var(--shadow-card);
 }
 
@@ -1483,13 +1483,13 @@ function formatRecentThreadTime(timestamp: string) {
   font-size: var(--type-d0-size);
   line-height: var(--type-d0-line);
   letter-spacing: -0.07em;
-  text-shadow: 0 6px 16px rgba(70, 165, 235, 0.22);
+  text-shadow: 0 6px 16px var(--accent-shadow-soft);
 }
 
 .atelier-progress-caption {
   margin: 0;
   max-width: 27ch;
-  color: rgba(57, 42, 36, 0.62);
+  color: var(--text-soft);
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
   letter-spacing: var(--type-supporting-spacing);
@@ -1562,8 +1562,8 @@ function formatRecentThreadTime(timestamp: string) {
   min-height: 36px;
   padding: 0.38rem 0.68rem;
   border-radius: 999px;
-  border: 1px solid rgba(144, 117, 94, 0.12);
-  background: rgba(255, 255, 255, 0.56);
+  border: 1px solid var(--warm-border-soft);
+  background: var(--warm-panel);
 }
 
 .atelier-grid {
@@ -1581,21 +1581,21 @@ function formatRecentThreadTime(timestamp: string) {
 .atelier-agenda {
   grid-column: 1 / -1;
   background:
-    linear-gradient(180deg, rgba(255, 250, 245, 0.94), rgba(249, 242, 234, 0.9)),
-    radial-gradient(circle at 0% 0%, rgba(236, 201, 193, 0.12), transparent 34%);
+    linear-gradient(180deg, var(--surface-card), var(--surface-soft)),
+    radial-gradient(circle at 0% 0%, var(--danger-panel), transparent 34%);
 }
 
 .atelier-journal {
   grid-column: 1 / -1;
   background:
-    linear-gradient(180deg, rgba(255, 252, 248, 0.95), rgba(246, 239, 232, 0.9)),
-    radial-gradient(circle at 100% 0%, rgba(216, 229, 249, 0.12), transparent 30%);
+    linear-gradient(180deg, var(--surface-card), var(--surface-soft)),
+    radial-gradient(circle at 100% 0%, var(--cool-glow), transparent 30%);
 }
 
 .section-head {
   margin-bottom: 1.12rem;
   padding-bottom: 0.94rem;
-  border-bottom: 1px solid rgba(124, 98, 78, 0.12);
+  border-bottom: 1px solid var(--warm-border-soft);
 }
 
 .section-head h2 {
@@ -1631,11 +1631,11 @@ function formatRecentThreadTime(timestamp: string) {
 }
 
 .atelier-lane-due {
-  background: linear-gradient(180deg, rgba(255, 238, 233, 0.78), rgba(255, 251, 247, 0.7));
+  background: linear-gradient(180deg, var(--danger-panel), var(--warm-panel-strong));
 }
 
 .atelier-lane-coin {
-  background: linear-gradient(180deg, rgba(243, 233, 214, 0.8), rgba(255, 251, 247, 0.7));
+  background: linear-gradient(180deg, var(--warning-panel), var(--warm-panel-strong));
 }
 
 .lane-head {
@@ -1656,7 +1656,7 @@ function formatRecentThreadTime(timestamp: string) {
 .lane-row {
   align-items: start;
   padding-bottom: 0.88rem;
-  border-bottom: 1px solid rgba(124, 98, 78, 0.12);
+  border-bottom: 1px solid var(--warm-border-soft);
 }
 
 .lane-row:last-child {
@@ -1717,14 +1717,14 @@ function formatRecentThreadTime(timestamp: string) {
   align-content: start;
   padding: 1rem;
   border-radius: var(--radius-xl);
-  background: linear-gradient(180deg, rgba(255, 244, 237, 0.82), rgba(255, 255, 255, 0.64));
-  border: 1px solid rgba(146, 112, 88, 0.16);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  background: linear-gradient(180deg, var(--danger-panel), var(--warm-panel));
+  border: 1px solid var(--warm-border);
+  box-shadow: var(--shadow-card);
 }
 
 .journal-member-card.is-sage {
-  background: linear-gradient(180deg, rgba(244, 250, 246, 0.86), rgba(255, 255, 255, 0.68));
-  border-color: rgba(132, 161, 145, 0.16);
+  background: linear-gradient(180deg, var(--success-panel), var(--warm-panel));
+  border-color: var(--success-border);
 }
 
 .journal-member-head {
@@ -1793,7 +1793,7 @@ function formatRecentThreadTime(timestamp: string) {
 }
 
 .journal-member-empty p {
-  color: rgba(57, 42, 36, 0.62);
+  color: var(--text-soft);
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
   letter-spacing: var(--type-supporting-spacing);
@@ -1803,12 +1803,12 @@ function formatRecentThreadTime(timestamp: string) {
   display: grid;
   gap: 0.28rem;
   padding-top: 0.06rem;
-  border-top: 1px solid rgba(124, 98, 78, 0.12);
+  border-top: 1px solid var(--warm-border-soft);
 }
 
 .journal-member-followup-label {
   margin: 0;
-  color: rgba(70, 53, 45, 0.64);
+  color: var(--text-soft);
   font-family: var(--atelier-body-font);
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
@@ -1842,8 +1842,8 @@ function formatRecentThreadTime(timestamp: string) {
   gap: 0.18rem;
   padding: 0.8rem 0.92rem;
   border-radius: var(--radius-lg);
-  border: 1px dashed rgba(144, 117, 94, 0.18);
-  background: rgba(255, 255, 255, 0.48);
+  border: 1px dashed var(--warm-border);
+  background: var(--warm-panel);
 }
 
 .section-icon {
@@ -1853,8 +1853,8 @@ function formatRecentThreadTime(timestamp: string) {
   width: 42px;
   height: 42px;
   border-radius: 16px;
-  border: 1px solid rgba(144, 117, 94, 0.14);
-  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--warm-border);
+  background: var(--warm-panel-strong);
   color: var(--atelier-rose-deep);
   flex-shrink: 0;
 }

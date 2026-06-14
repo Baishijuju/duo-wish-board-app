@@ -408,11 +408,11 @@ async function handleCastWishCoin(wish: WishRecord) {
   --list-display-font: var(--font-display);
   --list-heading-font: var(--font-heading);
   --list-body-font: var(--font-body);
-  --list-ink: #2f211b;
-  --list-ink-soft: rgba(61, 46, 40, 0.74);
-  --list-ink-faint: rgba(76, 59, 50, 0.72);
-  --list-line: var(--line);
-  --list-line-strong: var(--line-strong);
+  --list-ink: var(--text-main);
+  --list-ink-soft: var(--text-muted);
+  --list-ink-faint: var(--text-soft);
+  --list-line: var(--warm-border);
+  --list-line-strong: var(--warm-border-strong);
   --list-paper: var(--surface-card);
   --list-paper-strong: var(--surface-raised);
   font-family: var(--list-body-font);
@@ -477,17 +477,17 @@ async function handleCastWishCoin(wish: WishRecord) {
   grid-template-columns: 1fr;
   gap: 0.94rem;
   background:
-    linear-gradient(180deg, rgba(255, 251, 247, 0.95), rgba(247, 237, 229, 0.9)),
-    radial-gradient(circle at 10% 10%, rgba(255, 216, 213, 0.42), transparent 26%),
-    radial-gradient(circle at 90% 12%, rgba(216, 229, 249, 0.36), transparent 24%),
-    radial-gradient(circle at 50% 100%, rgba(231, 238, 224, 0.3), transparent 30%);
+    linear-gradient(180deg, var(--surface-card), var(--surface-soft)),
+    radial-gradient(circle at 10% 10%, var(--danger-panel), transparent 26%),
+    radial-gradient(circle at 90% 12%, var(--cool-glow), transparent 24%),
+    radial-gradient(circle at 50% 100%, var(--sage-glow), transparent 30%);
 }
 
 .list-board-toolbar-card {
   background:
-    linear-gradient(180deg, rgba(255, 252, 246, 0.92), rgba(250, 243, 236, 0.82)),
-    radial-gradient(circle at 4% 10%, rgba(241, 214, 202, 0.34), transparent 26%),
-    radial-gradient(circle at 100% 0%, rgba(220, 233, 230, 0.26), transparent 30%);
+    linear-gradient(180deg, var(--warm-panel-strong), var(--surface-soft)),
+    radial-gradient(circle at 4% 10%, var(--danger-panel), transparent 26%),
+    radial-gradient(circle at 100% 0%, var(--cool-glow), transparent 30%);
 }
 
 .list-board-hero-copy {
@@ -503,7 +503,7 @@ async function handleCastWishCoin(wish: WishRecord) {
   align-items: baseline;
   gap: 0.46rem;
   font-family: var(--list-body-font);
-  color: rgba(70, 53, 45, 0.66);
+  color: var(--text-soft);
   font-size: var(--type-eyebrow-size);
   font-weight: 600;
   line-height: 1.4;
@@ -512,7 +512,7 @@ async function handleCastWishCoin(wish: WishRecord) {
 }
 
 .list-board-kicker span {
-  color: rgba(70, 53, 45, 0.42);
+  color: var(--text-faint);
   font-size: var(--type-kicker-sub-size);
   letter-spacing: var(--type-kicker-sub-spacing);
   text-transform: uppercase;
@@ -524,7 +524,7 @@ async function handleCastWishCoin(wish: WishRecord) {
 .list-board-data-block > span {
   margin: 0;
   font-family: var(--list-body-font);
-  color: rgba(70, 53, 45, 0.68);
+  color: var(--text-soft);
   font-size: var(--type-supporting-size);
   font-weight: 600;
   line-height: var(--type-supporting-line);
@@ -536,7 +536,7 @@ async function handleCastWishCoin(wish: WishRecord) {
 .list-board-card-mood,
 .list-board-filter-label {
   font-family: var(--list-body-font);
-  color: rgba(76, 59, 50, 0.78);
+  color: var(--text-muted);
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
   letter-spacing: var(--type-supporting-spacing);
@@ -569,9 +569,9 @@ async function handleCastWishCoin(wish: WishRecord) {
 .list-board-action.is-soft,
 .list-board-more-trigger {
   padding: 0.55rem 0.9rem;
-  border: 1px solid rgba(126, 96, 76, 0.14);
-  background: rgba(255, 255, 255, 0.74);
-  color: #362720;
+  border: 1px solid var(--list-line);
+  background: var(--warm-panel-strong);
+  color: var(--list-ink);
 }
 
 .list-board-button,
@@ -582,15 +582,15 @@ async function handleCastWishCoin(wish: WishRecord) {
 .list-board-button.is-solid,
 .list-board-action.is-solid {
   border: 0;
-  background: linear-gradient(135deg, #c97c61, #9f5d50);
-  color: #fffaf5;
-  box-shadow: 0 16px 30px rgba(163, 91, 73, 0.24);
+  background: linear-gradient(135deg, var(--accent-sun), var(--accent-dark));
+  color: var(--accent-contrast);
+  box-shadow: 0 16px 30px var(--accent-shadow);
 }
 
 .list-board-filter-pill.is-active,
 .list-board-action.is-soft {
-  background: rgba(210, 121, 87, 0.12);
-  border-color: rgba(210, 121, 87, 0.22);
+  background: var(--accent-ring);
+  border-color: var(--accent-border);
 }
 
 .list-board-button:hover,
@@ -617,15 +617,15 @@ async function handleCastWishCoin(wish: WishRecord) {
 .list-board-mini-link:focus-visible,
 .list-board-more-trigger:focus-visible {
   outline: none;
-  border-color: rgba(201, 124, 97, 0.24);
-  box-shadow: 0 0 0 4px rgba(201, 124, 97, 0.12);
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 4px var(--accent-ring);
 }
 
 .list-board-action:disabled {
   transform: none;
-  background: rgba(244, 237, 230, 0.9);
-  color: rgba(106, 84, 72, 0.58);
-  border-color: rgba(126, 96, 76, 0.08);
+  background: var(--surface-soft);
+  color: var(--text-faint);
+  border-color: var(--line-soft);
   box-shadow: none;
 }
 
@@ -633,7 +633,7 @@ async function handleCastWishCoin(wish: WishRecord) {
   min-height: auto;
   padding: 0.2rem 0;
   border-radius: 0;
-  color: rgba(86, 63, 52, 0.82);
+  color: var(--text-muted);
   font-size: var(--type-body-size);
   line-height: var(--type-body-line);
   justify-content: flex-start;
@@ -821,8 +821,8 @@ async function handleCastWishCoin(wish: WishRecord) {
   min-height: 32px;
   padding: 0.36rem 0.66rem;
   border-radius: 999px;
-  border: 1px solid rgba(126, 96, 76, 0.1);
-  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--card-border-soft);
+  background: var(--panel-bg);
   justify-content: center;
   text-align: center;
 }
@@ -846,7 +846,7 @@ async function handleCastWishCoin(wish: WishRecord) {
   padding-block: 0.92rem;
   font-family: var(--list-body-font);
   font-size: var(--type-body-size);
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--input-bg);
 }
 
 .list-board-toolbar-card {
@@ -877,7 +877,7 @@ async function handleCastWishCoin(wish: WishRecord) {
   align-items: start;
   gap: 0.88rem;
   padding-top: 0.42rem;
-  border-top: 1px solid rgba(126, 96, 76, 0.12);
+  border-top: 1px solid var(--card-border-soft);
 }
 
 .list-board-filter-stack {
@@ -895,7 +895,7 @@ async function handleCastWishCoin(wish: WishRecord) {
 }
 
 .list-board-filter-label {
-  color: rgba(93, 72, 61, 0.78);
+  color: var(--text-muted);
   font-weight: 600;
 }
 
@@ -921,10 +921,10 @@ async function handleCastWishCoin(wish: WishRecord) {
 }
 
 .list-board-filter-pill.is-active {
-  background: linear-gradient(135deg, rgba(210, 121, 87, 0.22), rgba(255, 247, 241, 0.98));
-  border-color: rgba(185, 108, 79, 0.28);
-  color: #2e211b;
-  box-shadow: 0 8px 16px rgba(185, 108, 79, 0.1);
+  background: linear-gradient(135deg, var(--active-item-bg), var(--card-bg-popover));
+  border-color: var(--active-item-border);
+  color: var(--text-main);
+  box-shadow: 0 8px 16px var(--accent-shadow-soft);
 }
 
 .list-board-toolbar-side {
@@ -933,7 +933,7 @@ async function handleCastWishCoin(wish: WishRecord) {
   padding: 0.78rem 0.82rem;
   border-radius: var(--radius-lg);
   border: 1px solid var(--list-line);
-  background: var(--surface-card);
+  background: var(--card-bg);
 }
 
 .list-board-toolbar-side-copy {
@@ -946,7 +946,7 @@ async function handleCastWishCoin(wish: WishRecord) {
 }
 
 .list-board-card {
-  background: rgba(255, 252, 246, 0.84);
+  background: var(--panel-bg-strong);
 }
 
 .list-board-badge {
