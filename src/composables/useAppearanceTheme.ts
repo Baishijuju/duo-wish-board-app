@@ -12,6 +12,7 @@ export type AppearanceTheme = {
 }
 
 const APPEARANCE_STORAGE_KEY = 'duo-wish-board-appearance:v1'
+const DEFAULT_APPEARANCE_ID: AppearanceThemeId = 'appearance2'
 
 export const appearanceThemes: AppearanceTheme[] = [
   {
@@ -63,11 +64,11 @@ function isAppearanceThemeId(value: string | null): value is AppearanceThemeId {
 
 function readStoredAppearanceId(): AppearanceThemeId {
   if (!canUseBrowserStorage()) {
-    return 'appearance1'
+    return DEFAULT_APPEARANCE_ID
   }
 
   const storedValue = window.localStorage.getItem(APPEARANCE_STORAGE_KEY)
-  return isAppearanceThemeId(storedValue) ? storedValue : 'appearance1'
+  return isAppearanceThemeId(storedValue) ? storedValue : DEFAULT_APPEARANCE_ID
 }
 
 function persistAppearanceId(id: AppearanceThemeId) {

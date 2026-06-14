@@ -69,14 +69,6 @@ export function useSpacePageState() {
     return '先用邮箱进来，再认人、写奖励。'
   })
 
-  const overviewSummary = computed(() => {
-    if (space.authStore.members.length > 1) {
-      return `把名字、成员和加入时间收在一起；现在是${space.currentRoleLabel.value}，本周还剩 ${space.wishStore.currentMemberRemainingCoins} 枚愿望币。`
-    }
-
-    return `把空间名字、邀请码和加入时间收在一起；现在是${space.currentRoleLabel.value}，本周还剩 ${space.wishStore.currentMemberRemainingCoins} 枚愿望币。`
-  })
-
   const utilityBandLead = computed(() => {
     if (space.authStore.isAuthenticated) {
       return '先看怎么进来和怎么邀请，再看照片余量；概览和同步细节都在后面。'
@@ -122,33 +114,6 @@ export function useSpacePageState() {
         label: '奖励账页',
         note: '写下的奖励',
         value: `${totalRewardCount.value} 条`,
-      },
-    ]
-  })
-
-  const spaceFacts = computed(() => {
-    return [
-      {
-        label: '邀请口令',
-        note: '登录后把这串口令发给对方。',
-        value: space.authStore.inviteCode,
-      },
-      {
-        label: '加入时间',
-        note: '你进来时的记录。',
-        value: space.joinedSpaceLabel.value,
-      },
-      {
-        label: '当前愿望币周期',
-        note: `本周还可投 ${space.wishStore.currentMemberRemainingCoins} 枚。`,
-        value: space.currentWishCoinCycleLabel.value,
-      },
-      {
-        label: '我的星星币',
-        note: currentMemberRewardCount.value
-          ? '可以拿来换大奖励。'
-          : '先把奖励写起来。',
-        value: `${space.currentMemberStarCoins.value} 枚`,
       },
     ]
   })
@@ -255,23 +220,15 @@ export function useSpacePageState() {
   const advancedInfoRows = computed(() => {
     return [
       {
-        label: 'Supabase 提示',
-        value: space.supabaseReadinessMessage,
+        label: '云端配置',
+        value: space.authStore.usesSupabaseSpace ? '已就绪' : '本地体验中',
       },
       {
-        label: '当前配置',
-        value: space.supabaseAuthMode,
+        label: '实时刷新',
+        value: space.syncStatusLabel,
       },
       {
-        label: 'Realtime 详细状态',
-        value: space.wishStore.realtimeStatus,
-      },
-      {
-        label: 'Realtime 状态说明',
-        value: space.wishStore.realtimeMessage,
-      },
-      {
-        label: '同步摘要',
+        label: '数据来源',
         value: space.wishStore.syncMessage,
       },
     ]
@@ -279,10 +236,10 @@ export function useSpacePageState() {
 
   const advancedSummary = computed(() => {
     if (space.authStore.usesSupabaseSpace) {
-      return '同步状态、排查信息和退出入口都收在最后。'
+      return '云端连接、实时刷新和退出入口都收在最后。'
     }
 
-    return '现在还是本地体验，这里的信息主要留给排查和退出时看。'
+    return '现在还是本地体验，这里主要放同步状态和退出入口。'
   })
 
   return {
@@ -298,9 +255,7 @@ export function useSpacePageState() {
     inviteSummary,
     memberNamesLabel,
     memberStoryCards,
-    overviewSummary,
     relationshipLead,
-    spaceFacts,
     storageFacts,
     storageLead,
     storageSummaryLabel,

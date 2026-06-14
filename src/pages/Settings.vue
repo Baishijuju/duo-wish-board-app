@@ -1,17 +1,26 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watchEffect } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useAppearanceTheme, type AppearanceThemeId } from '../composables/useAppearanceTheme'
 import { clearStoredColorTokenDraft } from '../composables/useColorTokenDashboard'
 import { useSpacePageState } from '../composables/useSpacePageState'
+import type { RewardPoolItem } from '../stores/wishes'
 
 const space = reactive(useSpacePageState())
 const { appearanceThemes, selectedAppearanceId, selectedTheme, setAppearanceTheme } = useAppearanceTheme()
 
 type RewardHubTab = 'claim' | 'editor'
+type RewardEditorTier = 'daily' | 'premium'
+type RewardPoolScope = 'mine' | 'others'
+type AccessPanel = 'invite' | 'email' | 'fixedEmail'
 
 const rewardHubTab = ref<RewardHubTab>('claim')
-const collapsedRewardItemIds = ref<string[]>([])
+const rewardEditorTier = ref<RewardEditorTier>('daily')
+const rewardPoolTier = ref<RewardEditorTier>('daily')
+const rewardPoolScope = ref<RewardPoolScope>('mine')
+const rewardPoolViewerMemberId = ref<string | null>(null)
+const isRewardShelfManaging = ref(false)
+const activeAccessPanel = ref<AccessPanel>('invite')
 
 const rewardHubTabs = [
   {
@@ -25,6 +34,62 @@ const rewardHubTabs = [
     value: 'editor' as const,
   },
 ]
+
+const rewardEditorTierTabs = [
+  {
+    label: '日常奖励',
+    note: '小步骤',
+    value: 'daily' as const,
+  },
+  {
+    label: '高档奖励',
+    note: '大日子',
+    value: 'premium' as const,
+  },
+]
+
+const rewardPoolScopeTabs = [
+  {
+    label: '我的',
+    note: '可管理',
+    value: 'mine' as const,
+  },
+  {
+    label: '对方',
+    note: '只读',
+    value: 'others' as const,
+  },
+]
+
+const accessPanelTabs = computed(() => {
+  return [
+    {
+      label: '邀请',
+      note: space.syncStatusLabel,
+      value: 'invite' as const,
+    },
+    {
+      label: '邮箱',
+      note: space.authStore.isAuthenticated ? '已进入' : '未进入',
+      value: 'email' as const,
+    },
+    ...(space.canBindFixedEmail
+      ? [
+          {
+            label: '记住',
+            note: '创建者',
+            value: 'fixedEmail' as const,
+          },
+        ]
+      : []),
+  ]
+})
+
+watchEffect(() => {
+  if (activeAccessPanel.value === 'fixedEmail' && !space.canBindFixedEmail) {
+    activeAccessPanel.value = 'invite'
+  }
+})
 
 const activeRewardHubTitle = computed(() => {
   return rewardHubTab.value === 'claim' ? '领奖与兑换' : '编辑奖励池'
@@ -62,23 +127,153 @@ const activeRewardHubPills = computed(() => {
   ]
 })
 
+function createRewardDisplayEntries(rewards: RewardPoolItem[], tier: RewardEditorTier) {
+  return rewards.map((item) => ({
+    fallbackNote: tier === 'daily'
+      ? '这条日常奖励还没有补充说明。'
+      : '这条高档奖励还没有补充说明。',
+    item,
+    label: tier === 'daily' ? '日常奖励' : '高档奖励',
+    metaLines: tier === 'daily'
+      ? [
+          `已领 ${space.wishStore.getRewardItemClaimCount(item)} 份`,
+          '小推进可领',
+        ]
+      : [
+          `已领 ${space.wishStore.getRewardItemClaimCount(item)} 份`,
+          item.starCoinCost > 0 ? `${item.starCoinCost} 星星币兑换` : '详情页领取',
+        ],
+    tier,
+  }))
+}
+
+const currentSpaceMemberId = computed(() => space.authStore.currentMemberId || space.authStore.currentMember?.id || null)
+
+const rewardPoolViewerMembers = computed(() => {
+  return space.rewardPoolByMember.map((item) => ({
+    ...item,
+    isCurrentMember: item.member.id === currentSpaceMemberId.value,
+    rewardCount: item.dailyRewards.length + item.premiumRewards.length,
+  }))
+})
+
+const rewardPoolOtherMembers = computed(() => rewardPoolViewerMembers.value.filter((item) => !item.isCurrentMember))
+
+const activeRewardPoolViewerMember = computed(() => {
+  const members = rewardPoolOtherMembers.value
+  const selectedMember = members.find((item) => item.member.id === rewardPoolViewerMemberId.value)
+
+  return selectedMember || members[0] || null
+})
+
+const activeRewardPoolEntries = computed(() => {
+  if (rewardPoolScope.value === 'mine') {
+    return createRewardDisplayEntries(
+      rewardPoolTier.value === 'daily' ? space.currentMemberDailyRewards : space.currentMemberPremiumRewards,
+      rewardPoolTier.value,
+    )
+  }
+
+  const activeMember = activeRewardPoolViewerMember.value
+
+  if (!activeMember) {
+    return []
+  }
+
+  return createRewardDisplayEntries(
+    rewardPoolTier.value === 'daily' ? activeMember.dailyRewards : activeMember.premiumRewards,
+    rewardPoolTier.value,
+  )
+})
+
+const activeRewardPoolMemberName = computed(() => {
+  return rewardPoolScope.value === 'mine'
+    ? space.authStore.currentMember?.displayName || '我的奖池'
+    : activeRewardPoolViewerMember.value?.member.displayName || '对方奖池'
+})
+
+const activeRewardPoolEyebrow = computed(() => {
+  if (rewardPoolScope.value === 'mine') {
+    return rewardPoolTier.value === 'daily' ? '我的日常奖励' : '我的高档奖励'
+  }
+
+  return rewardPoolTier.value === 'daily' ? '对方日常奖励' : '对方高档奖励'
+})
+
+const activeRewardPoolEmpty = computed(() => {
+  if (rewardPoolScope.value === 'others' && !activeRewardPoolViewerMember.value) {
+    return {
+      copy: '邀请对方加入后，就能在这里查看对方的奖池。',
+      title: '还没有其他成员',
+    }
+  }
+
+  const ownerLabel = rewardPoolScope.value === 'mine' ? '你' : '对方'
+  const tierLabel = rewardPoolTier.value === 'daily' ? '日常奖励' : '高档奖励'
+
+  return {
+    copy: `${ownerLabel}还没有${tierLabel}。`,
+    title: `还没有${tierLabel}`,
+  }
+})
+
+const activeRewardEditor = computed(() => {
+  if (rewardEditorTier.value === 'daily') {
+    const isEditing = Boolean(space.editingDailyRewardId)
+
+    return {
+      badge: '给小步骤',
+      eyebrow: '日常这一层',
+      heading: '日常奖励',
+      isEditing,
+      submitCopy: isEditing ? '正在修改日常奖励。' : '保存后会进入日常奖池。',
+      submitLabel: space.isSubmittingReward ? '保存中...' : isEditing ? '更新日常奖励' : '加入日常奖励',
+      support: '写一个适合小推进的轻奖励。',
+    }
+  }
+
+  const isEditing = Boolean(space.editingPremiumRewardId)
+
+  return {
+    badge: '给大日子',
+    eyebrow: '留给大日子',
+    heading: '高档奖励',
+    isEditing,
+    submitCopy: isEditing ? '正在修改高档奖励。' : '保存后会进入高档奖池。',
+    submitLabel: space.isSubmittingReward ? '保存中...' : isEditing ? '更新高档奖励' : '加入高档奖励',
+    support: '留给大事，也可以写上星星币价格慢慢换。',
+  }
+})
+
 function openRewardEditor(itemId: string, tier: 'daily' | 'premium') {
   rewardHubTab.value = 'editor'
+  rewardEditorTier.value = tier
   space.startEditingReward(itemId, tier)
 }
 
-function formatRewardTitlePreview(rewards: Array<{ title: string }>, limit = 2) {
-  return rewards.slice(0, limit).map((reward) => reward.title).join('、')
+function editRewardFromShelf(itemId: string, tier: 'daily' | 'premium') {
+  isRewardShelfManaging.value = false
+  openRewardEditor(itemId, tier)
 }
 
-function isRewardItemCollapsed(itemId: string) {
-  return collapsedRewardItemIds.value.includes(itemId)
+function chooseRewardPoolScope(scope: RewardPoolScope) {
+  rewardPoolScope.value = scope
+
+  if (scope === 'others') {
+    isRewardShelfManaging.value = false
+  }
 }
 
-function toggleRewardItemCollapse(itemId: string) {
-  collapsedRewardItemIds.value = isRewardItemCollapsed(itemId)
-    ? collapsedRewardItemIds.value.filter((id) => id !== itemId)
-    : [...collapsedRewardItemIds.value, itemId]
+function submitActiveRewardDraft() {
+  if (rewardEditorTier.value === 'daily') {
+    return space.submitDailyReward()
+  }
+
+  return space.submitPremiumReward()
+}
+
+function resetActiveRewardDraft() {
+  space.resetRewardDraft(rewardEditorTier.value)
 }
 
 function chooseAppearanceTheme(id: AppearanceThemeId) {
@@ -375,13 +570,13 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
                       <span class="reward-card-kicker">高档奖励</span>
                       <strong>{{ item.title }}</strong>
                     </div>
-                    <span class="badge">{{ item.starCoinCost }} 星币</span>
+                    <div class="premium-card-aside">
+                      <p class="space-meta-line reward-card-meta premium-card-meta">
+                        <span>已领 {{ space.wishStore.getRewardItemClaimCount(item) }} 份</span>
+                      </p>
+                      <span class="badge">{{ item.starCoinCost }} 星币</span>
+                    </div>
                   </div>
-                  <p>{{ item.note || '这条高档奖励还没有补充说明。' }}</p>
-                  <p class="space-meta-line reward-card-meta">
-                    <span>兑换价 {{ item.starCoinCost }} 星星币</span>
-                    <span>已领 {{ space.wishStore.getRewardItemClaimCount(item) }} 份</span>
-                  </p>
                   <div class="button-row reward-card-actions">
                     <button
                       class="button-subtle"
@@ -395,7 +590,6 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
                           ? '兑换这份奖励'
                           : `还差 ${item.starCoinCost - space.currentMemberStarCoins} 枚` }}
                     </button>
-                    <button class="button-subtle" type="button" @click="openRewardEditor(item.id, 'premium')">切到编辑</button>
                   </div>
                 </article>
               </div>
@@ -433,13 +627,14 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
                     <div class="reward-card-head">
                       <div class="reward-card-copy">
                         <span class="reward-card-kicker">{{ item.memberName }}</span>
-                        <strong>{{ item.claim.titleSnapshot }}</strong>
+                        <div class="reward-claim-title-row">
+                          <strong>{{ item.claim.titleSnapshot }}</strong>
+                          <span class="badge">{{ space.getRewardClaimLabel(item.claim.claimKind) }}</span>
+                        </div>
                       </div>
-                      <span class="badge">{{ space.getRewardClaimLabel(item.claim.claimKind) }}</span>
                     </div>
                     <p class="reward-claim-copy">{{ space.getRewardClaimReason(item.claim) }}</p>
                     <p class="space-meta-line reward-claim-meta">
-                      <span>{{ item.claim.quantity > 1 ? `这一笔领了 ${item.claim.quantity} 份` : '这一笔已记下' }}</span>
                       <span>{{ space.formatBeijingDateTime(item.claim.createdAt) }}</span>
                     </p>
                   </div>
@@ -460,193 +655,81 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
               <div class="space-reward-stage-copy">
                 <p class="eyebrow">编辑区</p>
                 <h3 class="space-fold-title">写下和整理奖励</h3>
-                <p class="space-stage-support">领奖和兑换切到“领奖”，这里专心写、改和整理。</p>
               </div>
-              <span class="badge">这里只写和整理</span>
             </div>
 
             <div class="reward-form-grid space-reward-form-grid">
-              <form class="space-form reward-form-card" @submit.prevent="space.submitDailyReward">
+              <article class="space-form reward-form-card reward-editor-card">
                 <div class="space-subsection-heading">
                   <div>
-                    <p class="eyebrow">日常这一层</p>
-                    <h3>日常奖励</h3>
+                    <p class="eyebrow">{{ activeRewardEditor.eyebrow }}</p>
+                    <h3>{{ activeRewardEditor.heading }}</h3>
                   </div>
-                  <span class="badge">给小步骤</span>
+                  <span class="badge">{{ activeRewardEditor.badge }}</span>
+                </div>
+
+                <div class="reward-editor-tier-tabs" role="tablist" aria-label="奖励类型切换">
+                  <button
+                    v-for="tab in rewardEditorTierTabs"
+                    :key="tab.value"
+                    type="button"
+                    class="reward-editor-tier-tab"
+                    :class="{ active: rewardEditorTier === tab.value }"
+                    :aria-selected="rewardEditorTier === tab.value"
+                    role="tab"
+                    @click="rewardEditorTier = tab.value"
+                  >
+                    <span class="reward-editor-tier-label">{{ tab.label }}</span>
+                    <span class="reward-editor-tier-note">{{ tab.note }}</span>
+                  </button>
                 </div>
 
                 <div class="reward-form-copy">
-                  <p class="reward-form-support">写一个适合小推进的轻奖励。</p>
+                  <p class="reward-form-support">{{ activeRewardEditor.support }}</p>
                 </div>
 
-                <div class="reward-form-fields">
-                  <label class="space-field-block">
-                    <span class="muted">奖励名称</span>
-                    <input v-model="space.dailyRewardTitleDraft" type="text" maxlength="120" placeholder="例如：一杯喜欢的奶茶 / 一顿轻松晚餐" />
-                  </label>
-                  <label class="space-field-block">
-                    <span class="muted">说明（可选）</span>
-                    <textarea v-model="space.dailyRewardNoteDraft" rows="2" maxlength="240" placeholder="写下这个小奖励为什么值得期待"></textarea>
-                  </label>
-                </div>
+                <form class="reward-editor-form" @submit.prevent="submitActiveRewardDraft">
+                  <div class="reward-form-fields" :class="{ 'reward-form-fields-premium': rewardEditorTier === 'premium' }">
+                    <template v-if="rewardEditorTier === 'daily'">
+                      <label class="space-field-block">
+                        <span class="muted">奖励名称</span>
+                        <input v-model="space.dailyRewardTitleDraft" type="text" maxlength="120" placeholder="例如：一杯喜欢的奶茶 / 一顿轻松晚餐" />
+                      </label>
+                      <label class="space-field-block">
+                        <span class="muted">说明（可选）</span>
+                        <textarea v-model="space.dailyRewardNoteDraft" rows="2" maxlength="240" placeholder="写下这个小奖励为什么值得期待"></textarea>
+                      </label>
+                    </template>
 
-                <div class="reward-form-submit-row">
-                  <p class="reward-form-submit-copy">{{ space.editingDailyRewardId ? '正在修改日常奖励。' : '保存后会进入日常奖池。' }}</p>
-
-                  <div class="button-row reward-form-actions">
-                    <button class="button-solid" type="submit" :disabled="space.isSubmittingReward">
-                      {{ space.isSubmittingReward ? '保存中...' : space.editingDailyRewardId ? '更新日常奖励' : '加入日常奖励' }}
-                    </button>
-                    <button v-if="space.editingDailyRewardId" class="button-subtle" type="button" @click="space.resetRewardDraft('daily')">取消编辑</button>
+                    <template v-else>
+                      <label class="space-field-block">
+                        <span class="muted">奖励名称</span>
+                        <input v-model="space.premiumRewardTitleDraft" type="text" maxlength="120" placeholder="例如：心仪很久的大件 / 一次认真放松的体验" />
+                      </label>
+                      <label class="space-field-block">
+                        <span class="muted">说明（可选）</span>
+                        <textarea v-model="space.premiumRewardNoteDraft" rows="2" maxlength="240" placeholder="写下这个高档奖励真正吸引你的地方"></textarea>
+                      </label>
+                      <label class="space-field-block reward-form-cost-field">
+                        <span class="muted">星星币兑换价</span>
+                        <input v-model.number="space.premiumRewardCostDraft" type="number" min="0" max="999" />
+                      </label>
+                    </template>
                   </div>
 
-                  <p v-if="space.rewardMessage" :class="['feedback-message', 'space-reward-feedback-inline', space.rewardTone]">{{ space.rewardMessage }}</p>
-                </div>
-              </form>
+                  <div class="reward-form-submit-row">
+                    <p class="reward-form-submit-copy">{{ activeRewardEditor.submitCopy }}</p>
 
-              <form class="space-form reward-form-card" @submit.prevent="space.submitPremiumReward">
-                <div class="space-subsection-heading">
-                  <div>
-                    <p class="eyebrow">留给大日子</p>
-                    <h3>高档奖励</h3>
-                  </div>
-                  <span class="badge">给大日子</span>
-                </div>
-
-                <div class="reward-form-copy">
-                  <p class="reward-form-support">留给大事，也可以写上星星币价格慢慢换。</p>
-                </div>
-
-                <div class="reward-form-fields reward-form-fields-premium">
-                  <label class="space-field-block">
-                    <span class="muted">奖励名称</span>
-                    <input v-model="space.premiumRewardTitleDraft" type="text" maxlength="120" placeholder="例如：心仪很久的大件 / 一次认真放松的体验" />
-                  </label>
-                  <label class="space-field-block">
-                    <span class="muted">说明（可选）</span>
-                    <textarea v-model="space.premiumRewardNoteDraft" rows="2" maxlength="240" placeholder="写下这个高档奖励真正吸引你的地方"></textarea>
-                  </label>
-                  <label class="space-field-block reward-form-cost-field">
-                    <span class="muted">星星币兑换价</span>
-                    <input v-model.number="space.premiumRewardCostDraft" type="number" min="0" max="999" />
-                  </label>
-                </div>
-
-                <div class="reward-form-submit-row">
-                  <p class="reward-form-submit-copy">{{ space.editingPremiumRewardId ? '正在修改高档奖励。' : '保存后会进入高档奖池。' }}</p>
-
-                  <div class="button-row reward-form-actions">
-                    <button class="button-solid" type="submit" :disabled="space.isSubmittingReward">
-                      {{ space.isSubmittingReward ? '保存中...' : space.editingPremiumRewardId ? '更新高档奖励' : '加入高档奖励' }}
-                    </button>
-                    <button v-if="space.editingPremiumRewardId" class="button-subtle" type="button" @click="space.resetRewardDraft('premium')">取消编辑</button>
-                  </div>
-
-                  <p v-if="space.rewardMessage" :class="['feedback-message', 'space-reward-feedback-inline', space.rewardTone]">{{ space.rewardMessage }}</p>
-                </div>
-              </form>
-            </div>
-          </div>
-
-          <div class="space-reward-stage">
-            <div class="space-reward-stage-head">
-              <div>
-                <p class="eyebrow">我的奖池</p>
-                <h3 class="space-fold-title">已经写好的奖励</h3>
-              </div>
-              <span class="badge">这里只做整理</span>
-            </div>
-
-            <div class="reward-shelf-grid space-reward-shelf-grid">
-              <article class="reward-shelf-card">
-                <div class="space-subsection-heading">
-                  <div>
-                    <p class="eyebrow">日常这一格</p>
-                    <h3>随手就能领的小奖励</h3>
-                  </div>
-                  <span class="badge">{{ space.currentMemberDailyRewards.length }} 条</span>
-                </div>
-
-                <div v-if="space.currentMemberDailyRewards.length" class="reward-compact-list">
-                  <article v-for="item in space.currentMemberDailyRewards" :key="item.id" class="reward-compact-row" :class="{ 'is-collapsed': isRewardItemCollapsed(item.id) }">
-                    <div class="reward-compact-main">
-                      <span class="reward-card-kicker">日常奖励</span>
-                      <strong>{{ item.title }}</strong>
-                      <p v-if="!isRewardItemCollapsed(item.id)">{{ item.note || '这条日常奖励还没有补充说明。' }}</p>
-                    </div>
-
-                    <div v-if="!isRewardItemCollapsed(item.id)" class="reward-compact-meta">
-                      <span>已领 {{ space.wishStore.getRewardItemClaimCount(item) }} 份</span>
-                      <span>小推进可领</span>
-                    </div>
-
-                    <div class="button-row reward-compact-actions">
-                      <button class="button-subtle" type="button" @click="space.startEditingReward(item.id, 'daily')">编辑</button>
-                      <button class="button-subtle" type="button" @click="toggleRewardItemCollapse(item.id)">
-                        {{ isRewardItemCollapsed(item.id) ? '展开' : '收起' }}
+                    <div class="button-row reward-form-actions">
+                      <button class="button-solid" type="submit" :disabled="space.isSubmittingReward">
+                        {{ activeRewardEditor.submitLabel }}
                       </button>
-                      <button
-                        class="button-subtle danger-button"
-                        type="button"
-                        :disabled="space.processingRewardItemId === item.id"
-                        @click="void space.archiveReward(item.id)"
-                      >
-                        {{ space.processingRewardItemId === item.id ? '处理中...' : '归档' }}
-                      </button>
+                      <button v-if="activeRewardEditor.isEditing" class="button-subtle" type="button" @click="resetActiveRewardDraft">取消编辑</button>
                     </div>
-                  </article>
-                </div>
 
-                <div v-else class="space-empty-card">
-                  <strong>还没有日常奖励</strong>
-                  <p>先准备几条会让你开心的小奖励。</p>
-                </div>
-              </article>
-
-              <article class="reward-shelf-card reward-shelf-card-premium">
-                <div class="space-subsection-heading">
-                  <div>
-                    <p class="eyebrow">大日子这一格</p>
-                    <h3>留给大日子的奖励</h3>
+                    <p v-if="space.rewardMessage" :class="['feedback-message', 'space-reward-feedback-inline', space.rewardTone]">{{ space.rewardMessage }}</p>
                   </div>
-                  <span class="badge">{{ space.currentMemberPremiumRewards.length }} 条</span>
-                </div>
-
-                <div v-if="space.currentMemberPremiumRewards.length" class="reward-compact-list">
-                  <article v-for="item in space.currentMemberPremiumRewards" :key="item.id" class="reward-compact-row reward-compact-row-premium" :class="{ 'is-collapsed': isRewardItemCollapsed(item.id) }">
-                    <div class="reward-compact-main">
-                      <span class="reward-card-kicker">高档奖励</span>
-                      <strong>{{ item.title }}</strong>
-                      <p v-if="!isRewardItemCollapsed(item.id)">{{ item.note || '这条高档奖励还没有补充说明。' }}</p>
-                    </div>
-
-                    <div v-if="!isRewardItemCollapsed(item.id)" class="reward-compact-meta">
-                      <span>已领 {{ space.wishStore.getRewardItemClaimCount(item) }} 份</span>
-                      <span v-if="item.starCoinCost > 0">{{ item.starCoinCost }} 星星币兑换</span>
-                      <span v-else>详情页领取</span>
-                    </div>
-
-                    <div class="button-row reward-compact-actions">
-                      <button class="button-subtle" type="button" @click="space.startEditingReward(item.id, 'premium')">编辑</button>
-                      <button class="button-subtle" type="button" @click="toggleRewardItemCollapse(item.id)">
-                        {{ isRewardItemCollapsed(item.id) ? '展开' : '收起' }}
-                      </button>
-                      <button
-                        class="button-subtle danger-button"
-                        type="button"
-                        :disabled="space.processingRewardItemId === item.id"
-                        @click="void space.archiveReward(item.id)"
-                      >
-                        {{ space.processingRewardItemId === item.id ? '处理中...' : '归档' }}
-                      </button>
-                    </div>
-                  </article>
-                </div>
-
-                <div v-else class="space-empty-card">
-                  <strong>还没有高档奖励</strong>
-                  <p>先留给大日子一两条真正想认真奖励自己的事。</p>
-                </div>
+                </form>
               </article>
             </div>
           </div>
@@ -654,38 +737,132 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
           <div class="space-reward-stage">
             <div class="space-reward-stage-head">
               <div class="space-reward-stage-copy">
-                <p class="eyebrow">一起的奖池</p>
-                <h3 class="space-fold-title">两个人的奖励</h3>
-                <p class="section-copy">这里只看奖池本身，领取记录切到“领奖”。</p>
+                <p class="eyebrow">奖池</p>
+                <h3 class="space-fold-title">查看和管理奖励</h3>
               </div>
 
               <div class="space-reward-hub-pills">
-                <span class="badge">共 {{ space.totalRewardCount }} 条</span>
-                <span class="badge">双方可见</span>
+                <span class="badge">{{ rewardPoolScope === 'mine' ? '我的奖池' : '对方只读' }}</span>
+                <span class="badge">{{ activeRewardPoolEntries.length }} 条</span>
               </div>
             </div>
 
-            <div class="reward-member-strip-list">
-              <article v-for="item in space.rewardPoolByMember" :key="item.member.id" class="reward-member-strip">
-                <div class="reward-member-strip-person">
-                  <span class="reward-member-strip-mark">{{ item.member.displayName.slice(0, 1) }}</span>
+            <div class="reward-pool-viewer-shell reward-pool-unified-shell">
+              <div class="reward-editor-tier-tabs reward-pool-scope-tabs" role="tablist" aria-label="奖池范围切换">
+                <button
+                  v-for="tab in rewardPoolScopeTabs"
+                  :key="tab.value"
+                  type="button"
+                  class="reward-editor-tier-tab"
+                  :class="{ active: rewardPoolScope === tab.value }"
+                  :aria-selected="rewardPoolScope === tab.value"
+                  role="tab"
+                  @click="chooseRewardPoolScope(tab.value)"
+                >
+                  <span class="reward-editor-tier-label">{{ tab.label }}</span>
+                  <span class="reward-editor-tier-note">{{ tab.note }}</span>
+                </button>
+              </div>
+
+              <div v-if="rewardPoolScope === 'others' && rewardPoolOtherMembers.length" class="reward-member-strip-list reward-pool-viewer-members" role="list" aria-label="选择要查看的成员奖池">
+                <button
+                  v-for="item in rewardPoolOtherMembers"
+                  :key="item.member.id"
+                  class="reward-member-strip reward-pool-viewer-member"
+                  :class="{ active: activeRewardPoolViewerMember?.member.id === item.member.id }"
+                  type="button"
+                  @click="rewardPoolViewerMemberId = item.member.id"
+                >
+                  <div class="reward-member-strip-person">
+                    <span class="reward-member-strip-mark">{{ item.member.displayName.slice(0, 1) }}</span>
+                    <div>
+                      <h3>{{ item.member.displayName }}</h3>
+                      <p class="space-member-summary">对方 · {{ item.starCoins }} 枚星星币 · {{ item.rewardCount }} 条奖励</p>
+                    </div>
+                  </div>
+
+                  <div class="reward-member-strip-stats" aria-label="成员奖励摘要">
+                    <span><strong>{{ item.dailyRewards.length }}</strong>日常</span>
+                    <span><strong>{{ item.premiumRewards.length }}</strong>高档</span>
+                    <span><strong>{{ item.starCoins }}</strong>星币</span>
+                  </div>
+                </button>
+              </div>
+
+              <article class="reward-shelf-card reward-pool-unified-card">
+                <div class="space-subsection-heading">
                   <div>
-                    <h3>{{ item.member.displayName }}</h3>
-                    <p class="space-member-summary">{{ item.starCoins }} 枚星星币 · {{ item.dailyRewards.length + item.premiumRewards.length }} 条奖励</p>
+                    <p class="eyebrow">{{ activeRewardPoolEyebrow }}</p>
+                    <h3>{{ activeRewardPoolMemberName }}</h3>
+                  </div>
+
+                  <div class="reward-shelf-heading-actions">
+                    <span class="badge">{{ activeRewardPoolEntries.length }} 条</span>
+                    <button
+                      v-if="rewardPoolScope === 'mine'"
+                      class="reward-shelf-manage-button"
+                      type="button"
+                      :disabled="!activeRewardPoolEntries.length"
+                      @click="isRewardShelfManaging = !isRewardShelfManaging"
+                    >
+                      {{ isRewardShelfManaging ? '完成' : '管理' }}
+                    </button>
+                    <span v-else class="badge">只读查看</span>
                   </div>
                 </div>
 
-                <div class="reward-member-strip-stats" aria-label="成员奖励摘要">
-                  <span><strong>{{ item.dailyRewards.length }}</strong>日常</span>
-                  <span><strong>{{ item.premiumRewards.length }}</strong>高档</span>
-                  <span><strong>{{ item.starCoins }}</strong>星币</span>
+                <div class="reward-editor-tier-tabs reward-shelf-tier-tabs" role="tablist" aria-label="奖池类型切换">
+                  <button
+                    v-for="tab in rewardEditorTierTabs"
+                    :key="tab.value"
+                    type="button"
+                    class="reward-editor-tier-tab"
+                    :class="{ active: rewardPoolTier === tab.value }"
+                    :aria-selected="rewardPoolTier === tab.value"
+                    role="tab"
+                    @click="rewardPoolTier = tab.value"
+                  >
+                    <span class="reward-editor-tier-label">{{ tab.label }}</span>
+                    <span class="reward-editor-tier-note">{{ tab.note }}</span>
+                  </button>
                 </div>
 
-                <div class="reward-member-strip-preview">
-                  <span v-if="item.dailyRewards.length">日常：{{ formatRewardTitlePreview(item.dailyRewards) }}{{ item.dailyRewards.length > 2 ? ' 等' : '' }}</span>
-                  <span v-else>日常：还没准备</span>
-                  <span v-if="item.premiumRewards.length">高档：{{ formatRewardTitlePreview(item.premiumRewards) }}{{ item.premiumRewards.length > 2 ? ' 等' : '' }}</span>
-                  <span v-else>高档：还没准备</span>
+                <div v-if="activeRewardPoolEntries.length" class="reward-compact-list">
+                  <article
+                    v-for="entry in activeRewardPoolEntries"
+                    :key="`${rewardPoolScope}:${entry.tier}:${entry.item.id}`"
+                    class="reward-compact-row"
+                    :class="{
+                      'reward-compact-row-premium': entry.tier === 'premium',
+                    }"
+                  >
+                    <div class="reward-compact-main">
+                      <span class="reward-card-kicker">{{ entry.label }}</span>
+                      <strong>{{ entry.item.title }}</strong>
+                      <p>{{ entry.item.note || entry.fallbackNote }}</p>
+                    </div>
+
+                    <div class="reward-compact-meta">
+                      <span v-for="line in entry.metaLines" :key="line">{{ line }}</span>
+                    </div>
+
+                    <div v-if="rewardPoolScope === 'mine' && isRewardShelfManaging" class="reward-compact-manage-actions">
+                      <button class="reward-compact-manage-button" type="button" @click="editRewardFromShelf(entry.item.id, entry.tier)">编辑</button>
+                      <button
+                        class="reward-compact-manage-button danger-button"
+                        type="button"
+                        :disabled="space.processingRewardItemId === entry.item.id"
+                        @click="void space.archiveReward(entry.item.id)"
+                      >
+                        {{ space.processingRewardItemId === entry.item.id ? '删除中...' : '删除' }}
+                      </button>
+                    </div>
+                  </article>
+                </div>
+
+                <div v-else class="space-empty-card">
+                  <strong>{{ activeRewardPoolEmpty.title }}</strong>
+                  <p>{{ activeRewardPoolEmpty.copy }}</p>
                 </div>
               </article>
             </div>
@@ -703,56 +880,6 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
     </div>
 
     <div class="space-utility-grid">
-      <details class="page-card space-shell-card space-fold-card space-utility-card space-utility-card-overview">
-        <summary class="space-fold-summary space-utility-summary">
-          <div class="space-fold-copy-block">
-            <p class="eyebrow">空间概览</p>
-            <h3>把底账收在一起</h3>
-            <p class="space-fold-copy">{{ space.overviewSummary }}</p>
-          </div>
-
-          <div class="space-fold-meta">
-            <div class="badge-row">
-              <span class="badge">{{ space.currentRoleLabel }}</span>
-              <span class="badge">{{ space.authStore.members.length }} 位成员</span>
-            </div>
-            <div class="space-fold-toggle" aria-hidden="true">
-              <span class="space-fold-arrow"></span>
-            </div>
-          </div>
-        </summary>
-
-        <div class="space-fold-body">
-          <strong class="space-fold-title">{{ space.authStore.spaceName }}</strong>
-
-          <div class="space-fact-grid">
-            <article v-for="fact in space.spaceFacts" :key="fact.label" class="space-fact-card">
-              <span class="muted">{{ fact.label }}</span>
-              <strong>{{ fact.value }}</strong>
-              <p>{{ fact.note }}</p>
-            </article>
-          </div>
-
-          <div v-if="space.authStore.canSwitchMembers" class="member-switch-grid">
-            <button
-              v-for="member in space.authStore.members"
-              :key="member.id"
-              class="member-switch-button"
-              :class="{ active: space.authStore.currentMemberId === member.id }"
-              type="button"
-              @click="space.authStore.switchMember(member.id)"
-            >
-              {{ member.displayName }}
-            </button>
-          </div>
-          <div v-else class="badge-row">
-            <span v-for="member in space.authStore.members" :key="member.id" class="badge">
-              {{ member.displayName }} · {{ space.roleLabels[member.role] }}
-            </span>
-          </div>
-        </div>
-      </details>
-
       <details class="page-card space-shell-card space-fold-card space-utility-card space-utility-card-access">
         <summary class="space-fold-summary space-utility-summary">
           <div class="space-fold-copy-block">
@@ -772,9 +899,25 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
         </summary>
 
         <div class="space-fold-body">
-          <div class="space-access-grid">
-            <section class="space-access-card">
-              <div class="space-subsection-heading">
+          <div class="access-compact-panel">
+            <div class="access-panel-tabs" role="tablist" aria-label="进入方式">
+              <button
+                v-for="tab in accessPanelTabs"
+                :key="tab.value"
+                class="access-panel-tab"
+                :class="{ active: activeAccessPanel === tab.value }"
+                type="button"
+                role="tab"
+                :aria-selected="activeAccessPanel === tab.value"
+                @click="activeAccessPanel = tab.value"
+              >
+                <span>{{ tab.label }}</span>
+                <small>{{ tab.note }}</small>
+              </button>
+            </div>
+
+            <section v-if="activeAccessPanel === 'invite'" class="access-panel-body" role="tabpanel">
+              <div class="access-panel-head">
                 <div>
                   <p class="eyebrow">把对方带进来</p>
                   <h3>邀请对方</h3>
@@ -784,28 +927,28 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 
               <p class="space-card-intro">{{ space.inviteSummary }}</p>
 
-              <div class="space-inline-code">
-                <span class="muted">邀请口令</span>
-                <strong>{{ space.authStore.inviteCode }}</strong>
+              <div class="access-code-row">
+                <div class="space-inline-code">
+                  <span class="muted">邀请口令</span>
+                  <strong>{{ space.authStore.inviteCode }}</strong>
+                </div>
+                <button v-if="space.canCopyInviteCode" class="button-subtle" type="button" @click="space.copyInviteCode">复制</button>
               </div>
 
-              <form class="space-form space-access-form" @submit.prevent="space.joinSpace">
+              <form class="space-form space-access-form access-inline-form" @submit.prevent="space.joinSpace">
                 <label>
                   <span class="muted">对方发来的邀请口令</span>
                   <input v-model="space.inviteDraft" type="text" placeholder="WISH-2026" />
                 </label>
-                <p class="space-access-form-note">确认后会尝试走进同一间空间，不会盖掉你已经写下的愿望。</p>
-                <div class="button-row reward-card-actions">
-                  <button class="button-solid" :disabled="space.isJoiningSpace" type="submit">
-                    {{ space.isJoiningSpace ? '确认中...' : '确认加入' }}
-                  </button>
-                  <button v-if="space.canCopyInviteCode" class="button-subtle" type="button" @click="space.copyInviteCode">复制邀请口令</button>
-                </div>
+                <button class="button-solid" :disabled="space.isJoiningSpace" type="submit">
+                  {{ space.isJoiningSpace ? '确认中...' : '确认加入' }}
+                </button>
               </form>
+              <p class="space-access-form-note">确认后会尝试走进同一间空间，不会盖掉你已经写下的愿望。</p>
             </section>
 
-            <section class="space-access-card">
-              <div class="space-subsection-heading">
+            <section v-else-if="activeAccessPanel === 'email'" class="access-panel-body" role="tabpanel">
+              <div class="access-panel-head">
                 <div>
                   <p class="eyebrow">邮箱走进来</p>
                   <h3>邮箱进入</h3>
@@ -813,39 +956,34 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
                 <span class="badge">{{ space.authStore.isAuthenticated ? '已进入' : '未进入' }}</span>
               </div>
 
-              <p class="space-card-intro">如果已经把邮箱和这间空间连上，之后回来就不用每次都靠邀请码。</p>
+              <p class="space-card-intro">把邮箱和这间空间连上，回来就不用每次都靠邀请码。</p>
 
-              <form class="space-form space-access-form" @submit.prevent="space.submitMagicLink">
+              <form class="space-form space-access-form access-inline-form" @submit.prevent="space.submitMagicLink">
                 <label>
                   <span class="muted">邮箱</span>
                   <input v-model="space.loginEmail" type="email" placeholder="chenguang@example.com" />
                 </label>
-                <p class="space-access-form-note">先发验证邮件，再用邮件里的链接或验证码走回来。</p>
-                <div class="button-row reward-card-actions">
-                  <button class="button-solid" :disabled="space.isSendingMagicLink" type="submit">
-                    {{ space.isSendingMagicLink ? '发送中...' : '发送验证邮件' }}
-                  </button>
-                </div>
+                <button class="button-solid" :disabled="space.isSendingMagicLink" type="submit">
+                  {{ space.isSendingMagicLink ? '发送中...' : '发送验证邮件' }}
+                </button>
               </form>
 
-              <form v-if="space.showOtpForm" class="space-form space-access-form space-access-form-otp" @submit.prevent="space.submitEmailOtp">
+              <form v-if="space.showOtpForm" class="space-form space-access-form space-access-form-otp access-inline-form" @submit.prevent="space.submitEmailOtp">
                 <label>
                   <span class="muted">邮箱验证码</span>
                   <input v-model="space.loginOtp" type="text" inputmode="numeric" placeholder="输入邮件里的验证码" />
                 </label>
-                <p v-if="space.otpTargetEmail" class="muted">当前会按 {{ space.otpTargetEmail }} 校验；如果刚换了邮箱，请先重新发送一次。</p>
-                <div class="button-row reward-card-actions">
-                  <button class="button-subtle" :disabled="space.isVerifyingOtp" type="submit">
-                    {{ space.isVerifyingOtp ? '校验中...' : '确认进入' }}
-                  </button>
-                </div>
+                <button class="button-subtle" :disabled="space.isVerifyingOtp" type="submit">
+                  {{ space.isVerifyingOtp ? '校验中...' : '确认进入' }}
+                </button>
               </form>
+              <p v-if="space.otpTargetEmail && space.showOtpForm" class="space-access-form-note">按 {{ space.otpTargetEmail }} 校验；换邮箱后先重发一次。</p>
 
               <p v-if="space.loginMessage" :class="['feedback-message', space.loginTone]">{{ space.loginMessage }}</p>
             </section>
 
-            <section v-if="space.canBindFixedEmail" class="space-access-card">
-              <div class="space-subsection-heading">
+            <section v-else-if="space.canBindFixedEmail" class="access-panel-body" role="tabpanel">
+              <div class="access-panel-head">
                 <div>
                   <p class="eyebrow">记住这个入口</p>
                   <h3>记住常用邮箱</h3>
@@ -855,7 +993,7 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 
               <p class="space-card-intro">把常用邮箱记在这间空间上，后面回来会更快。</p>
 
-              <form class="space-form space-access-form" @submit.prevent="space.bindFixedEmail">
+              <form class="space-form space-access-form access-fixed-form" @submit.prevent="space.bindFixedEmail">
                 <label>
                   <span class="muted">邮箱</span>
                   <input v-model="space.fixedEmailDraft" type="email" placeholder="partner@example.com" />
@@ -864,15 +1002,11 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
                   <span class="muted">显示名称（可选）</span>
                   <input v-model="space.fixedDisplayNameDraft" type="text" maxlength="50" placeholder="例如：晨光 / 星野" />
                 </label>
-                <p class="space-access-form-note">这里只是把邮箱和显示名称记在这间空间上，不会替你发送邮件。</p>
-                <div class="button-row reward-card-actions">
-                  <button class="button-subtle" :disabled="space.isBindingEmail" type="submit">
-                    {{ space.isBindingEmail ? '保存中...' : '记住这个邮箱' }}
-                  </button>
-                </div>
+                <button class="button-subtle" :disabled="space.isBindingEmail" type="submit">
+                  {{ space.isBindingEmail ? '保存中...' : '记住这个邮箱' }}
+                </button>
               </form>
-
-              <p class="muted">绑定后可直接回到这个空间。</p>
+              <p class="space-access-form-note">这里只是把邮箱和显示名称记在这间空间上，不会替你发送邮件。</p>
             </section>
           </div>
 
@@ -900,34 +1034,35 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
         </summary>
 
         <div class="space-fold-body">
-          <p class="section-copy">{{ space.storageLead }}</p>
+          <div class="storage-compact-panel">
+            <p class="section-copy storage-lead">{{ space.storageLead }}</p>
 
-          <div class="space-fact-grid space-storage-grid">
-            <article v-for="fact in space.storageFacts" :key="fact.label" class="space-fact-card">
-              <span class="muted">{{ fact.label }}</span>
-              <strong>{{ fact.value }}</strong>
-              <p>{{ fact.note }}</p>
-            </article>
-          </div>
+            <div class="storage-meter" :aria-label="`照片空间已使用 ${space.storageSummary.usagePercent}%`">
+              <div
+                :class="['storage-meter-fill', { warning: space.storageSummary.nearingLimit, danger: space.storageSummary.overSoftLimit }]"
+                :style="{ width: `${space.storageSummary.usagePercent}%` }"
+              ></div>
+            </div>
 
-          <div class="storage-meter" :aria-label="`照片空间已使用 ${space.storageSummary.usagePercent}%`">
-            <div
-              :class="['storage-meter-fill', { warning: space.storageSummary.nearingLimit, danger: space.storageSummary.overSoftLimit }]"
-              :style="{ width: `${space.storageSummary.usagePercent}%` }"
-            ></div>
-          </div>
+            <dl class="storage-stat-list">
+              <div v-for="fact in space.storageFacts" :key="fact.label" class="storage-stat-item">
+                <dt>{{ fact.label }}</dt>
+                <dd>{{ fact.value }}</dd>
+              </div>
+            </dl>
 
-          <div class="space-inline-panel">
-            <p class="section-copy">
-              {{ space.estimatedRemainingImageCount === null
-                ? '再多传几张后，这里会显示还能放多少。'
-                : `按现在的大小，大约还能放 ${space.estimatedRemainingImageCount} 张。` }}
-            </p>
-            <p class="space-meta-line">
-              <span>备份会带上当前清单、奖励和记录</span>
-              <span>最好两个人都各自留一份</span>
-            </p>
-            <div class="button-row">
+            <div class="storage-backup-row">
+              <div class="storage-backup-copy">
+                <p class="section-copy">
+                  {{ space.estimatedRemainingImageCount === null
+                    ? '再多传几张后，这里会显示还能放多少。'
+                    : `按现在的大小，大约还能放 ${space.estimatedRemainingImageCount} 张。` }}
+                </p>
+                <p class="space-meta-line">
+                  <span>备份会带上清单、奖励和记录</span>
+                  <span>两个人最好各自留一份</span>
+                </p>
+              </div>
               <button class="button-subtle" type="button" @click="space.downloadBackup">备份清单</button>
             </div>
           </div>
@@ -940,7 +1075,7 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
         <summary class="space-fold-summary space-utility-summary">
           <div class="space-fold-copy-block">
             <p class="eyebrow">同步与退出</p>
-            <h3>只在需要排查时再翻</h3>
+            <h3>同步详情和退出</h3>
             <p class="space-fold-copy">{{ space.advancedSummary }}</p>
           </div>
 
@@ -956,24 +1091,42 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 
         <div class="space-fold-body">
           <div class="space-advanced-grid">
-            <article class="space-access-card">
+            <article class="space-access-card space-advanced-status-card">
               <div class="space-subsection-heading">
                 <div>
-                  <p class="eyebrow">只在排查时翻</p>
-                  <h3>排查时再看</h3>
+                  <p class="eyebrow">同步状态</p>
+                  <h3>{{ space.syncStatusLabel }}</h3>
                 </div>
-                <span class="badge">{{ space.supabaseAuthMode }}</span>
+                <span class="badge">{{ space.authStore.usesSupabaseSpace ? '云端数据' : '本地体验' }}</span>
               </div>
 
-              <p class="space-card-intro">这些信息主要用于排查同步问题，平时不用反复确认。</p>
-
-              <div class="info-list">
-                <div v-for="item in space.advancedInfoRows" :key="item.label" class="info-row">
-                  <span class="muted">{{ item.label }}</span>
-                  <strong>{{ item.value }}</strong>
-                </div>
-              </div>
+              <p class="space-card-intro">{{ space.wishStore.syncMessage }}</p>
             </article>
+
+            <details class="space-access-card space-fold-card space-debug-fold">
+              <summary class="space-fold-summary space-debug-summary">
+                <div class="space-fold-copy-block">
+                  <p class="eyebrow">同步详情</p>
+                  <h3>连接与数据来源</h3>
+                </div>
+
+                <div class="space-fold-meta">
+                  <span class="badge">{{ space.syncStatusLabel }}</span>
+                  <div class="space-fold-toggle" aria-hidden="true">
+                    <span class="space-fold-arrow"></span>
+                  </div>
+                </div>
+              </summary>
+
+              <div class="space-fold-body space-debug-body">
+                <div class="info-list">
+                  <div v-for="item in space.advancedInfoRows" :key="item.label" class="info-row">
+                    <span class="muted">{{ item.label }}</span>
+                    <strong>{{ item.value }}</strong>
+                  </div>
+                </div>
+              </div>
+            </details>
 
             <article class="space-access-card danger-card">
               <div class="space-subsection-heading">
@@ -996,37 +1149,44 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
         </div>
       </details>
 
-      <article class="page-card space-shell-card space-main-card space-appearance-card" aria-labelledby="space-appearance-title">
-        <div class="space-subsection-heading">
-          <div>
+      <details class="page-card space-shell-card space-fold-card space-main-card space-appearance-card" aria-labelledby="space-appearance-title">
+        <summary class="space-fold-summary space-utility-summary space-appearance-summary">
+          <div class="space-fold-copy-block">
             <p class="eyebrow">外观</p>
-            <h3 id="space-appearance-title" class="space-panel-title">选择这台设备的页面颜色</h3>
+            <h3 id="space-appearance-title">选择这台设备的页面颜色</h3>
           </div>
-          <span class="badge">当前：{{ selectedTheme.label }}</span>
-        </div>
+          <div class="space-fold-meta">
+            <span class="badge">当前：{{ selectedTheme.label }}</span>
+            <div class="space-fold-toggle" aria-hidden="true">
+              <span class="space-fold-arrow"></span>
+            </div>
+          </div>
+        </summary>
 
-        <p class="space-card-intro">这里会保存到当前浏览器。切换正式外观时，会清掉调色工作台的临时草稿。</p>
+        <div class="space-fold-body space-appearance-body">
+          <p class="space-card-intro">这里会保存到当前浏览器。切换正式外观时，会清掉调色工作台的临时草稿。</p>
 
-        <div class="space-appearance-options" role="group" aria-label="外观切换">
-          <button
-            v-for="theme in appearanceThemes"
-            :key="theme.id"
-            type="button"
-            class="space-appearance-option"
-            :class="{ active: selectedAppearanceId === theme.id }"
-            :aria-pressed="selectedAppearanceId === theme.id"
-            @click="chooseAppearanceTheme(theme.id)"
-          >
-            <span class="space-appearance-preview" aria-hidden="true">
-              <span v-for="color in theme.preview" :key="`${theme.id}-${color}`" :style="{ background: color }"></span>
-            </span>
-            <span class="space-appearance-copy">
-              <strong>{{ theme.label }}</strong>
-              <small>{{ theme.description }}</small>
-            </span>
-          </button>
+          <div class="space-appearance-options" role="group" aria-label="外观切换">
+            <button
+              v-for="theme in appearanceThemes"
+              :key="theme.id"
+              type="button"
+              class="space-appearance-option"
+              :class="{ active: selectedAppearanceId === theme.id }"
+              :aria-pressed="selectedAppearanceId === theme.id"
+              @click="chooseAppearanceTheme(theme.id)"
+            >
+              <span class="space-appearance-preview" aria-hidden="true">
+                <span v-for="color in theme.preview" :key="`${theme.id}-${color}`" :style="{ background: color }"></span>
+              </span>
+              <span class="space-appearance-copy">
+                <strong>{{ theme.label }}</strong>
+                <small>{{ theme.description }}</small>
+              </span>
+            </button>
+          </div>
         </div>
-      </article>
+      </details>
     </div>
   </section>
 </template>
@@ -1106,6 +1266,12 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
   background:
     radial-gradient(circle at 100% 0%, var(--accent-panel), transparent 26%),
     linear-gradient(180deg, var(--card-bg), var(--card-bg-soft));
+}
+
+.space-appearance-body {
+  gap: 0.85rem;
+  padding-top: 0.85rem;
+  border-top-style: dashed;
 }
 
 .space-appearance-options {
@@ -1363,7 +1529,7 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
   gap: 0.78rem;
   padding: 0.92rem;
   border-radius: 22px;
-  border: 1px solid rgba(95, 74, 55, 0.08);
+  border: 1px solid rgba(95, 74, 55, 0.24);
   background: rgba(255, 252, 248, 0.78);
 }
 
@@ -1408,12 +1574,8 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
   order: 2;
 }
 
-.space-utility-card-overview {
-  order: 3;
-}
-
 .space-utility-card-advanced {
-  order: 4;
+  order: 3;
 }
 
 .space-reward-stage {
@@ -1655,16 +1817,232 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
   box-shadow: 0 8px 16px rgba(80, 58, 40, 0.035);
 }
 
-.space-utility-card-overview {
-  background: linear-gradient(180deg, rgba(249, 252, 250, 0.94), rgba(240, 243, 237, 0.88));
+.space-utility-card-access {
+  padding: 0.82rem 0.9rem;
+  background: linear-gradient(180deg, rgba(255, 250, 246, 0.94), rgba(245, 237, 228, 0.88));
 }
 
-.space-utility-card-access {
-  background: linear-gradient(180deg, rgba(255, 250, 246, 0.94), rgba(245, 237, 228, 0.88));
+.space-utility-card-access[open] {
+  gap: 0.72rem;
+}
+
+.space-utility-card-access .space-fold-body {
+  padding-top: 0.68rem;
+}
+
+.access-compact-panel,
+.access-panel-body,
+.storage-compact-panel {
+  display: grid;
+}
+
+.access-compact-panel {
+  gap: 0.76rem;
+}
+
+.access-panel-tabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
+  gap: 0.36rem;
+}
+
+.access-panel-tab {
+  display: grid;
+  gap: 0.06rem;
+  min-height: 2.46rem;
+  padding: 0.36rem 0.52rem;
+  border: 1px solid rgba(95, 74, 55, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.42);
+  color: var(--text-main);
+  text-align: left;
+}
+
+.access-panel-tab span {
+  font-family: var(--font-heading);
+  font-size: var(--type-meta-size);
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.access-panel-tab small {
+  overflow: hidden;
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: var(--type-eyebrow-size);
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.access-panel-tab.active {
+  border-color: rgba(142, 116, 88, 0.28);
+  background: rgba(255, 247, 237, 0.78);
+}
+
+.access-panel-body {
+  gap: 0.52rem;
+}
+
+.access-panel-head,
+.access-code-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.access-panel-head h3 {
+  margin: 0;
+}
+
+.access-panel-head .badge,
+.access-code-row .button-subtle {
+  flex: 0 0 auto;
+}
+
+.access-code-row .space-inline-code {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.58rem 0.68rem;
+}
+
+.access-code-row .button-subtle {
+  min-height: 2.62rem;
+  padding-inline: 0.75rem;
+}
+
+.space-utility-card-access .space-card-intro,
+.space-utility-card-access .space-access-form-note {
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line);
+}
+
+.space-utility-card-access .space-access-form {
+  gap: 0.48rem;
+}
+
+.space-utility-card-access .space-form label {
+  gap: 0.34rem;
+}
+
+.space-utility-card-access input {
+  min-height: 2.32rem;
+  padding-block: 0.44rem;
+}
+
+.access-inline-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.access-inline-form button,
+.access-fixed-form button {
+  min-height: 2.32rem;
+  padding-inline: 0.78rem;
+}
+
+.space-utility-card-access .space-access-form-otp {
+  padding-top: 0.55rem;
+}
+
+.access-fixed-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.access-fixed-form button {
+  grid-column: 1 / -1;
 }
 
 .space-utility-card-memory {
   background: linear-gradient(180deg, rgba(252, 249, 242, 0.94), rgba(244, 238, 225, 0.9));
+}
+
+.storage-compact-panel {
+  gap: 0.72rem;
+}
+
+.storage-lead {
+  max-width: 38ch;
+}
+
+.storage-meter {
+  height: 0.42rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(95, 74, 55, 0.11);
+}
+
+.storage-meter-fill {
+  height: 100%;
+  min-width: 0.42rem;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(134, 166, 126, 0.88), rgba(195, 169, 102, 0.86));
+  transition: width 180ms ease-out;
+}
+
+.storage-meter-fill.warning {
+  background: linear-gradient(90deg, rgba(196, 148, 78, 0.9), rgba(198, 117, 80, 0.86));
+}
+
+.storage-meter-fill.danger {
+  background: linear-gradient(90deg, rgba(185, 91, 72, 0.92), rgba(142, 67, 61, 0.9));
+}
+
+.storage-stat-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.46rem 0.68rem;
+  margin: 0;
+}
+
+.storage-stat-item {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+  padding: 0.5rem 0;
+  border-top: 1px solid rgba(95, 74, 55, 0.12);
+}
+
+.storage-stat-item dt,
+.storage-stat-item dd {
+  margin: 0;
+}
+
+.storage-stat-item dt {
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line);
+  letter-spacing: var(--type-meta-spacing);
+}
+
+.storage-stat-item dd {
+  color: var(--text-main);
+  font-family: var(--font-heading);
+  font-size: var(--type-card-title-size);
+  font-weight: 600;
+  line-height: var(--type-card-title-line);
+}
+
+.storage-backup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding-top: 0.68rem;
+  border-top: 1px dashed rgba(95, 74, 55, 0.14);
+}
+
+.storage-backup-copy {
+  display: grid;
+  gap: 0.22rem;
+  min-width: 0;
+}
+
+.storage-backup-row .button-subtle {
+  flex: 0 0 auto;
+  padding-inline: 0.86rem;
 }
 
 .space-utility-card-advanced {
@@ -1925,30 +2303,6 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
   letter-spacing: var(--type-supporting-spacing);
 }
 
-.member-switch-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 0.75rem;
-}
-
-.member-switch-button {
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 0.82rem 1rem;
-  background: rgba(255, 255, 255, 0.82);
-  color: var(--text-main);
-  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
-}
-
-.member-switch-button:hover {
-  transform: translateY(-1px);
-}
-
-.member-switch-button.active {
-  background: rgba(216, 231, 220, 0.8);
-  border-color: rgba(159, 190, 174, 0.44);
-}
-
 .space-member-grid,
 .space-reward-member-grid {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -1979,6 +2333,34 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 .reward-card-copy {
   display: grid;
   gap: 0.22rem;
+  min-width: 0;
+}
+
+.premium-card-aside {
+  display: grid;
+  justify-items: end;
+  gap: 0.2rem;
+  margin-left: auto;
+  max-width: 52%;
+  text-align: right;
+}
+
+.space-page .premium-card-aside .badge {
+  height: 1.5rem;
+  padding: 0 0.5rem;
+  font-size: var(--type-eyebrow-size);
+  line-height: 1.1;
+}
+
+.premium-card-meta {
+  display: grid;
+  justify-items: end;
+  gap: 0.06rem;
+  padding-top: 0;
+}
+
+.space-reward-stage-copy {
+  gap: 0.32rem;
 }
 
 .reward-card-kicker {
@@ -2048,10 +2430,6 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
   background: rgba(255, 255, 255, 0.62);
 }
 
-.space-utility-card .member-switch-button {
-  background: rgba(255, 255, 255, 0.72);
-}
-
 .space-utility-card .space-subsection-heading h3,
 .space-utility-card .space-fold-title {
   font-size: var(--type-l5-size);
@@ -2067,7 +2445,6 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 }
 
 .space-reward-form-grid,
-.space-reward-shelf-grid,
 .space-access-grid {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
@@ -2103,7 +2480,7 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 }
 
 .space-reward-form-grid {
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.85rem;
 }
 
@@ -2133,6 +2510,22 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 
 .reward-form-fields-premium {
   gap: 0.68rem;
+}
+
+.reward-form-card input,
+.reward-form-card select {
+  min-height: 2.68rem;
+  padding: 0.56rem 0.78rem;
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line);
+}
+
+.reward-form-card textarea {
+  min-height: 4.2rem;
+  height: 4.2rem;
+  padding: 0.64rem 0.82rem;
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line);
 }
 
 .reward-form-cost-field {
@@ -2169,6 +2562,37 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
   background: linear-gradient(180deg, var(--panel-bg-strong), var(--card-bg-soft));
 }
 
+.reward-shelf-heading-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.42rem;
+  margin-left: auto;
+}
+
+.reward-shelf-manage-button,
+.reward-compact-manage-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2rem;
+  padding: 0.34rem 0.68rem;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--card-bg-raised) 62%, transparent);
+  color: var(--text-main);
+  font-family: var(--font-body);
+  font-size: var(--type-meta-size);
+  font-weight: 500;
+  line-height: var(--type-meta-line);
+}
+
+.reward-shelf-manage-button:disabled,
+.reward-compact-manage-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .reward-shelf-card-premium {
   background: linear-gradient(180deg, var(--warning-panel), var(--card-bg-soft));
 }
@@ -2180,6 +2604,13 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 
 .reward-card-actions {
   gap: 0.58rem;
+}
+
+.reward-card-actions > .button-subtle {
+  min-height: 2.18rem;
+  padding: 0.46rem 0.82rem;
+  font-size: var(--type-meta-size);
+  line-height: 1.15;
 }
 
 .reward-card-meta {
@@ -2221,11 +2652,6 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
   box-shadow: var(--shadow-card);
 }
 
-.reward-compact-row.is-collapsed {
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.68rem;
-}
-
 .reward-compact-main {
   display: grid;
   gap: 0.18rem;
@@ -2259,11 +2685,28 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
   gap: 0.1rem;
 }
 
-.reward-compact-actions {
-  gap: 0.42rem;
+.reward-compact-manage-actions {
+  display: flex;
   justify-content: flex-end;
-  padding-top: 0;
-  border-top: none;
+  gap: 0.38rem;
+}
+
+.reward-pool-viewer-shell {
+  display: grid;
+  gap: 0.72rem;
+}
+
+.reward-pool-unified-shell {
+  gap: 0.82rem;
+}
+
+.reward-pool-unified-card {
+  display: grid;
+  gap: 0.72rem;
+}
+
+.reward-pool-viewer-members {
+  gap: 0.62rem;
 }
 
 .reward-member-strip {
@@ -2276,6 +2719,32 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
   border: 1px solid var(--card-border-soft);
   background: linear-gradient(135deg, var(--panel-bg-strong), var(--card-bg-soft));
   box-shadow: var(--shadow-card);
+}
+
+.reward-pool-viewer-member {
+  width: 100%;
+  color: var(--text-main);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.reward-pool-viewer-member:hover {
+  transform: translateY(-1px);
+  border-color: var(--active-item-border);
+}
+
+.reward-pool-viewer-member.active {
+  border-color: var(--active-item-border);
+  background:
+    linear-gradient(135deg, var(--card-bg-popover), var(--active-item-bg)),
+    radial-gradient(circle at top right, var(--accent-ring), transparent 34%);
+  box-shadow: 0 14px 28px rgba(88, 66, 45, 0.06);
+}
+
+.reward-pool-viewer-member.active .reward-member-strip-mark {
+  background: var(--active-item-bg);
+  border-color: var(--active-item-border);
 }
 
 .reward-member-strip-person {
@@ -2436,9 +2905,90 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
   background: linear-gradient(180deg, rgba(255, 252, 248, 0.82), rgba(248, 241, 233, 0.76));
 }
 
+
+.reward-editor-card {
+  max-width: 38rem;
+}
+
+.reward-editor-tier-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.34rem;
+  padding: 0.22rem;
+  border: 1px solid var(--card-border-soft);
+  border-radius: 18px;
+  background: var(--panel-bg);
+}
+
+.reward-editor-tier-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.32rem;
+  min-height: 2.46rem;
+  padding: 0.5rem 0.64rem;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  transition: background 180ms ease, border-color 180ms ease, color 180ms ease, transform 180ms ease;
+}
+
+.reward-editor-tier-tab:hover {
+  transform: translateY(-1px);
+  color: var(--text-main);
+}
+
+.reward-editor-tier-tab.active {
+  border-color: var(--active-item-border);
+  background: var(--active-item-bg);
+  color: var(--text-main);
+  box-shadow: var(--shadow-card);
+}
+
+.reward-editor-tier-label {
+  font-family: var(--font-heading);
+  font-size: var(--type-meta-size);
+  font-weight: 600;
+  line-height: var(--type-meta-line);
+}
+
+.reward-editor-tier-note {
+  font-size: var(--type-l7-size);
+  line-height: var(--type-l7-line);
+}
+
+.reward-shelf-tier-tabs {
+  margin: 0.72rem 0;
+}
+
+.reward-editor-form {
+  display: grid;
+  gap: 0.72rem;
+}
 .reward-claim-body {
   display: grid;
   gap: 0.45rem;
+}
+
+.reward-claim-body .reward-card-copy {
+  width: 100%;
+}
+
+.reward-claim-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.72rem;
+}
+
+.reward-claim-title-row strong {
+  min-width: 0;
+}
+
+.reward-claim-title-row .badge {
+  flex: 0 0 auto;
 }
 
 .reward-claim-copy,
@@ -2470,6 +3020,49 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 .space-advanced-shell {
   gap: 1rem;
   background: linear-gradient(180deg, rgba(247, 241, 233, 0.92), rgba(242, 234, 225, 0.88));
+}
+
+.space-advanced-grid {
+  gap: 0.72rem;
+}
+
+.space-advanced-status-card,
+.space-debug-fold,
+.space-advanced-grid .danger-card {
+  gap: 0.62rem;
+}
+
+.space-debug-fold {
+  gap: 0;
+}
+
+.space-debug-fold[open] {
+  gap: 0.68rem;
+}
+
+.space-debug-summary {
+  align-items: center;
+  gap: 0.72rem;
+}
+
+.space-debug-summary h3 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: var(--type-l5-size);
+  font-weight: 600;
+  line-height: var(--type-l5-line);
+}
+
+.space-debug-summary .space-fold-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.52rem;
+}
+
+.space-debug-body {
+  gap: 0.58rem;
+  padding-top: 0.66rem;
+  border-top-style: dashed;
 }
 
 .space-advanced-summary {
@@ -2563,6 +3156,38 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
     align-items: flex-start;
   }
 
+  .reward-editor-card > .space-subsection-heading {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .premium-card .reward-card-head {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .premium-card-aside {
+    max-width: 48%;
+  }
+
+  .reward-editor-card > .space-subsection-heading .badge,
+  .reward-shelf-card > .space-subsection-heading .badge {
+    margin-left: auto;
+  }
+
+  .reward-shelf-card > .space-subsection-heading .badge {
+    margin-left: 0;
+  }
+
+  .reward-shelf-heading-actions {
+    margin-left: auto;
+  }
+
+  .reward-shelf-card > .space-subsection-heading {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
   .space-hero-title {
     max-width: none;
   }
@@ -2598,7 +3223,6 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
   }
 
   .space-reward-form-grid,
-  .space-reward-shelf-grid,
   .space-reward-hub-tabs,
   .space-appearance-options,
   .space-access-grid,
@@ -2635,8 +3259,40 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
     width: 100%;
   }
 
+  .storage-backup-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .storage-backup-row .button-subtle {
+    width: 100%;
+  }
+
   .space-claim-fold-top .space-fold-summary {
     gap: 0.6rem;
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .space-debug-summary {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .space-debug-summary .space-fold-meta {
+    width: auto;
+    margin-left: auto;
+    justify-items: end;
+  }
+
+  .space-claim-fold-top .space-fold-meta {
+    width: auto;
+    margin-left: auto;
+    justify-items: end;
+  }
+
+  .space-claim-fold-top .space-fold-meta .badge-row {
+    display: none;
   }
 
   .space-reward-hub-pills {
@@ -2644,18 +3300,34 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
   }
 
   .space-reward-hub-tab {
-    align-items: flex-start;
+    align-items: center;
+    min-height: 2.78rem;
+    padding: 0.52rem 0.64rem;
+    border-radius: 14px;
   }
 
   .space-reward-hub-tab-copy {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.12rem;
+    align-items: baseline;
+    gap: 0.32rem;
+    flex-wrap: nowrap;
+  }
+
+  .space-reward-hub-tab-note {
+    white-space: nowrap;
   }
 
   .reward-compact-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: start;
+  }
+
+  .reward-compact-meta {
+    justify-items: end;
+    text-align: right;
+  }
+
+  .reward-compact-manage-actions {
+    grid-column: 1 / -1;
   }
 
   .reward-member-strip-list {
@@ -2663,13 +3335,8 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
     gap: 0.58rem;
   }
 
-  .reward-compact-actions,
   .reward-member-strip-preview {
     width: 100%;
-  }
-
-  .reward-compact-actions {
-    justify-content: stretch;
   }
 
   .reward-member-strip-stats {
