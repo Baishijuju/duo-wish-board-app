@@ -6,6 +6,7 @@ const {
   activeReviewTabOption,
   completedWishJournals,
   currentMonthLabel,
+  featuredReviewThreads,
   formatDateLabel,
   formatDateTimeLabel,
   formatMonthLabel,
@@ -29,11 +30,11 @@ const {
   liveMonthlyThreads,
   monthlyNote,
   monthlySnapshots,
-  reviewHeroAside,
   reviewHeroLead,
   reviewHeroTitle,
   reviewMemberSummaries,
   reviewHighlights,
+  reviewSyncState,
   reviewTab,
   reviewTabOptions,
   toggleReviewReactionMembers,
@@ -46,55 +47,74 @@ const {
     <article class="page-card review-story-card">
       <div class="section-heading review-story-head">
         <div class="review-story-copy">
-          <p class="eyebrow">这一册回顾</p>
+          <p class="eyebrow">这一期封面</p>
           <h2 class="section-title">{{ reviewHeroTitle }}</h2>
           <p class="section-copy review-copy">
             {{ reviewHeroLead }}
           </p>
-          <p class="review-story-subnote">{{ reviewHeroAside }}</p>
+          <p class="review-story-subnote">{{ monthlyNote }}</p>
+
+          <div v-if="reviewMemberSummaries.length" class="review-cover-members" aria-label="这一期的成员近况">
+            <article v-for="member in reviewMemberSummaries" :key="member.memberId" :class="['review-cover-member', member.toneClass]">
+              <span>{{ member.memberName }}</span>
+              <small>{{ member.countLabel }}</small>
+            </article>
+          </div>
         </div>
 
         <div class="review-story-tools">
           <span class="badge review-story-pill">{{ currentMonthLabel }} 正在写这一期</span>
+          <div v-if="reviewSyncState" :class="['review-cover-status', `is-${reviewSyncState.tone}`]">
+            <strong>{{ reviewSyncState.title }}</strong>
+            <p>{{ reviewSyncState.message }}</p>
+          </div>
           <div class="button-row review-story-actions">
-            <RouterLink class="button-subtle" :to="{ name: 'space' }">去空间整理奖励</RouterLink>
-            <RouterLink class="button-link" :to="{ name: 'list' }">回清单继续推进</RouterLink>
+            <button class="button-link" type="button" @click="reviewTab = 'live'">翻这一期</button>
+            <RouterLink class="button-subtle" :to="{ name: 'list' }">回清单添一笔</RouterLink>
           </div>
         </div>
       </div>
 
-      <div class="summary-grid review-stats">
+      <div v-if="featuredReviewThreads.length" class="review-cover-threads">
+        <div class="review-cover-thread-head">
+          <div>
+            <p class="eyebrow">这一期最先翻到</p>
+            <h3>最近留下的共同记录</h3>
+          </div>
+          <span class="badge">{{ featuredReviewThreads.length }} 条</span>
+        </div>
+
         <article
-          v-for="highlight in reviewHighlights"
-          :key="highlight.key"
-          :class="['summary-card', highlight.accent, 'review-stat-card', { 'is-primary': highlight.featured }]"
+          v-for="thread in featuredReviewThreads"
+          :key="thread.id"
+          class="review-cover-thread"
         >
-          <span class="review-stat-kicker">{{ highlight.eyebrow }}</span>
-          <p class="review-stat-label">{{ highlight.label }}</p>
-          <strong>{{ highlight.value }}</strong>
-          <p class="review-stat-note">{{ highlight.note }}</p>
+          <div class="review-cover-thread-meta">
+            <span class="review-card-chip">{{ getThreadEventLabel(thread.eventKind) }}</span>
+            <span :class="['review-member-pill', getMemberToneClass(thread.actorId)]">{{ getThreadActorName(thread) }}</span>
+            <time>{{ formatDateTimeLabel(thread.createdAt) }}</time>
+          </div>
+          <h3>{{ getThreadReviewHeadline(thread) }}</h3>
+          <p>{{ getWishTitle(thread) }}</p>
         </article>
       </div>
-    </article>
 
-    <article class="page-card monthly-note-card">
-      <div class="review-note-head">
-        <div>
-          <p class="eyebrow">本月小注</p>
-          <h3>这一期刚刚写到这里</h3>
-        </div>
-        <span class="badge">{{ currentMonthLabel }}</span>
+      <div class="review-highlight-strip">
+        <article v-for="highlight in reviewHighlights" :key="highlight.key" class="review-highlight-pill">
+          <span>{{ highlight.eyebrow }}</span>
+          <strong>{{ highlight.value }}</strong>
+          <p>{{ highlight.label }}，{{ highlight.note }}</p>
+        </article>
       </div>
-      <p>{{ monthlyNote }}</p>
     </article>
 
     <article class="page-card review-tabs-card">
       <div class="review-tab-head">
         <div class="section-heading review-tab-intro">
           <div class="review-tab-copy">
-            <p class="eyebrow">翻到哪一册</p>
-            <h3>这次想先翻哪一册</h3>
-            <p class="section-copy review-tab-note">三种视角读的是同一段日子，只是分别看完成、本月和封存。</p>
+            <p class="eyebrow">继续翻阅</p>
+            <h3>接着翻哪一章</h3>
+            <p class="section-copy review-tab-note">先看正在发生的这一期，再回头看完成和封存。</p>
           </div>
           <div class="review-tab-current">
             <span class="badge">{{ activeReviewTabOption.count }}</span>
@@ -117,20 +137,6 @@ const {
             </div>
             <p>{{ tab.note }}</p>
           </button>
-        </div>
-
-        <div v-if="reviewMemberSummaries.length" class="review-member-band">
-          <article v-for="member in reviewMemberSummaries" :key="member.memberId" :class="['review-member-summary', member.toneClass]">
-            <div class="review-member-summary-head">
-              <div>
-                <p class="review-member-role">{{ member.roleLabel }}</p>
-                <h4>{{ member.memberName }}</h4>
-              </div>
-              <span class="badge review-member-badge">{{ member.countLabel }}</span>
-            </div>
-            <p class="review-member-summary-copy">{{ member.summaryText }}</p>
-            <p class="review-member-summary-meta">{{ member.latestText }}</p>
-          </article>
         </div>
       </div>
 
@@ -184,7 +190,7 @@ const {
             </div>
 
             <div class="button-row review-card-actions">
-              <RouterLink class="button-subtle" :to="{ name: 'wish-detail', params: { id: wish.id } }">打开完整手账</RouterLink>
+              <RouterLink class="button-subtle" :to="{ name: 'wish-detail', params: { id: wish.id } }">翻完整过程</RouterLink>
             </div>
           </article>
         </div>
@@ -258,7 +264,7 @@ const {
               </div>
             </div>
             <div v-if="thread.wishId" class="button-row review-card-actions">
-              <RouterLink class="button-link review-inline-link" :to="{ name: 'wish-detail', params: { id: thread.wishId } }">去这条愿望</RouterLink>
+              <RouterLink class="button-link review-inline-link" :to="{ name: 'wish-detail', params: { id: thread.wishId } }">回到这条愿望</RouterLink>
             </div>
           </article>
         </div>
@@ -380,7 +386,6 @@ const {
 <style scoped>
 .page-stack,
 .review-story-card,
-.monthly-note-card,
 .review-tabs-card,
 .review-panel-stack,
 .review-list,
@@ -388,9 +393,10 @@ const {
 .snapshot-grid,
 .journal-preview-list,
 .snapshot-preview-list,
+.review-cover-threads,
+.review-cover-thread,
 .review-story-copy,
 .review-story-tools,
-.review-note-head,
 .review-tab-head,
 .review-panel-copy,
 .review-preview-shell,
@@ -427,7 +433,9 @@ const {
 
 .review-copy,
 .review-story-subnote,
-.monthly-note-card p,
+.review-cover-status p,
+.review-cover-thread p,
+.review-highlight-pill p,
 .review-item p,
 .journal-card p,
 .snapshot-card p,
@@ -441,7 +449,9 @@ const {
 }
 
 .review-story-subnote,
-.monthly-note-card p,
+.review-cover-status p,
+.review-cover-thread p,
+.review-highlight-pill p,
 .snapshot-card p,
 .empty-card p,
 .journal-preview-item p,
@@ -471,6 +481,143 @@ const {
   justify-items: start;
   align-content: start;
   gap: 0.8rem;
+}
+
+.review-cover-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.95rem;
+}
+
+.review-cover-member {
+  display: inline-grid;
+  gap: 0.1rem;
+  min-height: 3rem;
+  padding: 0.48rem 0.78rem;
+  border-radius: 999px;
+  border: 1px solid var(--warm-border);
+  background: var(--warm-panel);
+}
+
+.review-cover-member.is-rose {
+  border-color: var(--danger-border);
+  background: var(--danger-panel);
+}
+
+.review-cover-member.is-sage {
+  border-color: var(--success-border);
+  background: var(--success-panel);
+}
+
+.review-cover-member span,
+.review-cover-status strong,
+.review-highlight-pill strong {
+  color: var(--text-main);
+  font-family: var(--font-heading);
+  font-size: var(--type-l5-size);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.review-cover-member small {
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line);
+  letter-spacing: var(--type-meta-spacing);
+}
+
+.review-cover-status {
+  display: grid;
+  gap: 0.28rem;
+  max-width: 20rem;
+  padding: 0.78rem 0.88rem;
+  border-radius: 18px;
+  border: 1px solid var(--line-soft);
+  background: var(--warm-panel);
+}
+
+.review-cover-status.is-error {
+  border-color: var(--danger-border);
+  background: var(--danger-panel);
+}
+
+.review-cover-threads {
+  gap: 0.75rem;
+  padding-top: 1.05rem;
+  border-top: 1px solid var(--line-soft);
+}
+
+.review-cover-thread-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.8rem;
+  align-items: start;
+}
+
+.review-cover-thread-head .eyebrow {
+  margin-bottom: 0.38rem;
+}
+
+.review-cover-thread {
+  gap: 0.48rem;
+  padding-top: 0.78rem;
+  border-top: 1px solid var(--line-soft);
+}
+
+.review-cover-thread-head + .review-cover-thread {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.review-cover-thread-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+  align-items: center;
+}
+
+.review-cover-thread-meta time {
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line);
+}
+
+.review-highlight-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.56rem;
+  padding-top: 0.95rem;
+  border-top: 1px solid var(--line-soft);
+}
+
+.review-highlight-pill {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+  padding: 0.7rem 0.78rem;
+  border-radius: 18px;
+  border: 1px solid var(--line-soft);
+  background: var(--warm-panel);
+}
+
+.review-highlight-pill span {
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: var(--type-meta-size);
+  font-weight: 600;
+  letter-spacing: var(--type-meta-spacing);
+  line-height: var(--type-meta-line);
+}
+
+.review-highlight-pill p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .review-story-pill {
@@ -512,32 +659,14 @@ const {
   background: var(--warm-panel);
 }
 
-.monthly-note-card h3,
+.review-cover-thread-head h3,
+.review-cover-thread h3,
 .review-tab-copy h3,
 .review-item h3,
 .journal-card h3,
 .snapshot-card h3,
 .empty-card h3 {
   margin: 0;
-  font-family: var(--font-heading);
-  font-size: var(--type-card-title-size);
-  font-weight: 600;
-  line-height: var(--type-card-title-line);
-  letter-spacing: var(--type-card-title-tracking);
-}
-
-.review-note-head {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-}
-
-.review-note-head .eyebrow {
-  margin-bottom: 0.45rem;
-  font-size: var(--type-l7-size);
-  letter-spacing: 0.14em;
-}
-
-.review-note-head h3 {
   font-family: var(--font-heading);
   font-size: var(--type-card-title-size);
   font-weight: 600;
@@ -555,32 +684,6 @@ const {
   gap: 1rem;
 }
 
-.review-member-band {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.8rem;
-}
-
-.review-member-summary {
-  display: grid;
-  gap: 0.45rem;
-  padding: 0.95rem 1rem;
-  border-radius: 20px;
-  border: 1px solid var(--line);
-  background: var(--warm-panel);
-}
-
-.review-member-summary.is-rose {
-  background: linear-gradient(180deg, var(--danger-panel), var(--warm-panel-strong));
-  border-color: var(--danger-border);
-}
-
-.review-member-summary.is-sage {
-  background: linear-gradient(180deg, var(--success-panel), var(--warm-panel-strong));
-  border-color: var(--success-border);
-}
-
-.review-member-summary-head,
 .review-card-kicker-row,
 .review-preview-meta {
   display: flex;
@@ -588,49 +691,6 @@ const {
   justify-content: space-between;
   gap: 0.45rem 0.7rem;
   align-items: flex-start;
-}
-
-.review-member-role {
-  margin: 0 0 0.2rem;
-  color: var(--text-soft);
-  font-family: var(--font-body);
-  font-size: var(--type-l7-size);
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  line-height: 1.4;
-  text-transform: uppercase;
-}
-
-.review-member-summary h4 {
-  margin: 0;
-  font-family: var(--font-heading);
-  font-size: var(--type-card-title-size);
-  font-weight: 600;
-  line-height: var(--type-card-title-line);
-  letter-spacing: var(--type-card-title-tracking);
-}
-
-.review-member-summary-copy,
-.review-member-summary-meta {
-  margin: 0;
-  font-family: var(--font-body);
-}
-
-.review-member-summary-copy {
-  color: var(--text-muted);
-  font-size: var(--type-body-size);
-  line-height: var(--type-body-line);
-}
-
-.review-member-summary-meta {
-  color: var(--text-soft);
-  font-size: var(--type-supporting-size);
-  line-height: var(--type-supporting-line);
-  letter-spacing: var(--type-supporting-spacing);
-}
-
-.review-member-badge {
-  min-height: 1.9rem;
 }
 
 .review-tab-note {
@@ -780,65 +840,6 @@ const {
 .journal-grid,
 .snapshot-grid {
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-}
-
-.review-stats {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.62rem;
-}
-
-.review-stat-card {
-  display: grid;
-  align-content: start;
-  gap: 0.28rem;
-  min-width: 0;
-  padding: 0.72rem 0.78rem;
-}
-
-.review-stat-card.is-primary {
-  background: linear-gradient(180deg, var(--surface-card), var(--warm-panel-strong));
-}
-
-.review-stat-kicker {
-  position: relative;
-  z-index: 1;
-  margin: 0;
-  color: var(--text-soft);
-  font-family: var(--font-body);
-  font-size: var(--type-meta-size);
-  font-weight: 600;
-  letter-spacing: var(--type-meta-spacing);
-  line-height: var(--type-meta-line);
-}
-
-.review-stat-label,
-.review-stat-note {
-  position: relative;
-  z-index: 1;
-  margin: 0;
-}
-
-.review-stat-label {
-  color: var(--text-muted);
-  font-family: var(--font-body);
-  font-size: var(--type-supporting-size);
-  line-height: 1.35;
-}
-
-.review-stat-card strong {
-  margin: 0.15rem 0 0;
-  font-family: var(--font-heading);
-  font-size: 1.45rem;
-  font-weight: 600;
-  line-height: 1.08;
-  letter-spacing: -0.03em;
-}
-
-.review-stat-note {
-  color: var(--text-soft);
-  font-family: var(--font-body);
-  font-size: var(--type-meta-size);
-  line-height: 1.42;
 }
 
 .review-item,
@@ -1080,12 +1081,10 @@ const {
     align-items: flex-start;
   }
 
-  .review-member-band,
   .review-tab-row {
     grid-template-columns: 1fr;
   }
 
-  .review-note-head,
   .journal-card-band,
   .snapshot-card-band,
   .review-item-head,
@@ -1107,7 +1106,6 @@ const {
     text-align: left;
   }
 
-  .review-member-summary-head,
   .review-card-kicker-row,
   .review-preview-meta {
     justify-content: flex-start;
@@ -1125,22 +1123,17 @@ const {
     justify-content: center;
   }
 
-  .review-stats {
+  .review-highlight-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.56rem;
   }
 
-  .review-stat-card,
-  .review-stat-card.is-primary {
-    grid-column: auto;
+  .review-cover-thread-head {
+    grid-template-columns: 1fr;
   }
 
-  .review-stat-card {
+  .review-highlight-pill {
     padding: 0.66rem 0.68rem;
-  }
-
-  .review-stat-card strong {
-    font-size: 1.24rem;
   }
 }
 </style>

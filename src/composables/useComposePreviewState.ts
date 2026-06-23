@@ -1,19 +1,6 @@
 import { computed } from 'vue'
 import { useComposeWishForm } from './useComposeWishForm'
 
-export const scopeOptions = [
-  {
-    value: 'shared',
-    label: '一起看见',
-    description: '这条愿望会一起被看见，也更容易一起往前推。',
-  },
-  {
-    value: 'private',
-    label: '先留给自己',
-    description: '先只留给自己，等想公开的时候再说。',
-  },
-] as const
-
 export const priorityOptions = [
   {
     value: 'high',
@@ -70,20 +57,11 @@ export function useComposePreviewState(options: UseComposePreviewStateOptions = 
       ?? authStore.currentMember?.displayName
       ?? '当前成员'
   })
-  const selectedScopeOption = computed(() => {
-    return scopeOptions.find((option) => option.value === draft.value.scope) ?? scopeOptions[0]
-  })
   const selectedPriorityOption = computed(() => {
     return priorityOptions.find((option) => option.value === draft.value.priority) ?? priorityOptions[1]
   })
   const selectedProgressOption = computed(() => {
     return progressOptions.find((option) => option.value === draft.value.progressMode) ?? progressOptions[0]
-  })
-  const selectedScopeLabel = computed(() => {
-    return selectedScopeOption.value.label
-  })
-  const selectedScopeDescription = computed(() => {
-    return selectedScopeOption.value.description
   })
   const selectedPriorityLabel = computed(() => {
     return selectedPriorityOption.value.label
@@ -98,7 +76,25 @@ export function useComposePreviewState(options: UseComposePreviewStateOptions = 
     return selectedProgressOption.value.description
   })
   const initialStepCount = computed(() => {
-    return initialStepDrafts.value.map((step) => step.trim()).filter(Boolean).length
+    return initialStepDrafts.value.map((step) => step.title.trim()).filter(Boolean).length
+  })
+  const progressStarCoinTotal = computed(() => {
+    if (draft.value.progressMode === 'count') {
+      return Math.max(0, draft.value.progressTarget) * Math.max(0, draft.value.progressStarCoinValue)
+    }
+
+    if (draft.value.progressMode === 'steps' && !editingWish.value) {
+      return initialStepDrafts.value.reduce((total, step) => {
+        return step.title.trim() ? total + Math.max(0, Number(step.starCoinValue ?? 0) || 0) : total
+      }, 0)
+    }
+
+    return 0
+  })
+  const completionStarCoinBonus = computed(() => Math.max(0, Number(draft.value.completionStarCoinBonus) || 0))
+  const starCoinTotalSummary = computed(() => {
+    const total = progressStarCoinTotal.value + completionStarCoinBonus.value
+    return `${formatStarCoinAmount(progressStarCoinTotal.value)} + ${formatStarCoinAmount(completionStarCoinBonus.value)} = ${formatStarCoinAmount(total)} 星星币`
   })
   const draftTitlePreview = computed(() => {
     return draft.value.title.trim() || '这条愿望还在等名字'
@@ -124,7 +120,7 @@ export function useComposePreviewState(options: UseComposePreviewStateOptions = 
       }
 
       const unitText = draft.value.progressUnit.trim() || '次'
-      return `现在 ${draft.value.progressCurrent}/${draft.value.progressTarget} ${unitText}`
+      return `现在 ${draft.value.progressCurrent}/${draft.value.progressTarget} ${unitText}，每 ${unitText} ${formatStarCoinAmount(draft.value.progressStarCoinValue)} 星星币`
     }
 
     if (draft.value.progressMode === 'steps') {
@@ -132,7 +128,7 @@ export function useComposePreviewState(options: UseComposePreviewStateOptions = 
         return '步骤继续留在详情页'
       }
 
-      return initialStepCount.value ? `先拆成 ${initialStepCount.value} 步` : '还没写起步步骤'
+      return initialStepCount.value ? `先拆成 ${initialStepCount.value} 步，共 ${formatStarCoinAmount(progressStarCoinTotal.value)} 星星币` : '还没写起步步骤'
     }
 
     return '先只写愿望本身'
@@ -166,16 +162,19 @@ export function useComposePreviewState(options: UseComposePreviewStateOptions = 
     progressSummary,
     progressOptions,
     priorityOptions,
-    scopeOptions,
     selectedOwnerLabel,
     selectedPriorityDescription,
     selectedPriorityLabel,
     selectedProgressDescription,
     selectedProgressLabel,
-    selectedScopeDescription,
-    selectedScopeLabel,
+    starCoinTotalSummary,
     viewerName,
   }
+}
+
+function formatStarCoinAmount(value: number) {
+  const roundedValue = Math.round(value * 10) / 10
+  return Number.isInteger(roundedValue) ? `${roundedValue}` : roundedValue.toFixed(1)
 }
 
 function getLocalDateTimestamp(dateValue: string) {

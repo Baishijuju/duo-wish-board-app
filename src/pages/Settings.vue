@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watchEffect } from 'vue'
-import { RouterLink } from 'vue-router'
 import { useAppearanceTheme, type AppearanceThemeId } from '../composables/useAppearanceTheme'
 import { clearStoredColorTokenDraft } from '../composables/useColorTokenDashboard'
 import { useSpacePageState } from '../composables/useSpacePageState'
@@ -13,14 +12,53 @@ type RewardHubTab = 'claim' | 'editor'
 type RewardEditorTier = 'daily' | 'premium'
 type RewardPoolScope = 'mine' | 'others'
 type AccessPanel = 'invite' | 'email' | 'fixedEmail'
+type RewardKeywordKind = 'personal' | 'shared' | 'assist'
+type RewardKeywordSortMode = 'default' | 'cost' | 'deposited' | 'remaining' | 'popular' | 'newest'
+type RewardKeywordOwnerFilter = 'all' | RewardKeywordKind
+type RewardKeywordStatusFilter = 'all' | 'claimable' | 'saving' | 'depositable'
+type RewardKeywordEntry = {
+  item: RewardPoolItem
+  kind: RewardKeywordKind
+  ownerName: string
+}
 
 const rewardHubTab = ref<RewardHubTab>('claim')
-const rewardEditorTier = ref<RewardEditorTier>('daily')
-const rewardPoolTier = ref<RewardEditorTier>('daily')
 const rewardPoolScope = ref<RewardPoolScope>('mine')
 const rewardPoolViewerMemberId = ref<string | null>(null)
+const selectedRewardKeywordId = ref<string | null>(null)
+const rewardKeywordSortMode = ref<RewardKeywordSortMode>('default')
+const rewardKeywordOwnerFilter = ref<RewardKeywordOwnerFilter>('all')
+const rewardKeywordStatusFilter = ref<RewardKeywordStatusFilter>('all')
+const rewardCostMinDraft = ref('')
+const rewardCostMaxDraft = ref('')
+const rewardDepositedMinDraft = ref('')
+const rewardDepositedMaxDraft = ref('')
+const isRewardRangeFilterOpen = ref(false)
 const isRewardShelfManaging = ref(false)
 const activeAccessPanel = ref<AccessPanel>('invite')
+
+const rewardKeywordSortTabs: { label: string; value: RewardKeywordSortMode }[] = [
+  { label: '默认', value: 'default' },
+  { label: '币数', value: 'cost' },
+  { label: '已存', value: 'deposited' },
+  { label: '快满', value: 'remaining' },
+  { label: '热门', value: 'popular' },
+  { label: '上新', value: 'newest' },
+]
+
+const rewardKeywordOwnerTabs: { label: string; value: RewardKeywordOwnerFilter }[] = [
+  { label: '全部', value: 'all' },
+  { label: '我的', value: 'personal' },
+  { label: '对方', value: 'assist' },
+  { label: '共同', value: 'shared' },
+]
+
+const rewardKeywordStatusTabs: { label: string; value: RewardKeywordStatusFilter }[] = [
+  { label: '全部状态', value: 'all' },
+  { label: '可领取', value: 'claimable' },
+  { label: '未存满', value: 'saving' },
+  { label: '我能存', value: 'depositable' },
+]
 
 const rewardHubTabs = [
   {
@@ -32,19 +70,6 @@ const rewardHubTabs = [
     label: '编辑',
     note: '写入 / 整理 / 奖池',
     value: 'editor' as const,
-  },
-]
-
-const rewardEditorTierTabs = [
-  {
-    label: '日常奖励',
-    note: '小步骤',
-    value: 'daily' as const,
-  },
-  {
-    label: '高档奖励',
-    note: '大日子',
-    value: 'premium' as const,
   },
 ]
 
@@ -97,11 +122,7 @@ const activeRewardHubTitle = computed(() => {
 
 const activeRewardHubLead = computed(() => {
   if (rewardHubTab.value === 'claim') {
-    if (space.pendingSmallRewardUnits) {
-      return `待领 ${space.pendingSmallRewardUnits} 份，兑换和最近记录也都收在这里。`
-    }
-
-    return '待领、兑换和最近记录都收在这里。'
+    return '愿望推进得到的星星币，会在这里换成真正想要的奖励。'
   }
 
   if (space.currentMemberRewardCount) {
@@ -114,35 +135,29 @@ const activeRewardHubLead = computed(() => {
 const activeRewardHubPills = computed(() => {
   if (rewardHubTab.value === 'claim') {
     return [
-      `待领 ${space.pendingSmallRewardUnits}`,
-      `可换 ${space.currentMemberPremiumExchangeRewards.length}`,
+      `星币 ${space.currentMemberStarCoins}`,
+      `奖池 ${rewardKeywordEntries.value.length}`,
+      `可领 ${space.claimableRewardEntries.length}`,
       `记录 ${space.recentRewardClaims.length}`,
     ]
   }
 
   return [
-    `日常 ${space.currentMemberDailyRewards.length}`,
-    `高档 ${space.currentMemberPremiumRewards.length}`,
+    `奖励 ${space.currentMemberPremiumRewards.length}`,
     `星币 ${space.currentMemberStarCoins}`,
   ]
 })
 
 function createRewardDisplayEntries(rewards: RewardPoolItem[], tier: RewardEditorTier) {
   return rewards.map((item) => ({
-    fallbackNote: tier === 'daily'
-      ? '这条日常奖励还没有补充说明。'
-      : '这条高档奖励还没有补充说明。',
+    fallbackNote: '这条奖励还没有补充说明。',
     item,
-    label: tier === 'daily' ? '日常奖励' : '高档奖励',
-    metaLines: tier === 'daily'
-      ? [
-          `已领 ${space.wishStore.getRewardItemClaimCount(item)} 份`,
-          '小推进可领',
-        ]
-      : [
-          `已领 ${space.wishStore.getRewardItemClaimCount(item)} 份`,
-          item.starCoinCost > 0 ? `${item.starCoinCost} 星星币兑换` : '详情页领取',
-        ],
+    label: '星币奖励',
+    metaLines: [
+      item.scope === 'shared' ? '共同奖励' : '个人奖励',
+      `已换 ${space.wishStore.getRewardItemClaimCount(item)} 份`,
+      item.starCoinCost > 0 ? `${item.starCoinCost} 星星币兑换` : '还没有设置价格',
+    ],
     tier,
   }))
 }
@@ -153,7 +168,7 @@ const rewardPoolViewerMembers = computed(() => {
   return space.rewardPoolByMember.map((item) => ({
     ...item,
     isCurrentMember: item.member.id === currentSpaceMemberId.value,
-    rewardCount: item.dailyRewards.length + item.premiumRewards.length,
+    rewardCount: item.premiumRewards.length,
   }))
 })
 
@@ -169,8 +184,11 @@ const activeRewardPoolViewerMember = computed(() => {
 const activeRewardPoolEntries = computed(() => {
   if (rewardPoolScope.value === 'mine') {
     return createRewardDisplayEntries(
-      rewardPoolTier.value === 'daily' ? space.currentMemberDailyRewards : space.currentMemberPremiumRewards,
-      rewardPoolTier.value,
+      [
+        ...space.currentMemberPremiumRewards,
+        ...space.sharedPremiumRewards.filter((item) => item.ownerId === currentSpaceMemberId.value),
+      ],
+      'premium',
     )
   }
 
@@ -180,10 +198,7 @@ const activeRewardPoolEntries = computed(() => {
     return []
   }
 
-  return createRewardDisplayEntries(
-    rewardPoolTier.value === 'daily' ? activeMember.dailyRewards : activeMember.premiumRewards,
-    rewardPoolTier.value,
-  )
+  return createRewardDisplayEntries(activeMember.premiumRewards, 'premium')
 })
 
 const activeRewardPoolMemberName = computed(() => {
@@ -194,10 +209,10 @@ const activeRewardPoolMemberName = computed(() => {
 
 const activeRewardPoolEyebrow = computed(() => {
   if (rewardPoolScope.value === 'mine') {
-    return rewardPoolTier.value === 'daily' ? '我的日常奖励' : '我的高档奖励'
+    return '我的星币奖励'
   }
 
-  return rewardPoolTier.value === 'daily' ? '对方日常奖励' : '对方高档奖励'
+  return '对方星币奖励'
 })
 
 const activeRewardPoolEmpty = computed(() => {
@@ -209,7 +224,7 @@ const activeRewardPoolEmpty = computed(() => {
   }
 
   const ownerLabel = rewardPoolScope.value === 'mine' ? '你' : '对方'
-  const tierLabel = rewardPoolTier.value === 'daily' ? '日常奖励' : '高档奖励'
+  const tierLabel = '星币奖励'
 
   return {
     copy: `${ownerLabel}还没有${tierLabel}。`,
@@ -217,37 +232,149 @@ const activeRewardPoolEmpty = computed(() => {
   }
 })
 
-const activeRewardEditor = computed(() => {
-  if (rewardEditorTier.value === 'daily') {
-    const isEditing = Boolean(space.editingDailyRewardId)
+const rewardKeywordEntries = computed<RewardKeywordEntry[]>(() => [
+  ...space.rewardTaskEntries,
+  ...space.assistRewardEntries,
+])
 
-    return {
-      badge: '给小步骤',
-      eyebrow: '日常这一层',
-      heading: '日常奖励',
-      isEditing,
-      submitCopy: isEditing ? '正在修改日常奖励。' : '保存后会进入日常奖池。',
-      submitLabel: space.isSubmittingReward ? '保存中...' : isEditing ? '更新日常奖励' : '加入日常奖励',
-      support: '写一个适合小推进的轻奖励。',
-    }
+function parseRewardRangeValue(value: string) {
+  if (!value.trim()) {
+    return null
   }
 
+  const normalizedValue = Number(value)
+  return Number.isFinite(normalizedValue) && normalizedValue >= 0 ? normalizedValue : null
+}
+
+function isWithinRewardRange(value: number, minValue: number | null, maxValue: number | null) {
+  return (minValue === null || value >= minValue) && (maxValue === null || value <= maxValue)
+}
+
+function getRewardCreatedAtTime(entry: RewardKeywordEntry) {
+  const timestamp = new Date(entry.item.createdAt).getTime()
+  return Number.isFinite(timestamp) ? timestamp : 0
+}
+
+function getRewardCreatedDays(entry: RewardKeywordEntry) {
+  const timestamp = getRewardCreatedAtTime(entry)
+
+  if (!timestamp) {
+    return 0
+  }
+
+  return Math.max(Math.floor((Date.now() - timestamp) / (24 * 60 * 60 * 1000)), 0)
+}
+
+function getRewardClaimCount(entry: RewardKeywordEntry) {
+  return space.wishStore.getRewardItemClaimCount(entry.item)
+}
+
+function getRewardDepositedAmount(entry: RewardKeywordEntry) {
+  return space.getRewardDepositedStarCoins(entry.item)
+}
+
+function getRewardRemainingAmount(entry: RewardKeywordEntry) {
+  return space.getRewardRemainingStarCoins(entry.item)
+}
+
+function isRewardEntryClaimable(entry: RewardKeywordEntry) {
+  return entry.kind !== 'assist' && space.canRedeemPremiumReward(entry.item)
+}
+
+const hasRewardKeywordFilters = computed(() => {
+  return rewardKeywordOwnerFilter.value !== 'all'
+    || rewardKeywordStatusFilter.value !== 'all'
+    || Boolean(rewardCostMinDraft.value)
+    || Boolean(rewardCostMaxDraft.value)
+    || Boolean(rewardDepositedMinDraft.value)
+    || Boolean(rewardDepositedMaxDraft.value)
+})
+
+const visibleRewardKeywordEntries = computed(() => {
+  const costMin = parseRewardRangeValue(rewardCostMinDraft.value)
+  const costMax = parseRewardRangeValue(rewardCostMaxDraft.value)
+  const depositedMin = parseRewardRangeValue(rewardDepositedMinDraft.value)
+  const depositedMax = parseRewardRangeValue(rewardDepositedMaxDraft.value)
+
+  const filteredEntries = rewardKeywordEntries.value.filter((entry) => {
+    if (rewardKeywordOwnerFilter.value !== 'all' && entry.kind !== rewardKeywordOwnerFilter.value) {
+      return false
+    }
+
+    if (rewardKeywordStatusFilter.value === 'claimable' && !isRewardEntryClaimable(entry)) {
+      return false
+    }
+
+    if (rewardKeywordStatusFilter.value === 'saving' && getRewardRemainingAmount(entry) <= 0) {
+      return false
+    }
+
+    if (rewardKeywordStatusFilter.value === 'depositable' && !space.canDepositReward(entry.item, 1)) {
+      return false
+    }
+
+    return isWithinRewardRange(entry.item.starCoinCost, costMin, costMax)
+      && isWithinRewardRange(getRewardDepositedAmount(entry), depositedMin, depositedMax)
+  })
+
+  return [...filteredEntries].sort((left, right) => {
+    if (rewardKeywordSortMode.value === 'cost') {
+      return left.item.starCoinCost - right.item.starCoinCost || left.item.title.localeCompare(right.item.title)
+    }
+
+    if (rewardKeywordSortMode.value === 'deposited') {
+      return getRewardDepositedAmount(right) - getRewardDepositedAmount(left) || left.item.title.localeCompare(right.item.title)
+    }
+
+    if (rewardKeywordSortMode.value === 'remaining') {
+      return getRewardRemainingAmount(left) - getRewardRemainingAmount(right) || left.item.starCoinCost - right.item.starCoinCost
+    }
+
+    if (rewardKeywordSortMode.value === 'popular') {
+      return getRewardClaimCount(right) - getRewardClaimCount(left) || left.item.title.localeCompare(right.item.title)
+    }
+
+    if (rewardKeywordSortMode.value === 'newest') {
+      return getRewardCreatedAtTime(right) - getRewardCreatedAtTime(left) || left.item.title.localeCompare(right.item.title)
+    }
+
+    return 0
+  })
+})
+
+const selectedRewardEntry = computed(() => {
+  if (!visibleRewardKeywordEntries.value.length) {
+    return null
+  }
+
+  return visibleRewardKeywordEntries.value.find((entry) => entry.item.id === selectedRewardKeywordId.value) || visibleRewardKeywordEntries.value[0]
+})
+
+watchEffect(() => {
+  if (!visibleRewardKeywordEntries.value.length) {
+    selectedRewardKeywordId.value = null
+    return
+  }
+
+  if (!visibleRewardKeywordEntries.value.some((entry) => entry.item.id === selectedRewardKeywordId.value)) {
+    selectedRewardKeywordId.value = visibleRewardKeywordEntries.value[0].item.id
+  }
+})
+
+const activeRewardEditor = computed(() => {
   const isEditing = Boolean(space.editingPremiumRewardId)
 
   return {
-    badge: '给大日子',
-    eyebrow: '留给大日子',
-    heading: '高档奖励',
+    eyebrow: '星币奖励池',
+    heading: '奖励',
     isEditing,
-    submitCopy: isEditing ? '正在修改高档奖励。' : '保存后会进入高档奖池。',
-    submitLabel: space.isSubmittingReward ? '保存中...' : isEditing ? '更新高档奖励' : '加入高档奖励',
-    support: '留给大事，也可以写上星星币价格慢慢换。',
+    submitCopy: isEditing ? '正在修改这条奖励。' : '保存后会进入星币奖励池。',
+    submitLabel: space.isSubmittingReward ? '保存中...' : isEditing ? '更新奖励' : '加入奖励',
   }
 })
 
 function openRewardEditor(itemId: string, tier: 'daily' | 'premium') {
   rewardHubTab.value = 'editor'
-  rewardEditorTier.value = tier
   space.startEditingReward(itemId, tier)
 }
 
@@ -265,15 +392,103 @@ function chooseRewardPoolScope(scope: RewardPoolScope) {
 }
 
 function submitActiveRewardDraft() {
-  if (rewardEditorTier.value === 'daily') {
-    return space.submitDailyReward()
-  }
-
   return space.submitPremiumReward()
 }
 
 function resetActiveRewardDraft() {
-  space.resetRewardDraft(rewardEditorTier.value)
+  space.resetRewardDraft('premium')
+}
+
+function openRewardManager() {
+  rewardHubTab.value = 'editor'
+}
+
+function selectRewardKeyword(entry: RewardKeywordEntry) {
+  selectedRewardKeywordId.value = entry.item.id
+}
+
+function chooseRewardKeywordSortMode(mode: RewardKeywordSortMode) {
+  rewardKeywordSortMode.value = mode
+}
+
+function chooseRewardKeywordOwnerFilter(filter: RewardKeywordOwnerFilter) {
+  rewardKeywordOwnerFilter.value = filter
+}
+
+function chooseRewardKeywordStatusFilter(filter: RewardKeywordStatusFilter) {
+  rewardKeywordStatusFilter.value = filter
+}
+
+function clearRewardKeywordFilters() {
+  rewardKeywordOwnerFilter.value = 'all'
+  rewardKeywordStatusFilter.value = 'all'
+  rewardCostMinDraft.value = ''
+  rewardCostMaxDraft.value = ''
+  rewardDepositedMinDraft.value = ''
+  rewardDepositedMaxDraft.value = ''
+}
+
+function getRewardKeywordMetricLabel(entry: RewardKeywordEntry) {
+  if (rewardKeywordSortMode.value === 'deposited') {
+    return `已存 ${getRewardDepositedAmount(entry)}`
+  }
+
+  if (rewardKeywordSortMode.value === 'remaining') {
+    return getRewardRemainingAmount(entry) > 0 ? `还差 ${getRewardRemainingAmount(entry)}` : '可领'
+  }
+
+  if (rewardKeywordSortMode.value === 'popular') {
+    return `领 ${getRewardClaimCount(entry)}`
+  }
+
+  if (rewardKeywordSortMode.value === 'newest') {
+    const days = getRewardCreatedDays(entry)
+    return days <= 0 ? '今天新' : `${days}天新`
+  }
+
+  return `${entry.item.starCoinCost}星星币`
+}
+
+function getRewardKeywordOwnerLabel(entry: RewardKeywordEntry) {
+  if (entry.kind === 'assist') {
+    return `${entry.ownerName}的奖励`
+  }
+
+  return space.getRewardTaskKindLabel(entry.kind)
+}
+
+function getSelectedRewardPrimaryLabel(entry: RewardKeywordEntry) {
+  if (entry.kind === 'assist' && space.canRedeemPremiumReward(entry.item)) {
+    return '等待对方领取'
+  }
+
+  return space.getRewardPrimaryActionLabel(entry)
+}
+
+function canUseSelectedRewardPrimaryAction(entry: RewardKeywordEntry) {
+  if (entry.kind === 'assist' && space.canRedeemPremiumReward(entry.item)) {
+    return false
+  }
+
+  if (space.canRedeemPremiumReward(entry.item)) {
+    return true
+  }
+
+  return space.getRecommendedDepositAmount(entry.item) > 0
+}
+
+function runRewardPrimaryAction(entry: RewardKeywordEntry) {
+  if (entry.kind !== 'assist' && space.canRedeemPremiumReward(entry.item)) {
+    return space.redeemPremiumReward(entry.item.id)
+  }
+
+  const amount = space.getRecommendedDepositAmount(entry.item)
+
+  if (amount <= 0) {
+    return undefined
+  }
+
+  return space.depositRewardStarCoins(entry.item.id, amount)
 }
 
 function chooseAppearanceTheme(id: AppearanceThemeId) {
@@ -337,316 +552,212 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
           </button>
         </div>
 
-        <p v-if="space.rewardMessage && rewardHubTab === 'claim'" :class="['feedback-message', 'space-reward-feedback', space.rewardTone]">{{ space.rewardMessage }}</p>
-
         <template v-if="rewardHubTab === 'claim'">
-          <article v-if="space.currentCatchMoment" class="space-current-catch-card">
-            <div class="space-current-catch-copy">
-              <p class="eyebrow">{{ space.currentCatchMoment.eyebrow }}</p>
-              <h3 class="space-fold-title">{{ space.currentCatchMoment.title }}</h3>
-              <p class="space-fold-copy">{{ space.currentCatchMoment.note }}</p>
+          <section class="reward-command-panel">
+            <div class="reward-command-summary">
+              <article class="reward-command-stat reward-command-stat-primary">
+                <span>手里星币</span>
+                <strong>{{ space.currentMemberStarCoins }}</strong>
+              </article>
+              <article class="reward-command-stat">
+                <span>奖池词条</span>
+                <strong>{{ visibleRewardKeywordEntries.length }} / {{ rewardKeywordEntries.length }}</strong>
+              </article>
+              <article class="reward-command-stat reward-command-stat-wide">
+                <span>现在可领</span>
+                <strong>{{ space.claimableRewardEntries.length }}</strong>
+              </article>
             </div>
 
-            <div class="space-current-catch-meta">
-              <span class="badge">{{ space.currentCatchMoment.sourceLabel }}</span>
-              <span class="badge">{{ space.currentCatchMoment.sourceMeta }}</span>
+            <div class="reward-command-actions">
+              <button class="button-subtle" type="button" @click="openRewardManager">管理奖励</button>
+              <button v-if="!rewardKeywordEntries.length" class="button-solid" type="button" @click="openRewardManager">写一条奖励</button>
+            </div>
+          </section>
+
+          <p v-if="space.rewardMessage" :class="['feedback-message', 'space-reward-feedback', space.rewardTone]">{{ space.rewardMessage }}</p>
+
+          <section v-if="rewardKeywordEntries.length" class="reward-keyword-controls" aria-label="奖励奖池筛选排序">
+            <div class="reward-keyword-control-row">
+              <span class="reward-keyword-control-label">排序</span>
+              <div class="reward-keyword-pill-row" role="list" aria-label="排序方式">
+                <button
+                  v-for="tab in rewardKeywordSortTabs"
+                  :key="tab.value"
+                  class="reward-filter-pill"
+                  :class="{ active: rewardKeywordSortMode === tab.value }"
+                  type="button"
+                  @click="chooseRewardKeywordSortMode(tab.value)"
+                >
+                  {{ tab.label }}
+                </button>
+              </div>
             </div>
 
-            <div class="button-row space-current-catch-actions">
-              <button class="button-solid" type="button" @click="void space.claimCurrentCatchMoment()">
-                {{ space.currentCatchMoment.actionLabel }}
+            <div class="reward-keyword-control-row">
+              <span class="reward-keyword-control-label">归属</span>
+              <div class="reward-keyword-pill-row" role="list" aria-label="奖励归属筛选">
+                <button
+                  v-for="tab in rewardKeywordOwnerTabs"
+                  :key="tab.value"
+                  class="reward-filter-pill"
+                  :class="{ active: rewardKeywordOwnerFilter === tab.value }"
+                  type="button"
+                  @click="chooseRewardKeywordOwnerFilter(tab.value)"
+                >
+                  {{ tab.label }}
+                </button>
+              </div>
+            </div>
+
+            <div class="reward-keyword-control-row">
+              <span class="reward-keyword-control-label">状态</span>
+              <div class="reward-keyword-pill-row" role="list" aria-label="奖励状态筛选">
+                <button
+                  v-for="tab in rewardKeywordStatusTabs"
+                  :key="tab.value"
+                  class="reward-filter-pill"
+                  :class="{ active: rewardKeywordStatusFilter === tab.value }"
+                  type="button"
+                  @click="chooseRewardKeywordStatusFilter(tab.value)"
+                >
+                  {{ tab.label }}
+                </button>
+              </div>
+            </div>
+
+            <div class="reward-keyword-control-actions">
+              <button class="reward-filter-pill reward-range-toggle" type="button" :class="{ active: isRewardRangeFilterOpen }" @click="isRewardRangeFilterOpen = !isRewardRangeFilterOpen">
+                区间
               </button>
+              <button v-if="hasRewardKeywordFilters" class="reward-filter-pill" type="button" @click="clearRewardKeywordFilters">清空</button>
+            </div>
+
+            <div v-if="isRewardRangeFilterOpen" class="reward-range-panel">
+              <label>
+                <span>需要星币</span>
+                <input v-model="rewardCostMinDraft" type="number" min="0" inputmode="numeric" placeholder="最小" />
+                <input v-model="rewardCostMaxDraft" type="number" min="0" inputmode="numeric" placeholder="最大" />
+              </label>
+              <label>
+                <span>已存星币</span>
+                <input v-model="rewardDepositedMinDraft" type="number" min="0" inputmode="numeric" placeholder="最小" />
+                <input v-model="rewardDepositedMaxDraft" type="number" min="0" inputmode="numeric" placeholder="最大" />
+              </label>
+            </div>
+          </section>
+
+          <section v-if="rewardKeywordEntries.length" class="reward-keyword-shell">
+            <div class="reward-keyword-head">
+              <div>
+                <p class="eyebrow">奖池</p>
+                <h3>点一个奖励，看它现在能不能兑现</h3>
+              </div>
+              <span class="badge">{{ visibleRewardKeywordEntries.length }} / {{ rewardKeywordEntries.length }} 条</span>
+            </div>
+
+            <div v-if="visibleRewardKeywordEntries.length" class="reward-keyword-cloud" aria-label="奖励词条奖池">
+              <button
+                v-for="entry in visibleRewardKeywordEntries"
+                :key="entry.item.id"
+                class="reward-keyword-chip"
+                :class="[
+                  `reward-keyword-chip-${entry.kind}`,
+                  { active: selectedRewardEntry?.item.id === entry.item.id },
+                ]"
+                type="button"
+                @click="selectRewardKeyword(entry)"
+              >
+                <span class="reward-keyword-title">{{ entry.item.title }}</span>
+                <span class="reward-keyword-metric">{{ getRewardKeywordMetricLabel(entry) }}</span>
+              </button>
+            </div>
+
+            <div v-else class="space-empty-card reward-filter-empty">
+              <strong>没有符合条件的奖励</strong>
+              <p>试试放宽币数区间，或清空筛选。</p>
+              <button class="button-subtle" type="button" @click="clearRewardKeywordFilters">清空筛选</button>
+            </div>
+          </section>
+
+          <article v-if="selectedRewardEntry" class="reward-selected-card" :class="[`reward-selected-card-${selectedRewardEntry.kind}`]">
+            <div class="reward-task-card-head">
+              <div>
+                <span class="reward-card-kicker">{{ getRewardKeywordOwnerLabel(selectedRewardEntry) }}</span>
+                <strong>{{ selectedRewardEntry.item.title }}</strong>
+              </div>
+              <span class="badge">{{ selectedRewardEntry.item.starCoinCost }} 星币</span>
+            </div>
+
+            <div class="reward-deposit-progress" :aria-label="`已存入 ${space.getRewardDepositPercent(selectedRewardEntry.item)}%`">
+              <span :style="{ width: `${space.getRewardDepositPercent(selectedRewardEntry.item)}%` }"></span>
+            </div>
+
+            <p class="space-meta-line reward-card-meta">
+              <span>已存 {{ space.getRewardDepositedStarCoins(selectedRewardEntry.item) }} / {{ selectedRewardEntry.item.starCoinCost }}</span>
+              <span>{{ space.getRewardRemainingStarCoins(selectedRewardEntry.item) > 0 ? `还差 ${space.getRewardRemainingStarCoins(selectedRewardEntry.item)} 枚` : '已经存满' }}</span>
+              <span>已领 {{ space.wishStore.getRewardItemClaimCount(selectedRewardEntry.item) }} 份</span>
+            </p>
+
+            <div class="reward-task-actions">
+              <button
+                class="button-solid reward-primary-action"
+                type="button"
+                :disabled="space.processingRewardItemId === selectedRewardEntry.item.id || !canUseSelectedRewardPrimaryAction(selectedRewardEntry)"
+                @click="void runRewardPrimaryAction(selectedRewardEntry)"
+              >
+                {{ space.processingRewardItemId === selectedRewardEntry.item.id ? '处理中...' : getSelectedRewardPrimaryLabel(selectedRewardEntry) }}
+              </button>
+              <div
+                v-if="!space.canRedeemPremiumReward(selectedRewardEntry.item)"
+                class="reward-quick-chip-row"
+                :aria-label="selectedRewardEntry.kind === 'assist' ? '快捷助力金额' : '快捷存入金额'"
+              >
+                <button
+                  v-for="amount in [1, 3, 5]"
+                  :key="amount"
+                  class="reward-quick-chip"
+                  type="button"
+                  :disabled="space.processingRewardItemId === selectedRewardEntry.item.id || !space.canDepositReward(selectedRewardEntry.item, amount)"
+                  @click="void space.depositRewardStarCoins(selectedRewardEntry.item.id, amount)"
+                >
+                  +{{ amount }}
+                </button>
+              </div>
             </div>
           </article>
 
-          <details class="space-inline-panel space-fold-card space-claim-fold space-claim-fold-top space-pending-stage">
-            <summary class="space-fold-summary space-claim-summary">
-              <div class="space-fold-copy-block">
-                <p class="eyebrow">待领奖励</p>
-                <h3 class="space-fold-title">先接住这次推进</h3>
-                <p class="space-fold-copy">步骤和数字进度累下来的小奖励，都会先收在这里，等你慢慢接住。</p>
+          <div v-if="!rewardKeywordEntries.length" class="space-empty-card reward-command-empty">
+            <strong>还没有可以推进的奖励</strong>
+            <p>先写一条有星星币价格的奖励，它就会出现在这里。</p>
+            <button class="button-solid" type="button" @click="openRewardManager">写一条奖励</button>
+          </div>
+
+          <section class="reward-recent-strip">
+            <div class="reward-task-section-head">
+              <div>
+                <p class="eyebrow">最近发生</p>
+                <h3>奖励记录</h3>
               </div>
-
-              <div class="space-fold-meta">
-                <div class="badge-row">
-                  <span class="badge">待领 {{ space.pendingSmallRewardUnits }} 份</span>
-                  <span class="badge">步骤 {{ space.pendingStepRewards.length }} 条</span>
-                  <span class="badge">数字 {{ space.pendingCountRewardUnits }} 点</span>
-                </div>
-                <div class="space-fold-toggle" aria-hidden="true">
-                  <span class="space-fold-arrow"></span>
-                </div>
-              </div>
-            </summary>
-
-            <div class="space-fold-body space-claim-fold-body">
-              <div class="space-pending-grid">
-                <details class="space-pending-card space-fold-card space-pending-fold">
-                  <summary class="space-fold-summary space-pending-summary">
-                    <div class="space-fold-copy-block">
-                      <p class="eyebrow">步骤奖励</p>
-                      <h3>刚刚走完的这一步</h3>
-                      <p class="space-fold-copy">完成的小步骤会先排在这里，先接住它，再决定要怎么领都来得及。</p>
-                    </div>
-
-                    <div class="space-fold-meta">
-                      <div class="badge-row">
-                        <span class="badge">{{ space.pendingStepRewards.length }} 条</span>
-                      </div>
-                      <div class="space-fold-toggle" aria-hidden="true">
-                        <span class="space-fold-arrow"></span>
-                      </div>
-                    </div>
-                  </summary>
-
-                  <div class="space-fold-body space-pending-fold-body">
-                    <div v-if="space.pendingStepRewards.length" class="space-pending-list">
-                      <article v-for="item in space.pendingStepRewards" :key="item.stepId" class="space-pending-item">
-                        <div class="space-pending-copy">
-                          <span class="reward-card-kicker">来自「{{ item.wishTitle }}」</span>
-                          <strong>{{ item.stepTitle }}</strong>
-                          <p>这一步已经完成，小奖励现在先在空间页等你慢慢接住。</p>
-                        </div>
-
-                        <div class="space-meta-line reward-claim-meta">
-                          <span>{{ space.formatBeijingDateTime(item.completedAt) }}</span>
-                          <RouterLink class="button-subtle" :to="{ name: 'wish-detail', params: { id: item.wishId } }">回详情看这一步</RouterLink>
-                        </div>
-
-                        <div class="space-pending-controls">
-                          <label v-if="space.currentMemberDailyRewards.length" class="space-pending-select">
-                            <span class="muted">想把这次推进接成哪份日常奖励</span>
-                            <select :value="space.getPendingRewardSelection(`step:${item.stepId}`)" @change="space.handlePendingRewardSelectionChange(`step:${item.stepId}`, $event)">
-                              <option v-for="reward in space.currentMemberDailyRewards" :key="reward.id" :value="reward.id">{{ reward.title }}</option>
-                            </select>
-                          </label>
-                          <p v-else class="muted">如果你还没放进日常奖励，也可以先把这一笔收成星星币。</p>
-
-                          <div class="button-row space-pending-action-grid">
-                            <button
-                              class="button-subtle"
-                              type="button"
-                              :disabled="space.isProcessingPendingReward(`step:${item.stepId}:daily`) || !space.currentMemberDailyRewards.length"
-                              @click="void space.claimPendingStepReward(item.wishId, item.stepId)"
-                            >
-                              {{ space.isProcessingPendingReward(`step:${item.stepId}:daily`) ? '接住中...' : '接住这次奖励' }}
-                            </button>
-                            <button
-                              class="button-subtle"
-                              type="button"
-                              :disabled="space.isProcessingPendingReward(`step:${item.stepId}:star`)"
-                              @click="void space.claimPendingStepReward(item.wishId, item.stepId, true)"
-                            >
-                              {{ space.isProcessingPendingReward(`step:${item.stepId}:star`) ? '收好中...' : '先收成星星币' }}
-                            </button>
-                          </div>
-                        </div>
-                      </article>
-                    </div>
-
-                    <div v-else class="space-empty-card">
-                      <strong>这会儿还没有新的步骤奖励</strong>
-                      <p>下一次把小步骤走完，它会先安静落到这里。</p>
-                    </div>
-                  </div>
-                </details>
-
-                <details class="space-pending-card space-pending-card-count space-fold-card space-pending-fold">
-                  <summary class="space-fold-summary space-pending-summary">
-                    <div class="space-fold-copy-block">
-                      <p class="eyebrow">数字奖励</p>
-                      <h3>这段推进也先收在这里</h3>
-                      <p class="space-fold-copy">数字推进累下来的小奖励，可以先接住一部分，也可以等一整段再来。</p>
-                    </div>
-
-                    <div class="space-fold-meta">
-                      <div class="badge-row">
-                        <span class="badge">{{ space.pendingCountRewardUnits }} 点</span>
-                      </div>
-                      <div class="space-fold-toggle" aria-hidden="true">
-                        <span class="space-fold-arrow"></span>
-                      </div>
-                    </div>
-                  </summary>
-
-                  <div class="space-fold-body space-pending-fold-body">
-                    <div v-if="space.pendingCountRewardSummaries.length" class="space-pending-list">
-                      <article v-for="item in space.pendingCountRewardSummaries" :key="item.wishId" class="space-pending-item space-pending-item-count">
-                        <div class="space-pending-copy">
-                          <span class="reward-card-kicker">来自「{{ item.wishTitle }}」</span>
-                          <strong>还有 {{ space.getPendingCountUnitLabel(item.pendingUnits, item.progressUnit) }} 小奖励没去领</strong>
-                          <p>当前已经到 {{ item.progressCurrent }} / {{ item.progressTarget }}{{ item.progressUnit ? ` ${item.progressUnit}` : '' }}，可以一次领 1 点，也可以整批接住。</p>
-                        </div>
-
-                        <div class="space-meta-line reward-claim-meta">
-                          <span>这页最近更新于 {{ space.formatBeijingDateTime(item.updatedAt) }}</span>
-                          <RouterLink class="button-subtle" :to="{ name: 'wish-detail', params: { id: item.wishId } }">回详情看进度</RouterLink>
-                        </div>
-
-                        <div class="space-pending-controls">
-                          <label v-if="space.currentMemberDailyRewards.length" class="space-pending-select">
-                            <span class="muted">想把这段推进接成哪份日常奖励</span>
-                            <select :value="space.getPendingRewardSelection(`count:${item.wishId}`)" @change="space.handlePendingRewardSelectionChange(`count:${item.wishId}`, $event)">
-                              <option v-for="reward in space.currentMemberDailyRewards" :key="reward.id" :value="reward.id">{{ reward.title }}</option>
-                            </select>
-                          </label>
-                          <p v-else class="muted">如果你还没放进日常奖励，也可以先按 1 点或整段收成星星币。</p>
-
-                          <div class="button-row space-pending-action-grid">
-                            <button
-                              class="button-subtle"
-                              type="button"
-                              :disabled="space.isProcessingPendingReward(`count:${item.wishId}:1:daily`) || !space.currentMemberDailyRewards.length"
-                              @click="void space.claimPendingCountReward(item.wishId, 1)"
-                            >
-                              {{ space.isProcessingPendingReward(`count:${item.wishId}:1:daily`) ? '接住中...' : '先接住这 1 点' }}
-                            </button>
-                            <button
-                              v-if="item.pendingUnits > 1"
-                              class="button-subtle"
-                              type="button"
-                              :disabled="space.isProcessingPendingReward(`count:${item.wishId}:${item.pendingUnits}:daily`) || !space.currentMemberDailyRewards.length"
-                              @click="void space.claimPendingCountReward(item.wishId, item.pendingUnits)"
-                            >
-                              {{ space.isProcessingPendingReward(`count:${item.wishId}:${item.pendingUnits}:daily`) ? '接住中...' : '把这一段都接住' }}
-                            </button>
-                            <button
-                              class="button-subtle"
-                              type="button"
-                              :disabled="space.isProcessingPendingReward(`count:${item.wishId}:1:star`)"
-                              @click="void space.claimPendingCountReward(item.wishId, 1, true)"
-                            >
-                              {{ space.isProcessingPendingReward(`count:${item.wishId}:1:star`) ? '收好中...' : '先收成 1 点星星币' }}
-                            </button>
-                            <button
-                              v-if="item.pendingUnits > 1"
-                              class="button-subtle"
-                              type="button"
-                              :disabled="space.isProcessingPendingReward(`count:${item.wishId}:${item.pendingUnits}:star`)"
-                              @click="void space.claimPendingCountReward(item.wishId, item.pendingUnits, true)"
-                            >
-                              {{ space.isProcessingPendingReward(`count:${item.wishId}:${item.pendingUnits}:star`) ? '收好中...' : '整段收成星星币' }}
-                            </button>
-                          </div>
-                        </div>
-                      </article>
-                    </div>
-
-                    <div v-else class="space-empty-card">
-                      <strong>这会儿还没有新的数字奖励</strong>
-                      <p>下次把数字往前推一点，这里会先替你轻轻记住。</p>
-                    </div>
-                  </div>
-                </details>
-              </div>
+              <span class="badge">{{ space.recentRewardClaims.length }} 笔</span>
             </div>
-          </details>
 
-          <details class="space-inline-panel space-fold-card space-claim-fold space-claim-fold-top">
-            <summary class="space-fold-summary space-claim-summary">
-              <div class="space-fold-copy-block">
-                <p class="eyebrow">星币兑换</p>
-                <h3 class="space-fold-title">把星星币换成奖励</h3>
-                <p class="space-fold-copy">这里只放写了星星币价格的高档奖励。</p>
-              </div>
-
-              <div class="space-fold-meta">
-                <div class="badge-row">
-                  <span class="badge">可换 {{ space.currentMemberPremiumExchangeRewards.length }} 条</span>
-                  <span class="badge">手里 {{ space.currentMemberStarCoins }} 星币</span>
-                  <span class="badge">现在可换 {{ space.premiumRedeemableNowCount }} 条</span>
+            <div v-if="space.recentRewardClaimPreview.length" class="reward-recent-list">
+              <article v-for="item in space.recentRewardClaimPreview" :key="item.claim.id" class="reward-recent-item">
+                <span class="reward-claim-marker" aria-hidden="true"></span>
+                <div>
+                  <strong>{{ item.claim.titleSnapshot }}</strong>
+                  <p>{{ space.getRewardClaimReason(item.claim) }}</p>
+                  <small>{{ space.formatBeijingDateTime(item.claim.createdAt) }}</small>
                 </div>
-                <div class="space-fold-toggle" aria-hidden="true">
-                  <span class="space-fold-arrow"></span>
-                </div>
-              </div>
-            </summary>
-
-            <div class="space-fold-body space-claim-fold-body">
-              <div v-if="space.currentMemberPremiumExchangeRewards.length" class="reward-card-grid">
-                <article v-for="item in space.currentMemberPremiumExchangeRewards" :key="item.id" class="reward-card premium-card">
-                  <div class="reward-card-head">
-                    <div class="reward-card-copy">
-                      <span class="reward-card-kicker">高档奖励</span>
-                      <strong>{{ item.title }}</strong>
-                    </div>
-                    <div class="premium-card-aside">
-                      <p class="space-meta-line reward-card-meta premium-card-meta">
-                        <span>已领 {{ space.wishStore.getRewardItemClaimCount(item) }} 份</span>
-                      </p>
-                      <span class="badge">{{ item.starCoinCost }} 星币</span>
-                    </div>
-                  </div>
-                  <div class="button-row reward-card-actions">
-                    <button
-                      class="button-subtle"
-                      type="button"
-                      :disabled="space.processingRewardItemId === item.id || !space.canRedeemPremiumReward(item.starCoinCost)"
-                      @click="void space.redeemPremiumReward(item.id)"
-                    >
-                      {{ space.processingRewardItemId === item.id
-                        ? '兑换中...'
-                        : space.canRedeemPremiumReward(item.starCoinCost)
-                          ? '兑换这份奖励'
-                          : `还差 ${item.starCoinCost - space.currentMemberStarCoins} 枚` }}
-                    </button>
-                  </div>
-                </article>
-              </div>
-
-              <div v-else class="space-empty-card">
-                <strong>现在没有可兑换的高档奖励</strong>
-                <p>切到编辑给高档奖励写上星星币价格，它们就会出现在这里。</p>
-              </div>
+              </article>
             </div>
-          </details>
 
-          <details class="space-inline-panel space-fold-card space-claim-fold space-claim-fold-top">
-            <summary class="space-fold-summary space-claim-summary">
-              <div class="space-fold-copy-block">
-                <p class="eyebrow">最近记录</p>
-                <h3 class="space-fold-title">最近的领取和兑换</h3>
-                <p class="space-fold-copy">最近发生过的奖励动作，都会从这里往下记。</p>
-              </div>
-
-              <div class="space-fold-meta">
-                <div class="badge-row">
-                  <span class="badge">最近 {{ space.recentRewardClaims.length }} 笔</span>
-                </div>
-                <div class="space-fold-toggle" aria-hidden="true">
-                  <span class="space-fold-arrow"></span>
-                </div>
-              </div>
-            </summary>
-
-            <div class="space-fold-body space-claim-fold-body">
-              <div v-if="space.recentRewardClaims.length" class="reward-claim-list">
-                <article v-for="item in space.recentRewardClaims" :key="item.claim.id" class="reward-claim-card">
-                  <span class="reward-claim-marker" aria-hidden="true"></span>
-                  <div class="reward-claim-body">
-                    <div class="reward-card-head">
-                      <div class="reward-card-copy">
-                        <span class="reward-card-kicker">{{ item.memberName }}</span>
-                        <div class="reward-claim-title-row">
-                          <strong>{{ item.claim.titleSnapshot }}</strong>
-                          <span class="badge">{{ space.getRewardClaimLabel(item.claim.claimKind) }}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <p class="reward-claim-copy">{{ space.getRewardClaimReason(item.claim) }}</p>
-                    <p class="space-meta-line reward-claim-meta">
-                      <span>{{ space.formatBeijingDateTime(item.claim.createdAt) }}</span>
-                    </p>
-                  </div>
-                </article>
-              </div>
-
-              <div v-else class="space-empty-card">
-                <strong>还没有领取记录</strong>
-                <p>第一次领取或兑换后会显示在这里。</p>
-              </div>
+            <div v-else class="space-empty-card reward-recent-empty">
+              <strong>还没有领取记录</strong>
+              <p>第一次存入或领取后会显示在这里。</p>
             </div>
-          </details>
+          </section>
         </template>
 
         <template v-else>
@@ -660,61 +771,33 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 
             <div class="reward-form-grid space-reward-form-grid">
               <article class="space-form reward-form-card reward-editor-card">
-                <div class="space-subsection-heading">
-                  <div>
-                    <p class="eyebrow">{{ activeRewardEditor.eyebrow }}</p>
-                    <h3>{{ activeRewardEditor.heading }}</h3>
-                  </div>
-                  <span class="badge">{{ activeRewardEditor.badge }}</span>
-                </div>
-
-                <div class="reward-editor-tier-tabs" role="tablist" aria-label="奖励类型切换">
-                  <button
-                    v-for="tab in rewardEditorTierTabs"
-                    :key="tab.value"
-                    type="button"
-                    class="reward-editor-tier-tab"
-                    :class="{ active: rewardEditorTier === tab.value }"
-                    :aria-selected="rewardEditorTier === tab.value"
-                    role="tab"
-                    @click="rewardEditorTier = tab.value"
-                  >
-                    <span class="reward-editor-tier-label">{{ tab.label }}</span>
-                    <span class="reward-editor-tier-note">{{ tab.note }}</span>
-                  </button>
-                </div>
-
-                <div class="reward-form-copy">
-                  <p class="reward-form-support">{{ activeRewardEditor.support }}</p>
-                </div>
-
                 <form class="reward-editor-form" @submit.prevent="submitActiveRewardDraft">
-                  <div class="reward-form-fields" :class="{ 'reward-form-fields-premium': rewardEditorTier === 'premium' }">
-                    <template v-if="rewardEditorTier === 'daily'">
-                      <label class="space-field-block">
-                        <span class="muted">奖励名称</span>
-                        <input v-model="space.dailyRewardTitleDraft" type="text" maxlength="120" placeholder="例如：一杯喜欢的奶茶 / 一顿轻松晚餐" />
-                      </label>
-                      <label class="space-field-block">
-                        <span class="muted">说明（可选）</span>
-                        <textarea v-model="space.dailyRewardNoteDraft" rows="2" maxlength="240" placeholder="写下这个小奖励为什么值得期待"></textarea>
-                      </label>
-                    </template>
-
-                    <template v-else>
-                      <label class="space-field-block">
-                        <span class="muted">奖励名称</span>
-                        <input v-model="space.premiumRewardTitleDraft" type="text" maxlength="120" placeholder="例如：心仪很久的大件 / 一次认真放松的体验" />
-                      </label>
-                      <label class="space-field-block">
-                        <span class="muted">说明（可选）</span>
-                        <textarea v-model="space.premiumRewardNoteDraft" rows="2" maxlength="240" placeholder="写下这个高档奖励真正吸引你的地方"></textarea>
-                      </label>
-                      <label class="space-field-block reward-form-cost-field">
-                        <span class="muted">星星币兑换价</span>
-                        <input v-model.number="space.premiumRewardCostDraft" type="number" min="0" max="999" />
-                      </label>
-                    </template>
+                  <div class="reward-form-fields reward-form-fields-premium">
+                    <label class="space-field-block">
+                      <span class="muted">奖励名称</span>
+                      <input v-model="space.premiumRewardTitleDraft" type="text" maxlength="120" placeholder="例如：心仪很久的大件 / 一次认真放松的体验" />
+                    </label>
+                    <label class="space-field-block">
+                      <span class="muted">说明（可选）</span>
+                      <textarea v-model="space.premiumRewardNoteDraft" rows="2" maxlength="240" placeholder="写下这个奖励真正吸引你的地方"></textarea>
+                    </label>
+                    <label class="space-field-block reward-form-cost-field">
+                      <span class="muted">星星币兑换价</span>
+                      <input v-model.number="space.premiumRewardCostDraft" type="number" min="1" max="999" />
+                    </label>
+                    <div class="space-field-block reward-scope-field">
+                      <span class="muted">奖励归属</span>
+                      <div class="reward-scope-toggle" role="radiogroup" aria-label="奖励归属">
+                        <label>
+                          <input v-model="space.premiumRewardScopeDraft" type="radio" value="personal" />
+                          <span>个人</span>
+                        </label>
+                        <label>
+                          <input v-model="space.premiumRewardScopeDraft" type="radio" value="shared" />
+                          <span>共同</span>
+                        </label>
+                      </div>
+                    </div>
                   </div>
 
                   <div class="reward-form-submit-row">
@@ -782,8 +865,7 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
                   </div>
 
                   <div class="reward-member-strip-stats" aria-label="成员奖励摘要">
-                    <span><strong>{{ item.dailyRewards.length }}</strong>日常</span>
-                    <span><strong>{{ item.premiumRewards.length }}</strong>高档</span>
+                    <span><strong>{{ item.premiumRewards.length }}</strong>奖励</span>
                     <span><strong>{{ item.starCoins }}</strong>星币</span>
                   </div>
                 </button>
@@ -809,22 +891,6 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
                     </button>
                     <span v-else class="badge">只读查看</span>
                   </div>
-                </div>
-
-                <div class="reward-editor-tier-tabs reward-shelf-tier-tabs" role="tablist" aria-label="奖池类型切换">
-                  <button
-                    v-for="tab in rewardEditorTierTabs"
-                    :key="tab.value"
-                    type="button"
-                    class="reward-editor-tier-tab"
-                    :class="{ active: rewardPoolTier === tab.value }"
-                    :aria-selected="rewardPoolTier === tab.value"
-                    role="tab"
-                    @click="rewardPoolTier = tab.value"
-                  >
-                    <span class="reward-editor-tier-label">{{ tab.label }}</span>
-                    <span class="reward-editor-tier-note">{{ tab.note }}</span>
-                  </button>
                 </div>
 
                 <div v-if="activeRewardPoolEntries.length" class="reward-compact-list">
@@ -1059,7 +1125,7 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
                     : `按现在的大小，大约还能放 ${space.estimatedRemainingImageCount} 张。` }}
                 </p>
                 <p class="space-meta-line">
-                  <span>备份会带上清单、奖励和记录</span>
+                        <span>备份会带上清单、星币奖励和记录</span>
                   <span>两个人最好各自留一份</span>
                 </p>
               </div>
@@ -2606,6 +2672,110 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
   gap: 0.58rem;
 }
 
+.reward-deposit-actions {
+  grid-template-columns: repeat(3, minmax(0, 0.48fr)) minmax(7rem, 1fr);
+}
+
+.reward-assist-section {
+  display: grid;
+  gap: 0.82rem;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--card-border-soft);
+}
+
+.reward-assist-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.88rem;
+}
+
+.reward-assist-head h4 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: var(--type-card-title-size);
+  line-height: var(--type-card-title-line);
+  color: var(--text-main);
+}
+
+.reward-assist-card {
+  background: linear-gradient(180deg, var(--sage-panel), var(--card-bg-soft));
+}
+
+.reward-shared-card {
+  background: linear-gradient(180deg, var(--accent-panel), var(--card-bg-soft));
+}
+
+.reward-assist-actions {
+  grid-template-columns: repeat(3, minmax(0, 0.48fr)) minmax(7.6rem, 1fr);
+}
+
+.reward-assist-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.18rem;
+  padding: 0.42rem 0.62rem;
+  border: 1px solid var(--card-border-soft);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--card-bg-raised) 68%, transparent);
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: var(--type-meta-size);
+  line-height: 1.15;
+  text-align: center;
+}
+
+.reward-scope-field {
+  max-width: 14rem;
+}
+
+.reward-scope-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.42rem;
+}
+
+.reward-scope-toggle label {
+  cursor: pointer;
+}
+
+.reward-scope-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.reward-scope-toggle span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 2.32rem;
+  padding: 0.46rem 0.7rem;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--card-bg-raised) 62%, transparent);
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: var(--type-meta-size);
+  font-weight: 600;
+}
+
+.reward-scope-toggle input:checked + span {
+  border-color: var(--active-item-border);
+  background: var(--active-item-bg);
+  color: var(--text-main);
+}
+
+.reward-deposit-actions .compact-action {
+  min-height: 2.18rem;
+  padding: 0.42rem 0.58rem;
+  font-size: var(--type-meta-size);
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
 .reward-card-actions > .button-subtle {
   min-height: 2.18rem;
   padding: 0.46rem 0.82rem;
@@ -2613,8 +2783,476 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
   line-height: 1.15;
 }
 
+.reward-deposit-progress {
+  width: 100%;
+  height: 0.44rem;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--card-border-soft) 70%, transparent);
+}
+
+.reward-deposit-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent-strong), var(--sage-strong));
+  transition: width 180ms ease;
+}
+
 .reward-card-meta {
   padding-top: 0.1rem;
+}
+
+.reward-command-panel {
+  display: grid;
+  gap: 0.78rem;
+  padding: 0.9rem;
+  border: 1px solid rgba(95, 74, 55, 0.1);
+  border-radius: 20px;
+  background:
+    linear-gradient(135deg, rgba(255, 252, 247, 0.86), rgba(245, 238, 229, 0.72)),
+    radial-gradient(circle at 92% 18%, var(--sage-glow), transparent 28%);
+}
+
+.reward-command-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.58rem;
+}
+
+.reward-command-stat {
+  display: grid;
+  gap: 0.22rem;
+  min-height: 4.4rem;
+  align-content: center;
+  padding: 0.7rem 0.76rem;
+  border: 1px solid rgba(95, 74, 55, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.reward-command-stat span,
+.reward-recent-item small {
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line);
+}
+
+.reward-command-stat strong {
+  color: var(--text-main);
+  font-family: var(--font-heading);
+  font-size: var(--type-card-title-size);
+  line-height: var(--type-card-title-line);
+}
+
+.reward-command-stat-primary strong {
+  color: var(--accent-strong);
+}
+
+.reward-command-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.58rem;
+  flex-wrap: wrap;
+}
+
+.reward-keyword-controls {
+  display: grid;
+  gap: 0.52rem;
+  padding: 0.72rem;
+  border: 1px solid rgba(95, 74, 55, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.reward-keyword-control-row {
+  display: grid;
+  grid-template-columns: 2.8rem minmax(0, 1fr);
+  gap: 0.48rem;
+  align-items: center;
+}
+
+.reward-keyword-control-label {
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: var(--type-eyebrow-size);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.reward-keyword-pill-row,
+.reward-keyword-control-actions {
+  display: flex;
+  gap: 0.34rem;
+  flex-wrap: wrap;
+}
+
+.reward-keyword-control-actions {
+  justify-content: flex-end;
+}
+
+.reward-filter-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.86rem;
+  padding: 0.28rem 0.56rem;
+  border: 1px solid rgba(95, 74, 55, 0.1);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.44);
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: var(--type-eyebrow-size);
+  font-weight: 700;
+  line-height: 1.12;
+}
+
+.reward-filter-pill.active {
+  border-color: var(--active-item-border);
+  background: var(--active-item-bg);
+  color: var(--text-main);
+  box-shadow: 0 8px 16px var(--accent-shadow-soft);
+}
+
+.reward-range-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.52rem;
+  padding-top: 0.52rem;
+  border-top: 1px dashed rgba(95, 74, 55, 0.1);
+}
+
+.reward-range-panel label {
+  display: grid;
+  grid-template-columns: minmax(4.6rem, auto) repeat(2, minmax(0, 1fr));
+  gap: 0.36rem;
+  align-items: center;
+}
+
+.reward-range-panel span {
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: var(--type-eyebrow-size);
+  font-weight: 700;
+}
+
+.reward-range-panel input {
+  min-height: 2rem;
+  padding: 0.34rem 0.52rem;
+  border-radius: 12px;
+  font-size: var(--type-meta-size);
+}
+
+.reward-keyword-shell,
+.reward-keyword-cloud,
+.reward-selected-card,
+.reward-task-flow,
+.reward-task-section,
+.reward-task-list,
+.reward-recent-strip,
+.reward-recent-list,
+.reward-task-card,
+.reward-task-actions {
+  display: grid;
+}
+
+.reward-keyword-shell {
+  gap: 0.82rem;
+  min-height: 13rem;
+  padding: 1rem;
+  border: 1px solid rgba(95, 74, 55, 0.1);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 12% 18%, color-mix(in srgb, var(--accent-panel) 82%, transparent), transparent 30%),
+    radial-gradient(circle at 88% 78%, color-mix(in srgb, var(--bg-deep) 42%, transparent), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.48), rgba(255, 255, 255, 0.28));
+  box-shadow: var(--shadow-card);
+}
+
+.reward-keyword-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.82rem;
+}
+
+.reward-keyword-head h3 {
+  margin: 0;
+  color: var(--text-main);
+  font-family: var(--font-heading);
+  font-size: var(--type-l5-size);
+  line-height: var(--type-l5-line);
+}
+
+.reward-keyword-cloud {
+  display: flex;
+  align-content: flex-start;
+  gap: 0.42rem;
+  flex-wrap: wrap;
+}
+
+.reward-keyword-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.28rem;
+  max-width: 100%;
+  min-height: 2.04rem;
+  padding: 0.36rem 0.64rem;
+  border: 1px solid rgba(95, 74, 55, 0.1);
+  border-radius: var(--radius-pill);
+  color: var(--text-main);
+  font-family: var(--font-heading);
+  font-size: var(--type-eyebrow-size);
+  font-weight: 700;
+  line-height: 1.16;
+  text-align: center;
+  box-shadow: 0 8px 18px rgba(95, 74, 55, 0.07);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.reward-keyword-title,
+.reward-keyword-metric {
+  min-width: 0;
+}
+
+.reward-keyword-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reward-keyword-metric {
+  color: color-mix(in srgb, var(--text-main) 70%, var(--text-soft));
+  font-family: var(--font-body);
+  font-size: var(--type-eyebrow-size);
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.reward-keyword-chip:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(95, 74, 55, 0.1);
+}
+
+.reward-keyword-chip.active {
+  border-color: var(--active-item-border);
+  box-shadow: 0 0 0 3px var(--accent-ring), 0 12px 24px rgba(95, 74, 55, 0.12);
+}
+
+.reward-keyword-chip-personal {
+  background: linear-gradient(180deg, var(--accent-panel), color-mix(in srgb, var(--accent-panel) 64%, var(--surface-card)));
+}
+
+.reward-keyword-chip-assist {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-deep) 62%, var(--surface-card)), color-mix(in srgb, var(--mist) 72%, var(--surface-card)));
+}
+
+.reward-keyword-chip-shared {
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--bg-deep));
+  background:
+    radial-gradient(circle at 18% 26%, color-mix(in srgb, var(--accent-panel) 90%, var(--accent)) 0%, transparent 50%),
+    radial-gradient(circle at 52% 46%, #eadcf6 0%, transparent 54%),
+    radial-gradient(circle at 84% 72%, color-mix(in srgb, var(--bg-deep) 78%, var(--mist)) 0%, transparent 54%),
+    linear-gradient(110deg,
+      color-mix(in srgb, var(--accent-panel) 82%, var(--surface-card)) 0%,
+      #eadcf6 52%,
+      color-mix(in srgb, var(--bg-deep) 64%, var(--surface-card)) 100%);
+}
+
+.reward-selected-card {
+  gap: 0.72rem;
+  align-content: start;
+  padding: 0.96rem;
+  border: 1px solid rgba(95, 74, 55, 0.1);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 253, 249, 0.84), rgba(248, 241, 233, 0.72));
+  box-shadow: var(--shadow-card);
+}
+
+.reward-selected-card-personal {
+  background: linear-gradient(180deg, var(--accent-panel), rgba(255, 253, 249, 0.82));
+}
+
+.reward-selected-card-assist {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-deep) 44%, var(--surface-card)), rgba(255, 253, 249, 0.8));
+}
+
+.reward-selected-card-shared {
+  border-color: color-mix(in srgb, var(--accent) 18%, var(--bg-deep));
+  background:
+    radial-gradient(circle at 12% 8%, color-mix(in srgb, var(--accent-panel) 82%, transparent), transparent 34%),
+    radial-gradient(circle at 52% 44%, rgba(234, 220, 246, 0.68), transparent 42%),
+    radial-gradient(circle at 92% 92%, color-mix(in srgb, var(--bg-deep) 42%, transparent), transparent 38%),
+    linear-gradient(125deg,
+      color-mix(in srgb, var(--accent-panel) 66%, var(--surface-card)) 0%,
+      rgba(234, 220, 246, 0.62) 48%,
+      color-mix(in srgb, var(--bg-deep) 30%, var(--surface-card)) 100%);
+}
+
+.reward-task-flow {
+  gap: 1rem;
+}
+
+.reward-task-section {
+  gap: 0.68rem;
+}
+
+.reward-task-section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.reward-task-section-head h3 {
+  margin: 0;
+  color: var(--text-main);
+  font-family: var(--font-heading);
+  font-size: var(--type-l5-size);
+  line-height: var(--type-l5-line);
+}
+
+.reward-task-list {
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 0.72rem;
+}
+
+.reward-task-card {
+  gap: 0.72rem;
+  align-content: start;
+  min-height: 13.5rem;
+  padding: 0.88rem;
+  border: 1px solid rgba(95, 74, 55, 0.1);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 253, 249, 0.84), rgba(248, 241, 233, 0.72));
+  box-shadow: var(--shadow-card);
+}
+
+.reward-task-section-claimable .reward-task-card {
+  background: linear-gradient(180deg, var(--warning-panel), rgba(255, 253, 249, 0.84));
+  border-color: rgba(201, 111, 74, 0.18);
+}
+
+.reward-task-card-shared {
+  background: linear-gradient(180deg, var(--accent-panel), rgba(255, 253, 249, 0.8));
+}
+
+.reward-task-card-assist {
+  background: linear-gradient(180deg, var(--sage-panel), rgba(255, 253, 249, 0.78));
+}
+
+.reward-task-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.72rem;
+}
+
+.reward-task-card-head > div {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.reward-task-card-head strong,
+.reward-recent-item strong {
+  color: var(--text-main);
+  font-family: var(--font-heading);
+  font-size: var(--type-card-title-size);
+  line-height: var(--type-card-title-line);
+}
+
+.reward-task-card-head .badge {
+  flex: 0 0 auto;
+}
+
+.reward-task-actions {
+  gap: 0.52rem;
+  margin-top: auto;
+}
+
+.reward-primary-action {
+  width: 100%;
+  min-height: 2.72rem;
+}
+
+.reward-quick-chip-row {
+  display: flex;
+  gap: 0.42rem;
+  flex-wrap: wrap;
+}
+
+.reward-quick-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3rem;
+  min-height: 2.08rem;
+  padding: 0.36rem 0.66rem;
+  border: 1px solid rgba(95, 74, 55, 0.12);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--text-main);
+  font-family: var(--font-body);
+  font-size: var(--type-meta-size);
+  font-weight: 700;
+}
+
+.reward-quick-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.reward-command-empty {
+  align-items: start;
+}
+
+.reward-command-empty .button-solid {
+  width: fit-content;
+}
+
+.reward-recent-strip {
+  gap: 0.66rem;
+  padding-top: 0.85rem;
+  border-top: 1px dashed var(--card-border-soft);
+}
+
+.reward-recent-list {
+  gap: 0.52rem;
+}
+
+.reward-recent-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.64rem;
+  align-items: start;
+  padding: 0.64rem 0.72rem;
+  border: 1px solid rgba(95, 74, 55, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.38);
+}
+
+.reward-recent-item > div {
+  display: grid;
+  gap: 0.16rem;
+  min-width: 0;
+}
+
+.reward-recent-item p {
+  margin: 0;
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+}
+
+.reward-recent-empty {
+  padding: 0.72rem;
+  background: rgba(255, 255, 255, 0.34);
+  box-shadow: none;
 }
 
 .reward-compact-list,
@@ -3314,6 +3952,105 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 
   .space-reward-hub-tab-note {
     white-space: nowrap;
+  }
+
+  .reward-command-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .reward-command-stat-wide {
+    grid-column: 1 / -1;
+  }
+
+  .reward-command-actions,
+  .reward-task-section-head {
+    align-items: stretch;
+  }
+
+  .reward-command-actions > *,
+  .reward-task-section-head .badge {
+    width: 100%;
+  }
+
+  .reward-keyword-shell,
+  .reward-selected-card {
+    padding: 0.9rem;
+  }
+
+  .reward-keyword-controls {
+    padding: 0.62rem;
+  }
+
+  .reward-keyword-control-row {
+    grid-template-columns: 1fr;
+    gap: 0.34rem;
+  }
+
+  .reward-keyword-control-actions {
+    justify-content: flex-start;
+  }
+
+  .reward-filter-pill {
+    min-height: 1.78rem;
+    padding: 0.26rem 0.5rem;
+  }
+
+  .reward-range-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .reward-range-panel label {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .reward-range-panel label span {
+    grid-column: 1 / -1;
+  }
+
+  .reward-keyword-head {
+    flex-direction: column;
+  }
+
+  .reward-keyword-head .badge {
+    width: fit-content;
+  }
+
+  .reward-keyword-cloud {
+    gap: 0.48rem;
+  }
+
+  .reward-keyword-chip {
+    min-height: 1.96rem;
+    padding: 0.34rem 0.58rem;
+  }
+
+  .reward-task-section-head {
+    flex-direction: column;
+  }
+
+  .reward-task-list {
+    grid-template-columns: 1fr;
+  }
+
+  .reward-task-card {
+    min-height: 0;
+  }
+
+  .reward-task-card-head {
+    flex-direction: column;
+  }
+
+  .reward-task-card-head .badge {
+    width: fit-content;
+  }
+
+  .reward-quick-chip-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .reward-quick-chip {
+    width: 100%;
   }
 
   .reward-compact-row {

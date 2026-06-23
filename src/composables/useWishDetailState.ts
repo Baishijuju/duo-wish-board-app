@@ -58,6 +58,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
   const selectedImageIds = ref<string[]>([])
   const countProgressDraft = ref(0)
   const stepDraft = ref('')
+  const stepStarCoinDraft = ref(1)
   const lightboxImages = ref<WishImage[]>([])
   const pendingCompletionKind = ref<'wish' | null>(null)
   const pendingWishRewardSelectionId = ref('')
@@ -76,6 +77,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     return selectedWish.value ? wishStore.getWishProgressSnapshot(selectedWish.value) : null
   })
   const currentMemberId = computed(() => authStore.currentMemberId || authStore.currentMember?.id || '')
+  const canProgressSelectedWish = computed(() => !!selectedWish.value && !!currentMemberId.value && selectedWish.value.ownerId === currentMemberId.value)
   const currentMemberPremiumRewards = computed(() => {
     return currentMemberId.value ? wishStore.getRewardPoolItems(currentMemberId.value, 'premium') : []
   })
@@ -84,7 +86,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
   const wishRewardClaim = computed(() => {
     return selectedWish.value ? wishStore.getWishRewardClaim(selectedWish.value) : null
   })
-  const canConfirmWishReward = computed(() => !!selectedWish.value && !!pendingWishRewardSelectionId.value && !isSubmittingReward.value)
+  const canConfirmWishReward = computed(() => !!selectedWish.value && canProgressSelectedWish.value && !isSubmittingReward.value)
   const coinProgressPercent = computed(() => {
     if (!coinSnapshot.value) {
       return 0
@@ -593,7 +595,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
       return '放回进行中'
     }
 
-    return wishStore.hasWishRewardClaim(selectedWish.value) ? '放回已完成' : '完成并领奖'
+    return wishStore.hasWishRewardClaim(selectedWish.value) ? '放回已完成' : '完成并获得星星币'
   }
 
   function getStepActionLabel(stepId: string, isDone: boolean) {
@@ -601,27 +603,50 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
       return '放回未完成'
     }
 
-    return wishStore.hasStepRewardClaim(stepId) ? '重新标记完成' : '标记完成'
+    return wishStore.hasStepRewardClaim(stepId) ? '重新标记完成' : '完成并获得星星币'
   }
 
   function getStepStatusCopy(stepId: string, isDone: boolean) {
     const claim = wishStore.getStepRewardClaim(stepId)
 
     if (isDone && claim) {
-      return claim.claimKind === 'star_coin'
+      return claim.claimKind === 'star_coin' || claim.claimKind === 'step_star_coin'
         ? `这个小目标已经走完，小奖励也存成了 ${claim.titleSnapshot}。`
         : `这个小目标已经走完，小奖励也已经接住了「${claim.titleSnapshot}」。`
     }
 
     if (isDone) {
-      return '这个小目标已经走完了，小奖励先在空间页等你去领。'
+      return '这个小目标已经走完了，星星币已经自动到账。'
     }
 
     if (claim) {
-      return '这一步的小奖励已经领过了；再次完成只会记进度，不会再重复发。'
+      return '这一步的星星币已经发过了；再次完成只会记进度，不会再重复发。'
     }
 
     return '它还在路上。'
+  }
+
+  function formatStarCoinAmount(value: number) {
+    const roundedValue = Math.round(value * 10) / 10
+    return Number.isInteger(roundedValue) ? `${roundedValue}` : roundedValue.toFixed(1)
+  }
+
+  function getStepStarCoinLabel(stepId: string) {
+    const step = selectedWish.value?.steps.find((item) => item.id === stepId)
+    return step ? `${formatStarCoinAmount(step.starCoinValue)} 星星币` : '0 星星币'
+  }
+
+  function getCountStarCoinLabel() {
+    if (!selectedWish.value || selectedWish.value.progressMode !== 'count') {
+      return '0 星星币'
+    }
+
+    const unitText = selectedWish.value.progressUnit || '点'
+    return `每 ${unitText} ${formatStarCoinAmount(selectedWish.value.progressStarCoinValue)} 星星币`
+  }
+
+  function getCompletionStarCoinLabel() {
+    return selectedWish.value ? `${formatStarCoinAmount(selectedWish.value.completionStarCoinBonus)} 星星币` : '0 星星币'
   }
 
   function getClaimToneLabel(claimKind: string) {
@@ -763,6 +788,11 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
       return
     }
 
+    if (!canProgressSelectedWish.value) {
+      setRewardFeedback('只有这条愿望的归属人可以推进它。', 'danger', '', 'count')
+      return
+    }
+
     const previousCurrent = selectedWish.value.progressCurrent
     const updated = await wishStore.incrementWishCountProgress(selectedWish.value.id, delta)
 
@@ -787,7 +817,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
 
     setRewardFeedback(
       gainedUnits
-        ? `数字进度先往前走了 ${gainedUnits} 点，小奖励已经留到空间页等你去领。`
+        ? `数字进度先往前走了 ${gainedUnits} 点，${formatStarCoinAmount(gainedUnits * selectedWish.value.progressStarCoinValue)} 枚星星币已经自动到账。`
         : nextCurrent < previousCurrent
           ? '数字进度已经往回调整，空间页里的待领取数量也会跟着收住。'
           : '数字进度已经更新。',
@@ -799,6 +829,11 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
 
   async function saveCountProgress() {
     if (!selectedWish.value || selectedWish.value.progressMode !== 'count') {
+      return
+    }
+
+    if (!canProgressSelectedWish.value) {
+      setRewardFeedback('只有这条愿望的归属人可以推进它。', 'danger', '', 'count')
       return
     }
 
@@ -826,7 +861,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
 
     setRewardFeedback(
       gainedUnits
-        ? `数字进度已经补到现在的位置，新增的 ${gainedUnits} 点小奖励先在空间页等你。`
+        ? `数字进度已经补到现在的位置，新增的 ${gainedUnits} 点已经自动换成 ${formatStarCoinAmount(gainedUnits * selectedWish.value.progressStarCoinValue)} 枚星星币。`
         : nextCurrent < previousCurrent
           ? '数字进度已经重新校正，空间页里的待领取数量也会跟着收住。'
           : '数字进度已经更新。',
@@ -841,6 +876,11 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
       return
     }
 
+    if (!canProgressSelectedWish.value) {
+      setRewardFeedback('只有这条愿望的归属人可以继续拆步骤。', 'danger')
+      return
+    }
+
     if (isSubmittingStep.value) {
       return
     }
@@ -848,10 +888,11 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     isSubmittingStep.value = true
 
     try {
-      const added = await wishStore.addWishStep(selectedWish.value.id, stepDraft.value)
+      const added = await wishStore.addWishStep(selectedWish.value.id, stepDraft.value, stepStarCoinDraft.value)
 
       if (added) {
         stepDraft.value = ''
+        stepStarCoinDraft.value = 1
       }
     } finally {
       isSubmittingStep.value = false
@@ -863,43 +904,37 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
       return
     }
 
+    if (!canProgressSelectedWish.value) {
+      setRewardFeedback('只有这条愿望的归属人可以完成它。', 'danger')
+      return
+    }
+
     if (selectedWish.value.status === 'done' || wishStore.hasWishRewardClaim(selectedWish.value)) {
       await wishStore.toggleDone(selectedWish.value.id)
-      return
-    }
-
-    if (!currentMemberPremiumRewards.value.length) {
-      setRewardFeedback('先去空间页给自己准备至少一个高档奖励，再来完成这条愿望。', 'danger')
-      return
-    }
-
-    pendingCompletionKind.value = 'wish'
-    pendingWishRewardSelectionId.value = currentMemberPremiumRewards.value[0]?.id ?? ''
-    setRewardFeedback('', 'success')
-  }
-
-  async function confirmWishCompletionReward() {
-    if (!selectedWish.value || !pendingWishRewardSelectionId.value) {
-      setRewardFeedback('先选一个高档奖励。', 'danger')
       return
     }
 
     isSubmittingReward.value = true
 
     try {
-      const result = await wishStore.completeWishWithReward(selectedWish.value.id, pendingWishRewardSelectionId.value)
+      const result = await wishStore.completeWishWithReward(selectedWish.value.id, '')
       setRewardFeedback(result.message, result.ok ? 'success' : 'danger')
-
-      if (result.ok) {
-        closeRewardDialog(false)
-      }
     } finally {
       isSubmittingReward.value = false
     }
   }
 
+  async function confirmWishCompletionReward() {
+    await handleWishCompletionAction()
+  }
+
   async function toggleWishStep(stepId: string) {
     if (!selectedWish.value) {
+      return
+    }
+
+    if (!canProgressSelectedWish.value) {
+      setRewardFeedback('只有这条愿望的归属人可以推进它。', 'danger', stepId)
       return
     }
 
@@ -921,7 +956,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
       setRewardFeedback(
         hadClaim
           ? '这个步骤重新记成完成了；小奖励不会重复发，但推进会继续记下。'
-          : '这个步骤已经记成完成了，小奖励先去空间页接住就好。',
+          : `这个步骤已经记成完成了，${formatStarCoinAmount(step.starCoinValue)} 枚星星币已经自动到账。`,
         'success',
         stepId,
       )
@@ -939,6 +974,11 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
 
   async function removeWishStep(stepId: string) {
     if (!selectedWish.value) {
+      return
+    }
+
+    if (!canProgressSelectedWish.value) {
+      setRewardFeedback('只有这条愿望的归属人可以整理步骤。', 'danger', stepId)
       return
     }
 
@@ -1191,6 +1231,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     cancelImageSelection,
     canConfirmWishReward,
     canDeleteImage,
+    canProgressSelectedWish,
     canManageThreadComment,
     canPreviewNext,
     canPreviewPrevious,
@@ -1224,7 +1265,10 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     getCoinStatusLabel,
     getCommentImageFileKey,
     getMemberName,
+    getCompletionStarCoinLabel,
+    getCountStarCoinLabel,
     getStepActionLabel,
+    getStepStarCoinLabel,
     getStepStatusCopy,
     getThreadActorName,
     getThreadReactionAriaLabel,
@@ -1291,6 +1335,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     startEditingImageNote,
     startEditingThreadComment,
     stepDraft,
+    stepStarCoinDraft,
     stepRewardFeedbackTargetId,
     stepPreview,
     submitComment,

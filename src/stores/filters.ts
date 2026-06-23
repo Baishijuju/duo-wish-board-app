@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 
-export type VisibilityFilter = 'all' | 'shared' | 'mine'
+export type VisibilityFilter = 'all' | 'mine' | 'others'
 export type StatusFilter = 'all' | 'active' | 'done'
 export type SortFilter = 'time' | 'progress'
 

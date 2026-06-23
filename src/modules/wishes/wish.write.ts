@@ -2,6 +2,11 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { WishDraft, WishRecord } from '../../stores/wishes'
 import { createWishRecord, createWishStep } from './wish.factories'
 
+export interface InitialWishStepInput {
+  title: string
+  starCoinValue: number
+}
+
 export async function runCloudMutation(
   options: {
     supabase: SupabaseClient | null
@@ -47,7 +52,7 @@ export async function addWishCloud(
     ownerId: string
     includeProgressFields: boolean
     draft: WishDraft
-    initialStepTitles: string[]
+    initialSteps: InitialWishStepInput[]
     onLoadingChange: (isLoading: boolean) => void
     onSyncMessage: (message: string) => void
     syncFromSupabase: (spaceId: string) => Promise<boolean>
@@ -67,8 +72,10 @@ export async function addWishCloud(
       title: options.draft.title.trim(),
       ...(options.includeProgressFields
         ? {
+            completion_star_coin_bonus: options.draft.completionStarCoinBonus,
             progress_current: options.draft.progressCurrent,
             progress_mode: options.draft.progressMode,
+            progress_star_coin_value: options.draft.progressStarCoinValue,
             progress_target: options.draft.progressTarget,
             progress_unit: options.draft.progressUnit.trim(),
           }
@@ -86,15 +93,16 @@ export async function addWishCloud(
       return null
     }
 
-    let successMessage = options.initialStepTitles.length
-      ? `愿望和 ${options.initialStepTitles.length} 个初始步骤已写入 Supabase。`
+    let successMessage = options.initialSteps.length
+      ? `愿望和 ${options.initialSteps.length} 个初始步骤已写入 Supabase。`
       : '愿望已写入 Supabase。'
 
-    if (data?.id && options.initialStepTitles.length) {
+    if (data?.id && options.initialSteps.length) {
       const { error: stepError } = await options.supabase.from('wish_steps').insert(
-        options.initialStepTitles.map((title) => ({
+        options.initialSteps.map((step) => ({
           is_done: false,
-          title,
+          star_coin_value: step.starCoinValue,
+          title: step.title,
           wish_id: data.id,
         })),
       )
@@ -112,15 +120,15 @@ export async function addWishCloud(
   }
 }
 
-export function addWishLocal(draft: WishDraft, initialStepTitles: string[]) {
+export function addWishLocal(draft: WishDraft, initialSteps: InitialWishStepInput[]) {
   const createdWish = createWishRecord({
     ...draft,
-    steps: initialStepTitles.map((title) => createWishStep({ title })),
+    steps: initialSteps.map((step) => createWishStep(step)),
   })
 
   return {
-    message: initialStepTitles.length
-      ? `愿望和 ${initialStepTitles.length} 个初始步骤已保存到本地。`
+    message: initialSteps.length
+      ? `愿望和 ${initialSteps.length} 个初始步骤已保存到本地。`
       : '愿望已保存到本地。',
     wish: createdWish,
   }

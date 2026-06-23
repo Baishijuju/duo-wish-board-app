@@ -29,15 +29,11 @@ export async function completeWishWithRewardWrite(options: {
     return options.onResult(false, '这条愿望的完成奖励已经领过了。')
   }
 
-  if (!options.rewardItem || options.rewardItem.ownerId !== options.memberId || options.rewardItem.tier !== 'premium' || options.rewardItem.isArchived) {
-    return options.onResult(false, '请从你自己的高档奖励池里挑一个奖励。')
-  }
-
   if (options.supabase && options.isUsingCloudWishes && options.currentSpaceId) {
     options.onLoadingChange(true)
     try {
       const { error } = await options.supabase.rpc('complete_wish_with_reward', {
-        target_reward_item_id: options.rewardItemId,
+        target_reward_item_id: options.rewardItemId || null,
         target_wish_id: options.wishId,
       })
 
@@ -46,7 +42,7 @@ export async function completeWishWithRewardWrite(options: {
       }
 
       await options.syncFromSupabase(options.currentSpaceId)
-      return options.onResult(true, `这条愿望已经完成，也接住了「${options.rewardItem.title}」。`)
+      return options.onResult(true, `这条愿望已经完成，${options.wish.completionStarCoinBonus} 枚星星币已经自动到账。`)
     } finally {
       options.onLoadingChange(false)
     }
@@ -61,16 +57,16 @@ export async function completeWishWithRewardWrite(options: {
       updatedAt: now,
     },
     localClaim: createRewardClaimRecord({
-      claimKind: 'wish_reward',
+      claimKind: 'wish_completion_bonus',
       createdAt: now,
-      noteSnapshot: options.rewardItem.note,
+      noteSnapshot: `完成「${options.wish.title}」时自动获得的额外星星币。`,
       ownerId: options.memberId,
-      rewardItemId: options.rewardItem.id,
+      rewardItemId: null,
       sourceWishId: options.wishId,
-      starCoinDelta: 0,
-      titleSnapshot: options.rewardItem.title,
+      starCoinDelta: options.wish.completionStarCoinBonus,
+      titleSnapshot: `${options.wish.completionStarCoinBonus} 星星币`,
     }),
-    result: options.onResult(true, `这条愿望已经完成，也接住了「${options.rewardItem.title}」。`),
+    result: options.onResult(true, `这条愿望已经完成，${options.wish.completionStarCoinBonus} 枚星星币已经自动到账。`),
   }
 }
 
@@ -359,12 +355,11 @@ export async function setWishCountProgressWrite(options: {
   if (options.supabase && options.isUsingCloudWishes) {
     return options.runCloudMutation(
       async () =>
-        options.supabase!
-          .from('wishes')
-          .update({ progress_current: options.normalizedCurrent })
-          .eq('id', options.wishId),
-      '进度已同步到 Supabase。',
-      { syncAfterWrite: false },
+        options.supabase!.rpc('set_wish_count_progress_with_star_coin', {
+          next_current: options.normalizedCurrent,
+          target_wish_id: options.wishId,
+        }),
+      '进度和星星币已同步到 Supabase。',
     )
   }
 
@@ -384,6 +379,7 @@ export async function addWishStepWrite(options: {
   wish: WishRecord | undefined
   wishId: string
   normalizedTitle: string
+  normalizedStarCoinValue: number
   runCloudMutation: (mutate: () => Promise<{ error: { message: string } | null }>, successMessage: string, options?: { syncAfterWrite?: boolean }) => Promise<boolean>
   onLoadingChange: (value: boolean) => void
   onSyncMessage: (message: string) => void
@@ -405,10 +401,11 @@ export async function addWishStepWrite(options: {
         .from('wish_steps')
         .insert({
           is_done: false,
+          star_coin_value: options.normalizedStarCoinValue,
           title: options.normalizedTitle,
           wish_id: options.wishId,
         })
-        .select('id, title, is_done, created_at, updated_at')
+        .select('id, title, is_done, star_coin_value, created_at, updated_at')
         .single()
 
       if (error || !stepRow) {
@@ -421,6 +418,7 @@ export async function addWishStepWrite(options: {
           id: stepRow.id,
           title: stepRow.title,
           isDone: stepRow.is_done,
+          starCoinValue: stepRow.star_coin_value,
           createdAt: stepRow.created_at,
           updatedAt: stepRow.updated_at,
         }),
@@ -431,7 +429,7 @@ export async function addWishStepWrite(options: {
     }
   }
 
-  const createdStep: WishStep = createWishStep({ title: options.normalizedTitle })
+  const createdStep: WishStep = createWishStep({ title: options.normalizedTitle, starCoinValue: options.normalizedStarCoinValue })
 
   return {
     createdStep,
@@ -457,13 +455,12 @@ export async function toggleWishStepWrite(options: {
   if (options.supabase && options.isUsingCloudWishes) {
     return options.runCloudMutation(
       async () =>
-        options.supabase!
-          .from('wish_steps')
-          .update({ is_done: nextDone })
-          .eq('id', options.stepId)
-          .eq('wish_id', options.wishId),
-      nextDone ? '已完成一个小步骤。' : '这个步骤已经放回路上。',
-      { syncAfterWrite: false },
+        options.supabase!.rpc('set_wish_step_done_with_star_coin', {
+          next_done: nextDone,
+          target_step_id: options.stepId,
+          target_wish_id: options.wishId,
+        }),
+      nextDone ? '步骤和星星币已同步到 Supabase。' : '这个步骤已经放回路上。',
     )
   }
 

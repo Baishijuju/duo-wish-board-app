@@ -33,8 +33,10 @@ export interface WishRowLike {
   due_date: string | null
   progress_mode: WishProgressMode | null
   progress_current: number | null
+  progress_star_coin_value?: number | null
   progress_target: number | null
   progress_unit: string | null
+  completion_star_coin_bonus?: number | null
   completed_at: string | null
   created_at: string
   updated_at: string
@@ -79,6 +81,7 @@ export interface WishStepRowLike {
   wish_id: string
   title: string
   is_done: boolean
+  star_coin_value?: number | null
   created_at: string
   updated_at: string
 }
@@ -90,6 +93,7 @@ export interface WishCoinRowLike {
 export interface RewardPoolItemRowLike {
   id: string
   owner_id: string
+  reward_scope?: RewardPoolItem['scope'] | null
   tier: RewardTier
   title: string
   note: string
@@ -140,8 +144,10 @@ export function createWishRecordFromRow(
     starred: row.is_starred || coinRows.some((coin) => coin.wish_id === row.id),
     progressMode: normalizedProgressMode,
     progressCurrent: typeof row.progress_current === 'number' ? row.progress_current : 0,
+    progressStarCoinValue: typeof row.progress_star_coin_value === 'number' ? row.progress_star_coin_value : 0,
     progressTarget: typeof row.progress_target === 'number' ? row.progress_target : 0,
     progressUnit: typeof row.progress_unit === 'string' ? row.progress_unit : '',
+    completionStarCoinBonus: typeof row.completion_star_coin_bonus === 'number' ? row.completion_star_coin_bonus : 0,
     completedAt: row.completed_at,
     steps: stepRows
       .filter((step) => step.wish_id === row.id)
@@ -150,6 +156,7 @@ export function createWishRecordFromRow(
         createWishStep({
           id: step.id,
           title: step.title,
+          starCoinValue: typeof step.star_coin_value === 'number' ? step.star_coin_value : 0,
           isDone: step.is_done,
           createdAt: step.created_at,
           updatedAt: step.updated_at,
@@ -209,6 +216,7 @@ export function createRewardPoolItemFromRow(row: RewardPoolItemRowLike): RewardP
     isArchived: row.is_archived,
     note: row.note,
     ownerId: row.owner_id,
+    scope: row.reward_scope === 'shared' ? 'shared' : 'personal',
     starCoinCost: row.star_coin_cost,
     tier: row.tier,
     title: row.title,

@@ -35,6 +35,7 @@ import { createRewardClaimRecord as createRewardClaimRecordModule, createRewardP
 import {
   addRewardPoolItemWrite,
   archiveRewardPoolItemWrite,
+  depositRewardStarCoinsWrite,
   redeemPremiumRewardWrite,
   updateRewardPoolItemWrite,
 } from '../modules/rewards/reward.write'
@@ -43,6 +44,7 @@ import {
   buildRewardClaimByStepId,
   buildRewardClaimByWishId,
   buildRewardClaimCountsByItem,
+  buildRewardDepositTotalsByItem,
   buildStarCoinBalanceByMember,
 } from '../modules/rewards/reward.rules'
 import {
@@ -100,7 +102,8 @@ export type WishPriority = 'high' | 'medium' | 'low'
 export type WishScope = 'shared' | 'private'
 export type WishProgressMode = 'none' | 'count' | 'steps'
 export type RewardTier = 'daily' | 'premium'
-export type RewardClaimKind = 'step_reward' | 'wish_reward' | 'count_reward' | 'star_coin' | 'premium_redeem'
+export type RewardScope = 'personal' | 'shared'
+export type RewardClaimKind = 'step_reward' | 'wish_reward' | 'count_reward' | 'star_coin' | 'premium_redeem' | 'step_star_coin' | 'count_star_coin' | 'wish_completion_bonus' | 'reward_deposit'
 export type WishBottleColorTier = 'blue' | 'green' | 'orange' | 'gold' | 'rainbow'
 export type WishThreadEventKind =
   | 'comment'
@@ -155,6 +158,8 @@ export interface WishDraft {
   progressCurrent: number
   progressTarget: number
   progressUnit: string
+  progressStarCoinValue: number
+  completionStarCoinBonus: number
 }
 
 export interface WishComment {
@@ -218,6 +223,7 @@ export interface WishBottleSnapshot {
 export interface RewardPoolItem {
   id: string
   ownerId: string
+  scope: RewardScope
   tier: RewardTier
   title: string
   note: string
@@ -305,6 +311,7 @@ export interface MonthlyJournalSnapshotRecord {
 export interface WishStep {
   id: string
   title: string
+  starCoinValue: number
   isDone: boolean
   createdAt: string
   updatedAt: string
@@ -335,6 +342,8 @@ export interface WishRecord {
   progressCurrent: number
   progressTarget: number
   progressUnit: string
+  progressStarCoinValue: number
+  completionStarCoinBonus: number
   completedAt: string | null
   steps: WishStep[]
   comments: WishComment[]
@@ -676,8 +685,10 @@ const seedWishes: WishRecord[] = [
     starred: true,
     progressMode: 'steps',
     progressCurrent: 0,
+    progressStarCoinValue: 0,
     progressTarget: 0,
     progressUnit: '',
+    completionStarCoinBonus: 3,
     steps: [
       createWishStep({
         id: 'wish-shared-trip-step-budget',
@@ -726,8 +737,10 @@ const seedWishes: WishRecord[] = [
     status: 'active',
     progressMode: 'count',
     progressCurrent: 3,
+    progressStarCoinValue: 0.5,
     progressTarget: 12,
     progressUnit: '模块',
+    completionStarCoinBonus: 2,
     steps: [],
     comments: [
       createWishComment({
@@ -752,8 +765,10 @@ const seedWishes: WishRecord[] = [
     status: 'active',
     progressMode: 'count',
     progressCurrent: 5,
+    progressStarCoinValue: 0.5,
     progressTarget: 12,
     progressUnit: '次',
+    completionStarCoinBonus: 2,
     steps: [],
     comments: [
       createWishComment({
@@ -778,8 +793,10 @@ const seedWishes: WishRecord[] = [
     status: 'active',
     progressMode: 'none',
     progressCurrent: 0,
+    progressStarCoinValue: 0,
     progressTarget: 0,
     progressUnit: '',
+    completionStarCoinBonus: 1,
     steps: [],
     comments: [
       createWishComment({
@@ -804,8 +821,10 @@ const seedWishes: WishRecord[] = [
     status: 'done',
     progressMode: 'count',
     progressCurrent: 3,
+    progressStarCoinValue: 1,
     progressTarget: 3,
     progressUnit: '道',
+    completionStarCoinBonus: 2,
     completedAt: '2026-04-22T10:00:00.000Z',
     steps: [],
     comments: [
@@ -970,12 +989,285 @@ const seedThreadReactions: ThreadReactionRecord[] = [
   }),
 ]
 
+const seedRewardPoolItems: RewardPoolItem[] = [
+  createRewardPoolItem({
+    id: 'reward-morning-coffee-a',
+    ownerId: 'member-a',
+    tier: 'premium',
+    title: '上班路上买一杯拿铁',
+    note: '不用纠结价格，今天就喝喜欢的那一杯。',
+    starCoinCost: 2,
+    createdAt: '2026-04-20T08:10:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-fresh-flowers-a',
+    ownerId: 'member-a',
+    tier: 'premium',
+    title: '给书桌换一小束鲜花',
+    note: '让这周的房间先亮起来一点。',
+    starCoinCost: 3,
+    createdAt: '2026-04-20T08:20:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-window-breakfast-a',
+    ownerId: 'member-a',
+    tier: 'premium',
+    title: '找一家窗边早餐店',
+    note: '慢慢吃一顿不赶时间的早餐。',
+    starCoinCost: 4,
+    createdAt: '2026-04-20T08:30:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-stationery-a',
+    ownerId: 'member-a',
+    tier: 'premium',
+    title: '挑一本新的手账本',
+    note: '给接下来的计划换一个更顺手的地方。',
+    starCoinCost: 5,
+    createdAt: '2026-04-20T08:40:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-dessert-box-a',
+    ownerId: 'member-a',
+    tier: 'premium',
+    title: '带一盒小甜点回家',
+    note: '选两个口味，留一个明天再吃。',
+    starCoinCost: 6,
+    createdAt: '2026-04-20T08:50:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-bookstore-hour-a',
+    ownerId: 'member-a',
+    tier: 'premium',
+    title: '在书店待满一小时',
+    note: '不带任务，只允许自己慢慢翻。',
+    starCoinCost: 7,
+    createdAt: '2026-04-20T09:00:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-cinema-night-a',
+    ownerId: 'member-a',
+    tier: 'premium',
+    title: '看一场工作日夜场电影',
+    note: '买好爆米花，手机静音。',
+    starCoinCost: 8,
+    createdAt: '2026-04-20T09:10:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-bath-set-a',
+    ownerId: 'member-a',
+    tier: 'premium',
+    title: '买一套喜欢的沐浴用品',
+    note: '让睡前洗澡变成真正放松的一段。',
+    starCoinCost: 10,
+    createdAt: '2026-04-20T09:20:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-gallery-afternoon-a',
+    ownerId: 'member-a',
+    tier: 'premium',
+    title: '去看一个小展览',
+    note: '看完顺路喝杯茶，把喜欢的作品记下来。',
+    starCoinCost: 12,
+    createdAt: '2026-04-20T09:30:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-slow-dinner-a',
+    ownerId: 'member-a',
+    tier: 'premium',
+    title: '订一家想吃很久的餐厅',
+    note: '认真点一道招牌菜，不急着走。',
+    starCoinCost: 15,
+    createdAt: '2026-04-20T09:40:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-massage-a',
+    ownerId: 'member-a',
+    tier: 'premium',
+    title: '做一次肩颈放松',
+    note: '把紧绷的肩膀交给专业的人处理。',
+    starCoinCost: 18,
+    createdAt: '2026-04-20T09:50:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-table-lamp-a',
+    ownerId: 'member-a',
+    tier: 'premium',
+    title: '换一盏舒服的床头灯',
+    note: '让夜晚阅读不用再凑合。',
+    starCoinCost: 22,
+    createdAt: '2026-04-20T10:00:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-weekend-workshop-a',
+    ownerId: 'member-a',
+    tier: 'premium',
+    title: '报名一次周末手作课',
+    note: '陶艺、银饰或香薰，选一个真正想试的。',
+    starCoinCost: 26,
+    createdAt: '2026-04-20T10:10:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-hotel-stay-a',
+    ownerId: 'member-a',
+    tier: 'premium',
+    title: '住一晚城市里的舒服酒店',
+    note: '不出远门，也给自己换一个安静空间。',
+    starCoinCost: 32,
+    createdAt: '2026-04-20T10:20:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-short-trip-a',
+    ownerId: 'member-a',
+    tier: 'premium',
+    title: '安排一次两天一夜短途旅行',
+    note: '选一个能慢慢散步、吃好饭的小城。',
+    starCoinCost: 40,
+    createdAt: '2026-04-20T10:30:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-evening-walk-b',
+    ownerId: 'member-b',
+    tier: 'premium',
+    title: '下班后买一杯冰饮散步',
+    note: '绕一条不赶路的路线回家。',
+    starCoinCost: 2,
+    createdAt: '2026-04-20T11:10:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-breakfast-noodles-b',
+    ownerId: 'member-b',
+    tier: 'premium',
+    title: '周末早上吃一碗热汤面',
+    note: '不用外卖，去店里慢慢吃。',
+    starCoinCost: 3,
+    createdAt: '2026-04-20T11:20:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-game-night-b',
+    ownerId: 'member-b',
+    tier: 'premium',
+    title: '留一个晚上安心打游戏',
+    note: '提前收拾好杂事，玩的时候不内疚。',
+    starCoinCost: 4,
+    createdAt: '2026-04-20T11:30:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-new-socks-b',
+    ownerId: 'member-b',
+    tier: 'premium',
+    title: '买几双舒服的新袜子',
+    note: '把那些松掉的旧袜子正式换掉。',
+    starCoinCost: 5,
+    createdAt: '2026-04-20T11:40:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-night-market-b',
+    ownerId: 'member-b',
+    tier: 'premium',
+    title: '去夜市随便吃三样小吃',
+    note: '只负责开心，不负责算热量。',
+    starCoinCost: 6,
+    createdAt: '2026-04-20T11:50:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-record-b',
+    ownerId: 'member-b',
+    tier: 'premium',
+    title: '买一张喜欢的黑胶或专辑',
+    note: '给最近反复听的歌一个实体位置。',
+    starCoinCost: 8,
+    createdAt: '2026-04-20T12:00:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-barber-b',
+    ownerId: 'member-b',
+    tier: 'premium',
+    title: '认真剪一次头发',
+    note: '预约喜欢的发型师，不临时将就。',
+    starCoinCost: 10,
+    createdAt: '2026-04-20T12:10:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-cookware-b',
+    ownerId: 'member-b',
+    tier: 'premium',
+    title: '添一件顺手的厨房小工具',
+    note: '比如削皮刀、温度计或好用的锅铲。',
+    starCoinCost: 12,
+    createdAt: '2026-04-20T12:20:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-sports-shirt-b',
+    ownerId: 'member-b',
+    tier: 'premium',
+    title: '买一件透气运动 T 恤',
+    note: '让下一次出门运动少一点阻力。',
+    starCoinCost: 15,
+    createdAt: '2026-04-20T12:30:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-speaker-b',
+    ownerId: 'member-b',
+    tier: 'premium',
+    title: '升级一个小音箱',
+    note: '做饭和收拾屋子时都能放喜欢的歌。',
+    starCoinCost: 18,
+    createdAt: '2026-04-20T12:40:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-camping-chair-b',
+    ownerId: 'member-b',
+    tier: 'premium',
+    title: '买一把折叠露营椅',
+    note: '公园、天台和短途出门都能用上。',
+    starCoinCost: 22,
+    createdAt: '2026-04-20T12:50:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-foot-spa-b',
+    ownerId: 'member-b',
+    tier: 'premium',
+    title: '做一次足部护理',
+    note: '走了很多路之后，认真照顾一下自己。',
+    starCoinCost: 26,
+    createdAt: '2026-04-20T13:00:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-bike-day-b',
+    ownerId: 'member-b',
+    tier: 'premium',
+    title: '租车骑一下午河边路线',
+    note: '找一条风景舒服、坡度不狠的路线。',
+    starCoinCost: 30,
+    createdAt: '2026-04-20T13:10:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-weekend-brunch-b',
+    ownerId: 'member-b',
+    tier: 'premium',
+    title: '吃一次周末早午餐',
+    note: '点一份平时不会点的主菜。',
+    starCoinCost: 34,
+    createdAt: '2026-04-20T13:20:00.000Z',
+  }),
+  createRewardPoolItem({
+    id: 'reward-new-headphones-b',
+    ownerId: 'member-b',
+    tier: 'premium',
+    title: '换一副通勤耳机',
+    note: '让路上的音乐和播客都更舒服。',
+    starCoinCost: 40,
+    createdAt: '2026-04-20T13:30:00.000Z',
+  }),
+]
+
 function createSeedWishState() {
   return {
     coins: seedWishCoins.map((coin) => createWishCoinRecord(coin)),
     monthlyJournalSnapshots: [] as MonthlyJournalSnapshotRecord[],
     rewardClaims: [] as RewardClaimRecord[],
-    rewardPoolItems: [] as RewardPoolItem[],
+    rewardPoolItems: seedRewardPoolItems.map((item) => createRewardPoolItem(item)),
     threadReactions: seedThreadReactions.map((reaction) => createThreadReactionRecord(reaction)),
     wishes: seedWishes.map((wish) => createWishRecord(wish)),
   }
@@ -1005,6 +1297,15 @@ export const useWishStore = defineStore('wishes', () => {
   const monthlyJournalSnapshots = ref<MonthlyJournalSnapshotRecord[]>(hydratedState.monthlyJournalSnapshots)
   const rewardPoolItems = ref<RewardPoolItem[]>(hydratedState.rewardPoolItems)
   const rewardClaims = ref<RewardClaimRecord[]>(hydratedState.rewardClaims)
+  const missingSeedRewardPoolItems = seedRewardPoolItems.filter((seedItem) => !rewardPoolItems.value.some((item) => item.id === seedItem.id))
+
+  if (missingSeedRewardPoolItems.length) {
+    rewardPoolItems.value = [
+      ...rewardPoolItems.value,
+      ...missingSeedRewardPoolItems.map((item) => createRewardPoolItem(item)),
+    ]
+  }
+
   const isLoading = ref(false)
   const syncMessage = ref('当前使用本地演示数据。')
   const lastLoadedSpaceId = ref<string | null>(null)
@@ -1084,6 +1385,10 @@ export const useWishStore = defineStore('wishes', () => {
 
   const rewardClaimCountsByItem = computed(() => {
     return buildRewardClaimCountsByItem(rewardClaims.value)
+  })
+
+  const rewardDepositTotalsByItem = computed(() => {
+    return buildRewardDepositTotalsByItem(rewardClaims.value)
   })
 
   const rewardClaimByWishId = computed(() => {
@@ -1499,6 +1804,15 @@ export const useWishStore = defineStore('wishes', () => {
   function getRewardPoolItems(memberId: string, tier?: RewardTier, includeArchived = false) {
     return rewardPoolItems.value
       .filter((item) => item.ownerId === memberId)
+      .filter((item) => item.scope !== 'shared')
+      .filter((item) => (tier ? item.tier === tier : true))
+      .filter((item) => (includeArchived ? true : !item.isArchived))
+      .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+  }
+
+  function getSharedRewardPoolItems(tier?: RewardTier, includeArchived = false) {
+    return rewardPoolItems.value
+      .filter((item) => item.scope === 'shared')
       .filter((item) => (tier ? item.tier === tier : true))
       .filter((item) => (includeArchived ? true : !item.isArchived))
       .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
@@ -1507,6 +1821,24 @@ export const useWishStore = defineStore('wishes', () => {
   function getRewardItemClaimCount(target: string | Pick<RewardPoolItem, 'id'>) {
     const itemId = typeof target === 'string' ? target : target.id
     return rewardClaimCountsByItem.value.get(itemId) ?? 0
+  }
+
+  function getRewardItemDepositedStarCoins(target: string | Pick<RewardPoolItem, 'id'>) {
+    const itemId = typeof target === 'string' ? target : target.id
+    return Math.max(0, rewardDepositTotalsByItem.value.get(itemId) ?? 0)
+  }
+
+  function getRewardItemRemainingStarCoins(target: Pick<RewardPoolItem, 'id' | 'starCoinCost'>) {
+    return Math.max(target.starCoinCost - getRewardItemDepositedStarCoins(target), 0)
+  }
+
+  function getRewardItemAvailableDepositedStarCoins(target: Pick<RewardPoolItem, 'id' | 'starCoinCost'>) {
+    const redeemedAmount = getRewardItemClaimCount(target) * Math.max(target.starCoinCost, 0)
+    return Math.max(getRewardItemDepositedStarCoins(target) - redeemedAmount, 0)
+  }
+
+  function getRewardItemRemainingDepositStarCoins(target: Pick<RewardPoolItem, 'id' | 'starCoinCost'>) {
+    return Math.max(target.starCoinCost - getRewardItemAvailableDepositedStarCoins(target), 0)
   }
 
   function getMemberStarCoinBalance(memberId: string) {
@@ -1532,6 +1864,39 @@ export const useWishStore = defineStore('wishes', () => {
 
   function getCurrentMemberId() {
     return authStore.currentMemberId || authStore.currentMember?.id || null
+  }
+
+  function isCurrentMemberWishOwner(wish: Pick<WishRecord, 'ownerId'> | undefined | null) {
+    const memberId = getCurrentMemberId()
+    return !!wish && !!memberId && wish.ownerId === memberId
+  }
+
+  function formatStarCoinAmount(value: number) {
+    const roundedValue = Math.round(value * 10) / 10
+    return Number.isInteger(roundedValue) ? `${roundedValue}` : roundedValue.toFixed(1)
+  }
+
+  function createAutomaticStarCoinClaim(options: {
+    claimKind: Extract<RewardClaimKind, 'step_star_coin' | 'count_star_coin' | 'wish_completion_bonus'>
+    ownerId: string
+    quantity?: number
+    sourceStepId?: string | null
+    sourceWishId: string
+    starCoinDelta: number
+    titleSnapshot: string
+    noteSnapshot: string
+  }) {
+    return createRewardClaimRecord({
+      claimKind: options.claimKind,
+      noteSnapshot: options.noteSnapshot,
+      ownerId: options.ownerId,
+      quantity: options.quantity ?? 1,
+      rewardItemId: null,
+      sourceStepId: options.sourceStepId ?? null,
+      sourceWishId: options.sourceWishId,
+      starCoinDelta: options.starCoinDelta,
+      titleSnapshot: options.titleSnapshot,
+    })
   }
 
   function getMemberDisplayName(memberId: string | null) {
@@ -2068,22 +2433,6 @@ export const useWishStore = defineStore('wishes', () => {
     })
   }
 
-  function replaceWish(nextWish: WishRecord) {
-    wishes.value = wishes.value.map((entry) => entry.id === nextWish.id ? nextWish : entry)
-  }
-
-  function cloneWishRecord(wish: WishRecord): WishRecord {
-    return {
-      ...wish,
-      steps: wish.steps.map((step) => ({ ...step })),
-      comments: wish.comments.map((comment) => ({
-        ...comment,
-        images: comment.images.map((image) => ({ ...image })),
-      })),
-      images: wish.images.map((image) => ({ ...image })),
-    }
-  }
-
   function removeWishLocally(id: string) {
     wishes.value = deleteWishLocal(id, wishes.value)
     wishCoins.value = wishCoins.value.filter((coin) => coin.wishId !== id)
@@ -2100,14 +2449,19 @@ export const useWishStore = defineStore('wishes', () => {
     })
   }
 
-  async function addWish(draft: WishDraft, initialStepTitles: string[] = []) {
-    const normalizedStepTitles = draft.progressMode === 'steps'
-      ? initialStepTitles.map((title) => title.trim()).filter((title) => !!title)
+  async function addWish(draft: WishDraft, initialSteps: Array<{ title: string; starCoinValue: number }> = []) {
+    const normalizedSteps = draft.progressMode === 'steps'
+      ? initialSteps
+          .map((step) => ({
+            starCoinValue: Math.max(0, Number(step.starCoinValue) || 0),
+            title: step.title.trim(),
+          }))
+          .filter((step) => !!step.title)
       : []
 
     const progressCapabilityMessage = getKnownCapabilityMessage('hasWishProgress')
 
-    if (progressCapabilityMessage && (draft.progressMode !== 'none' || normalizedStepTitles.length)) {
+    if (progressCapabilityMessage && (draft.progressMode !== 'none' || normalizedSteps.length)) {
       syncMessage.value = progressCapabilityMessage
       return null
     }
@@ -2120,7 +2474,7 @@ export const useWishStore = defineStore('wishes', () => {
         ownerId,
         includeProgressFields: !isCapabilityKnownMissing('hasWishProgress'),
         draft,
-        initialStepTitles: normalizedStepTitles,
+        initialSteps: normalizedSteps,
         onLoadingChange: (value) => {
           isLoading.value = value
         },
@@ -2131,7 +2485,7 @@ export const useWishStore = defineStore('wishes', () => {
       })
     }
 
-    const created = addWishLocal(draft, normalizedStepTitles)
+    const created = addWishLocal(draft, normalizedSteps)
     wishes.value.unshift(created.wish)
     syncMessage.value = created.message
     return created.wish.id
@@ -2163,8 +2517,10 @@ export const useWishStore = defineStore('wishes', () => {
         title: draft.title.trim(),
         ...(!isCapabilityKnownMissing('hasWishProgress')
           ? {
+              completion_star_coin_bonus: draft.completionStarCoinBonus,
               progress_current: draft.progressCurrent,
               progress_mode: draft.progressMode,
+              progress_star_coin_value: draft.progressStarCoinValue,
               progress_target: draft.progressTarget,
               progress_unit: draft.progressUnit.trim(),
             }
@@ -2225,6 +2581,7 @@ export const useWishStore = defineStore('wishes', () => {
   }
 
   async function addRewardPoolItem(input: {
+    scope?: RewardScope
     tier: RewardTier
     title: string
     note?: string
@@ -2262,6 +2619,7 @@ export const useWishStore = defineStore('wishes', () => {
     updates: {
       title?: string
       note?: string
+      scope?: RewardScope
       starCoinCost?: number
     },
   ): Promise<RewardActionResult> {
@@ -2329,6 +2687,46 @@ export const useWishStore = defineStore('wishes', () => {
   }
 
   async function completeWishWithReward(wishId: string, rewardItemId: string): Promise<RewardActionResult> {
+    const wish = findById(wishId)
+    const memberId = getCurrentMemberId()
+
+    if (!wish || !memberId) {
+      return rewardResult(false, '当前没有可完成的愿望。')
+    }
+
+    if (!isCurrentMemberWishOwner(wish)) {
+      return rewardResult(false, '只有这条愿望的归属人可以推进和完成它。')
+    }
+
+    if (wish.status === 'done') {
+      return rewardResult(false, '这个愿望已经完成了。')
+    }
+
+    if (hasWishRewardClaim(wishId)) {
+      return rewardResult(false, '这条愿望的完成星星币已经发过了。')
+    }
+
+    if (!supabase || !isUsingCloudWishes.value) {
+      const now = new Date().toISOString()
+      const bonus = Math.max(0, wish.completionStarCoinBonus)
+      const localWish = {
+        ...wish,
+        completedAt: now,
+        status: 'done' as const,
+        updatedAt: now,
+      }
+      wishes.value = wishes.value.map((entry) => entry.id === wishId ? localWish : entry)
+      rewardClaims.value.unshift(createAutomaticStarCoinClaim({
+        claimKind: 'wish_completion_bonus',
+        noteSnapshot: `完成「${wish.title}」时自动获得的额外星星币。`,
+        ownerId: wish.ownerId,
+        sourceWishId: wishId,
+        starCoinDelta: bonus,
+        titleSnapshot: `${formatStarCoinAmount(bonus)} 星星币`,
+      }))
+      return rewardResult(true, `这条愿望已经完成，${formatStarCoinAmount(bonus)} 枚星星币已经自动到账。`)
+    }
+
     const rewardCapabilityMessage = getKnownCapabilityMessage('hasRewardPools')
 
     if (rewardCapabilityMessage) {
@@ -2339,9 +2737,9 @@ export const useWishStore = defineStore('wishes', () => {
       supabase,
       isUsingCloudWishes: isUsingCloudWishes.value,
       currentSpaceId: authStore.currentSpaceId,
-      wish: findById(wishId),
+      wish,
       wishId,
-      memberId: getCurrentMemberId(),
+      memberId,
       rewardItem: rewardPoolItems.value.find((item) => item.id === rewardItemId),
       rewardItemId,
       hasWishRewardClaim: hasWishRewardClaim(wishId),
@@ -2465,7 +2863,41 @@ export const useWishStore = defineStore('wishes', () => {
       memberId,
       rewardItem,
       rewardItemId,
+      depositedAmount: rewardItem ? getRewardItemAvailableDepositedStarCoins(rewardItem) : 0,
+      onLoadingChange: (value) => {
+        isLoading.value = value
+      },
+      onResult: (result) => rewardResult(result.ok, result.message),
+      syncFromSupabase,
+    })
+
+    if ('localClaim' in result) {
+      rewardClaims.value.unshift(result.localClaim)
+      return result.result
+    }
+
+    return result
+  }
+
+  async function depositRewardStarCoins(rewardItemId: string, amount: number): Promise<RewardActionResult> {
+    const rewardCapabilityMessage = getKnownCapabilityMessage('hasRewardPools')
+
+    if (rewardCapabilityMessage) {
+      return rewardResult(false, rewardCapabilityMessage)
+    }
+
+    const memberId = getCurrentMemberId()
+    const rewardItem = rewardPoolItems.value.find((item) => item.id === rewardItemId)
+    const result = await depositRewardStarCoinsWrite({
+      supabase,
+      isUsingCloudWishes: isUsingCloudWishes.value,
+      currentSpaceId: authStore.currentSpaceId,
+      memberId,
+      rewardItem,
+      rewardItemId,
+      amount,
       currentBalance: memberId ? getMemberStarCoinBalance(memberId) : 0,
+      depositedAmount: rewardItem ? getRewardItemAvailableDepositedStarCoins(rewardItem) : 0,
       onLoadingChange: (value) => {
         isLoading.value = value
       },
@@ -2551,32 +2983,9 @@ export const useWishStore = defineStore('wishes', () => {
     const wish = findById(id)
     const normalizedCurrent = wish ? Math.min(normalizeProgressNumber(nextCurrent), Math.max(1, wish.progressTarget)) : 0
 
-    if (wish && wish.progressMode === 'count' && normalizedCurrent !== wish.progressCurrent && supabase && isUsingCloudWishes.value) {
-      const previousWish = cloneWishRecord(wish)
-      replaceWish({
-        ...wish,
-        progressCurrent: normalizedCurrent,
-        updatedAt: new Date().toISOString(),
-      })
-      syncMessage.value = '进度已先更新，正在同步云端。'
-
-      const synced = await setWishCountProgressWrite({
-        supabase,
-        isUsingCloudWishes: true,
-        wish,
-        wishId: id,
-        normalizedCurrent,
-        runCloudMutation,
-        onSyncMessage: (value) => {
-          syncMessage.value = value
-        },
-      })
-
-      if (!synced) {
-        replaceWish(previousWish)
-      }
-
-      return synced
+    if (wish && !isCurrentMemberWishOwner(wish)) {
+      syncMessage.value = '只有这条愿望的归属人可以推进它。'
+      return false
     }
 
     const result = await setWishCountProgressWrite({
@@ -2592,7 +3001,21 @@ export const useWishStore = defineStore('wishes', () => {
     })
 
     if (result && typeof result === 'object' && 'localWish' in result) {
+      const previousCurrent = wish?.progressCurrent ?? 0
+      const gainedUnits = Math.max(result.localWish.progressCurrent - previousCurrent, 0)
       wishes.value = wishes.value.map((entry) => entry.id === id ? result.localWish : entry)
+      if (wish && gainedUnits > 0) {
+        const starCoinDelta = gainedUnits * Math.max(0, wish.progressStarCoinValue)
+        rewardClaims.value.unshift(createAutomaticStarCoinClaim({
+          claimKind: 'count_star_coin',
+          noteSnapshot: `「${wish.title}」数字进度新增 ${gainedUnits} ${wish.progressUnit || '点'}，自动获得星星币。`,
+          ownerId: wish.ownerId,
+          quantity: gainedUnits,
+          sourceWishId: id,
+          starCoinDelta,
+          titleSnapshot: `${formatStarCoinAmount(starCoinDelta)} 星星币`,
+        }))
+      }
       syncMessage.value = result.message
       return true
     }
@@ -2610,7 +3033,7 @@ export const useWishStore = defineStore('wishes', () => {
     return setWishCountProgress(id, wish.progressCurrent + delta)
   }
 
-  async function addWishStep(wishId: string, title: string) {
+  async function addWishStep(wishId: string, title: string, starCoinValue = 1) {
     const progressCapabilityMessage = getKnownCapabilityMessage('hasWishProgress')
 
     if (progressCapabilityMessage) {
@@ -2618,12 +3041,20 @@ export const useWishStore = defineStore('wishes', () => {
       return false
     }
 
+    const wish = findById(wishId)
+
+    if (wish && !isCurrentMemberWishOwner(wish)) {
+      syncMessage.value = '只有这条愿望的归属人可以整理步骤。'
+      return false
+    }
+
     const result = await addWishStepWrite({
       supabase,
       isUsingCloudWishes: isUsingCloudWishes.value,
-      wish: findById(wishId),
+      wish,
       wishId,
       normalizedTitle: title.trim(),
+      normalizedStarCoinValue: Math.max(0, Math.round((Number(starCoinValue) || 0) * 10) / 10),
       runCloudMutation,
       onLoadingChange: (value) => {
         isLoading.value = value
@@ -2668,31 +3099,9 @@ export const useWishStore = defineStore('wishes', () => {
     const wish = findById(wishId)
     const step = wish?.steps.find((item) => item.id === stepId)
 
-    if (wish && step && wish.progressMode === 'steps' && supabase && isUsingCloudWishes.value) {
-      const previousWish = cloneWishRecord(wish)
-      const nextDone = !step.isDone
-      replaceWish({
-        ...wish,
-        steps: wish.steps.map((entry) => entry.id === stepId ? { ...entry, isDone: nextDone, updatedAt: new Date().toISOString() } : entry),
-        updatedAt: new Date().toISOString(),
-      })
-      syncMessage.value = nextDone ? '步骤已先标记完成，正在同步云端。' : '步骤已先放回路上，正在同步云端。'
-
-      const synced = await toggleWishStepWrite({
-        supabase,
-        isUsingCloudWishes: true,
-        wish,
-        wishId,
-        stepId,
-        step,
-        runCloudMutation,
-      })
-
-      if (!synced) {
-        replaceWish(previousWish)
-      }
-
-      return synced
+    if (wish && !isCurrentMemberWishOwner(wish)) {
+      syncMessage.value = '只有这条愿望的归属人可以推进它。'
+      return false
     }
 
     const result = await toggleWishStepWrite({
@@ -2706,7 +3115,20 @@ export const useWishStore = defineStore('wishes', () => {
     })
 
     if (result && typeof result === 'object' && 'localWish' in result) {
+      const nextStep = result.localWish.steps.find((item) => item.id === stepId)
       wishes.value = wishes.value.map((entry) => entry.id === wishId ? result.localWish : entry)
+      if (wish && step && nextStep?.isDone && !step.isDone && !hasStepRewardClaim(stepId)) {
+        const starCoinDelta = Math.max(0, step.starCoinValue)
+        rewardClaims.value.unshift(createAutomaticStarCoinClaim({
+          claimKind: 'step_star_coin',
+          noteSnapshot: `完成「${wish.title}」里的步骤「${step.title}」时自动获得星星币。`,
+          ownerId: wish.ownerId,
+          sourceStepId: stepId,
+          sourceWishId: wishId,
+          starCoinDelta,
+          titleSnapshot: `${formatStarCoinAmount(starCoinDelta)} 星星币`,
+        }))
+      }
       syncMessage.value = result.message
       return true
     }
@@ -2722,10 +3144,17 @@ export const useWishStore = defineStore('wishes', () => {
       return false
     }
 
+    const wish = findById(wishId)
+
+    if (wish && !isCurrentMemberWishOwner(wish)) {
+      syncMessage.value = '只有这条愿望的归属人可以整理步骤。'
+      return false
+    }
+
     const result = await deleteWishStepWrite({
       supabase,
       isUsingCloudWishes: isUsingCloudWishes.value,
-      wish: findById(wishId),
+      wish,
       wishId,
       stepId,
       runCloudMutation,
@@ -3340,13 +3769,19 @@ export const useWishStore = defineStore('wishes', () => {
     deleteWishImage,
     deleteWishImages,
     deleteWish,
+    depositRewardStarCoins,
     deleteWishStep,
     dragonBallWishes,
     dueSoonWishes,
     findById,
     getMemberStarCoinBalance,
     getRewardItemClaimCount,
+    getRewardItemAvailableDepositedStarCoins,
+    getRewardItemDepositedStarCoins,
+    getRewardItemRemainingDepositStarCoins,
+    getRewardItemRemainingStarCoins,
     getRewardPoolItems,
+    getSharedRewardPoolItems,
     getStepRewardClaim,
     getWishThreadEntries,
     getWishCoinSummary,

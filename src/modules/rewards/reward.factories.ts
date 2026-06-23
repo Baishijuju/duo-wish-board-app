@@ -9,6 +9,7 @@ export function createRewardPoolItem(
   return {
     id: partial.id ?? createId(),
     ownerId: partial.ownerId,
+    scope: partial.scope ?? 'personal',
     tier: partial.tier,
     title: partial.title.trim(),
     note: partial.note?.trim() ?? '',
@@ -32,7 +33,7 @@ export function createRewardClaimRecord(
     quantity: Math.max(1, Math.trunc(Number(partial.quantity ?? 1) || 1)),
     titleSnapshot: partial.titleSnapshot.trim(),
     noteSnapshot: partial.noteSnapshot?.trim() ?? '',
-    starCoinDelta: Math.trunc(Number(partial.starCoinDelta ?? 0) || 0),
+    starCoinDelta: Number(partial.starCoinDelta ?? 0) || 0,
     createdAt: partial.createdAt ?? new Date().toISOString(),
   }
 }

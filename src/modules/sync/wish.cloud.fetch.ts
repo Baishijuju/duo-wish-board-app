@@ -177,12 +177,26 @@ export async function fetchWishCloudRows(
   if (!options.capabilities || options.capabilities.hasRewardPools) {
     const { data: rewardPoolItemData, error: rewardPoolItemError } = await supabase
       .from('reward_pool_items')
-      .select('id, space_id, owner_id, tier, title, note, star_coin_cost, is_archived, created_at, updated_at')
+      .select('id, space_id, owner_id, reward_scope, tier, title, note, star_coin_cost, is_archived, created_at, updated_at')
       .eq('space_id', spaceId)
       .order('updated_at', { ascending: false })
 
     if (rewardPoolItemError) {
-      if (!allowsLegacyCapabilityFallback || (rewardPoolItemError.code !== '42P01' && !/reward_pool_items/i.test(rewardPoolItemError.message))) {
+      const isMissingRewardScope = rewardPoolItemError.code === '42703' || /reward_scope/i.test(rewardPoolItemError.message)
+
+      if (isMissingRewardScope) {
+        const { data: legacyRewardPoolItemData, error: legacyRewardPoolItemError } = await supabase
+          .from('reward_pool_items')
+          .select('id, space_id, owner_id, tier, title, note, star_coin_cost, is_archived, created_at, updated_at')
+          .eq('space_id', spaceId)
+          .order('updated_at', { ascending: false })
+
+        if (legacyRewardPoolItemError) {
+          return { ok: false, message: `云端奖励池同步失败：${legacyRewardPoolItemError.message}` }
+        }
+
+        rewardPoolItemRows = (legacyRewardPoolItemData ?? []) as RewardPoolItemRowLike[]
+      } else if (!allowsLegacyCapabilityFallback || (rewardPoolItemError.code !== '42P01' && !/reward_pool_items/i.test(rewardPoolItemError.message))) {
         return { ok: false, message: `云端奖励池同步失败：${rewardPoolItemError.message}` }
       }
     } else {

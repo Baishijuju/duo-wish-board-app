@@ -6,6 +6,7 @@ import { useComposePreviewState } from '../composables/useComposePreviewState'
 const {
   addInitialStepField,
   applyCategory,
+  authStore,
   cancelEditing,
   categorySuggestions,
   composerHeadline,
@@ -13,7 +14,6 @@ const {
   draft,
   draftNotePreview,
   draftTitlePreview,
-  dueDateLabel,
   editingWish,
   feedbackMessage,
   feedbackTone,
@@ -21,12 +21,9 @@ const {
   initialStepDrafts,
   progressOptions,
   progressSummary,
-  priorityOptions,
   removeInitialStepField,
-  scopeOptions,
+  starCoinTotalSummary,
   selectedOwnerLabel,
-  selectedPriorityLabel,
-  selectedScopeLabel,
   submitWish,
   viewerName,
 } = useComposePreviewState({ allowEditing: true })
@@ -46,7 +43,7 @@ watch(
 )
 
 const stepPreview = computed(() => {
-  return initialStepDrafts.value.map((step) => step.trim()).filter(Boolean).slice(0, 4)
+  return initialStepDrafts.value.map((step) => step.title.trim()).filter(Boolean).slice(0, 4)
 })
 
 const shouldShowSummaryStage = computed(() => {
@@ -158,45 +155,22 @@ function toggleSupplementaryFields() {
             <section class="compose-preview-section">
               <header class="compose-preview-section-head">
                 <div>
-                  <p class="eyebrow">一起怎么看这条愿望</p>
-                  <h2>先决定它要不要一起被看见</h2>
+                  <p class="eyebrow">这是谁的愿望</p>
+                  <h2>星星币会进入归属人的余额</h2>
                 </div>
-                <span>{{ selectedScopeLabel }}</span>
+                <span>{{ selectedOwnerLabel }}</span>
               </header>
 
-              <div class="compose-preview-option-grid">
+              <div class="compose-preview-member-row">
                 <button
-                  v-for="option in scopeOptions"
-                  :key="option.value"
-                  type="button"
-                  class="compose-option-card"
-                  :class="{ active: draft.scope === option.value }"
-                  @click="draft.scope = option.value"
-                >
-                  <strong>{{ option.label }}</strong>
-                </button>
-              </div>
-            </section>
-
-            <section class="compose-preview-section compact">
-              <header class="compose-preview-section-head">
-                <div>
-                  <p class="eyebrow">想先把它放在哪</p>
-                  <h2>给它一个靠近生活的位置</h2>
-                </div>
-                <span>{{ selectedPriorityLabel }}</span>
-              </header>
-
-              <div class="compose-preview-member-row priority-row">
-                <button
-                  v-for="option in priorityOptions"
-                  :key="option.value"
+                  v-for="member in authStore.members"
+                  :key="member.id"
                   type="button"
                   class="compose-member-chip"
-                  :class="{ active: draft.priority === option.value }"
-                  @click="draft.priority = option.value"
+                  :class="{ active: draft.ownerId === member.id }"
+                  @click="draft.ownerId = member.id"
                 >
-                  {{ option.label }}
+                  {{ member.displayName }}
                 </button>
               </div>
             </section>
@@ -239,6 +213,10 @@ function toggleSupplementaryFields() {
                   <span>单位</span>
                   <input v-model="draft.progressUnit" type="text" maxlength="10" placeholder="次 / 公里 / 页" />
                 </label>
+                <label class="compose-field compact">
+                  <span>每单位星星币</span>
+                  <input v-model.number="draft.progressStarCoinValue" type="number" min="0" step="0.5" />
+                </label>
               </div>
 
               <div v-else-if="draft.progressMode === 'steps' && !editingWish" class="compose-preview-steps-stage">
@@ -252,10 +230,18 @@ function toggleSupplementaryFields() {
                     <span>第 {{ index }} 步</span>
                     <div class="compose-preview-step-field">
                       <input
-                        v-model="initialStepDrafts[index - 1]"
+                        v-model="initialStepDrafts[index - 1].title"
                         type="text"
                         maxlength="30"
                         placeholder="写一个很小的起步动作"
+                      />
+                      <input
+                        v-model.number="initialStepDrafts[index - 1].starCoinValue"
+                        class="compose-preview-step-coin-input"
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        placeholder="星币"
                       />
                       <button type="button" class="compose-inline-action subtle" @click="removeInitialStepField(index - 1)">
                         移除
@@ -275,9 +261,9 @@ function toggleSupplementaryFields() {
             </section>
 
             <div class="compose-preview-bottom-row">
-              <label class="compose-field compact compose-field-date">
-                <span>想在什么时候开始靠近</span>
-                <input v-model="draft.dueDate" type="date" />
+              <label class="compose-field compact">
+                <span>最终完成额外星星币</span>
+                <input v-model.number="draft.completionStarCoinBonus" type="number" min="0" step="0.5" />
               </label>
 
               <div class="compose-preview-actions">
@@ -306,20 +292,12 @@ function toggleSupplementaryFields() {
               <dd>{{ selectedOwnerLabel }}</dd>
             </div>
             <div>
-              <dt>范围</dt>
-              <dd>{{ selectedScopeLabel }}</dd>
-            </div>
-            <div>
-              <dt>优先级</dt>
-              <dd>{{ selectedPriorityLabel }}</dd>
-            </div>
-            <div>
               <dt>进度</dt>
               <dd>{{ progressSummary }}</dd>
             </div>
             <div>
-              <dt>日期</dt>
-              <dd>{{ dueDateLabel }}</dd>
+              <dt>星星币</dt>
+              <dd>{{ starCoinTotalSummary }}</dd>
             </div>
           </dl>
 
@@ -643,11 +621,11 @@ function toggleSupplementaryFields() {
 }
 
 .compose-preview-count-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .compose-preview-bottom-row {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(10rem, 0.65fr) minmax(0, 1fr) auto;
   align-items: end;
 }
 
@@ -699,6 +677,10 @@ function toggleSupplementaryFields() {
   display: flex;
   gap: 0.5rem;
   align-items: center;
+}
+
+.compose-preview-step-coin-input {
+  flex: 0 0 5.8rem;
 }
 
 .compose-preview-step-notice {

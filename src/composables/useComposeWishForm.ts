@@ -8,6 +8,18 @@ interface UseComposeWishFormOptions {
   allowEditing?: boolean
 }
 
+export interface InitialStepDraft {
+  title: string
+  starCoinValue: number | null
+}
+
+function createEmptyInitialStepDraft(): InitialStepDraft {
+  return {
+    title: '',
+    starCoinValue: null,
+  }
+}
+
 export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
   const route = useRoute()
   const router = useRouter()
@@ -17,7 +29,7 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
 
   const feedbackMessage = ref('')
   const feedbackTone = ref<'success' | 'danger'>('success')
-  const initialStepDrafts = ref(['', ''])
+  const initialStepDrafts = ref<InitialStepDraft[]>([createEmptyInitialStepDraft(), createEmptyInitialStepDraft()])
   const categorySuggestions = ['旅行', '生活', '成长', '健康', '家', '纪念']
 
   function createEmptyDraft(): WishDraft {
@@ -33,6 +45,8 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
       progressCurrent: 0,
       progressTarget: 0,
       progressUnit: '',
+      progressStarCoinValue: 0,
+      completionStarCoinBonus: 0,
     }
   }
 
@@ -79,6 +93,8 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
         progressCurrent: editingWish.value.progressCurrent,
         progressTarget: editingWish.value.progressTarget,
         progressUnit: editingWish.value.progressUnit,
+        progressStarCoinValue: editingWish.value.progressStarCoinValue,
+        completionStarCoinBonus: editingWish.value.completionStarCoinBonus,
       }
     },
     { immediate: true },
@@ -86,7 +102,7 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
 
   function resetDraft() {
     draft.value = createEmptyDraft()
-    initialStepDrafts.value = ['', '']
+    initialStepDrafts.value = [createEmptyInitialStepDraft(), createEmptyInitialStepDraft()]
   }
 
   function applyCategory(category: string) {
@@ -94,12 +110,12 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
   }
 
   function addInitialStepField() {
-    initialStepDrafts.value = [...initialStepDrafts.value, '']
+    initialStepDrafts.value = [...initialStepDrafts.value, createEmptyInitialStepDraft()]
   }
 
   function removeInitialStepField(index: number) {
     if (initialStepDrafts.value.length <= 1) {
-      initialStepDrafts.value = ['']
+      initialStepDrafts.value = [createEmptyInitialStepDraft()]
       return
     }
 
@@ -107,7 +123,12 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
   }
 
   function getNormalizedInitialSteps() {
-    return initialStepDrafts.value.map((step) => step.trim()).filter((step) => !!step)
+    return initialStepDrafts.value
+      .map((step) => ({
+        starCoinValue: Number(step.starCoinValue ?? 0),
+        title: step.title.trim(),
+      }))
+      .filter((step) => !!step.title)
   }
 
   async function submitWish() {
@@ -123,13 +144,41 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
       return
     }
 
+    if (draft.value.completionStarCoinBonus < 0) {
+      feedbackMessage.value = '最终完成额外星星币不能是负数。'
+      feedbackTone.value = 'danger'
+      return
+    }
+
     if (draft.value.progressMode === 'count') {
+      if (draft.value.progressStarCoinValue <= 0) {
+        feedbackMessage.value = '按数字记进度时，每单位星星币价格必须大于 0。'
+        feedbackTone.value = 'danger'
+        return
+      }
+
       if (!editingWish.value) {
         // 新建 count 愿望时固定从 0 开始，避免创建时带入已完成量。
         draft.value.progressCurrent = 0
       }
 
       draft.value.progressCurrent = Math.max(0, Math.min(draft.value.progressCurrent, draft.value.progressTarget))
+    }
+
+    if (draft.value.progressMode === 'steps' && !editingWish.value) {
+      const initialSteps = getNormalizedInitialSteps()
+
+      if (!initialSteps.length) {
+        feedbackMessage.value = '按步骤走的时候，至少先写一个起步步骤。'
+        feedbackTone.value = 'danger'
+        return
+      }
+
+      if (initialSteps.some((step) => step.starCoinValue <= 0)) {
+        feedbackMessage.value = '每个步骤都需要写一个大于 0 的星星币价格。'
+        feedbackTone.value = 'danger'
+        return
+      }
     }
 
     if (editingWish.value) {

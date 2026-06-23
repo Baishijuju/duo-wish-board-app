@@ -21,7 +21,6 @@ const {
   adjustCountProgress,
   canAddThreadReaction,
   cancelEditingThreadComment,
-  canConfirmWishReward,
   canDeleteImage,
   canManageThreadComment,
   canPreviewNext,
@@ -30,16 +29,13 @@ const {
   clearCommentImageFiles,
   closeImagePreview,
   closeThreadReactionPicker,
-  closeRewardDialog,
   coinSnapshot,
   commentFeedback,
   commentFeedbackTone,
   commentImageFiles,
   commentImageInputVersion,
-  confirmWishCompletionReward,
   countProgressDraft,
   coverImageUrl,
-  currentMemberPremiumRewards,
   currentMemberStarCoins,
   deleteImage,
   deleteThreadComment,
@@ -51,9 +47,12 @@ const {
   formatFileSize,
   getClaimToneLabel,
   getCoinStatusLabel,
+  getCompletionStarCoinLabel,
   getCommentImageFileKey,
+  getCountStarCoinLabel,
   getMemberName,
   getStepActionLabel,
+  getStepStarCoinLabel,
   getStepStatusCopy,
   getThreadActorName,
   getThreadReactionAriaLabel,
@@ -71,12 +70,12 @@ const {
   handleWishCompletionAction,
   isCommentThread,
   isCountProgressFeedback,
+  canProgressSelectedWish,
   isCoverImage,
   isEditingThreadComment,
   isSavingThreadEdit,
   isSubmittingComment,
   isSubmittingStep,
-  isSubmittingReward,
   isThreadReactionActive,
   isThreadReactionExpanded,
   isThreadReactionMembersExpanded,
@@ -87,8 +86,6 @@ const {
   lightboxImages,
   openImagePreview,
   openThreadReactionPicker,
-  pendingCompletionKind,
-  pendingWishRewardSelectionId,
   previewImage,
   previewImageIndex,
   progressLead,
@@ -104,6 +101,7 @@ const {
   selectedWish,
   startEditingThreadComment,
   stepDraft,
+  stepStarCoinDraft,
   stepPreview,
   stepRewardFeedbackTargetId,
   submitComment,
@@ -326,7 +324,7 @@ async function confirmDeleteWish() {
             </div>
           </div>
 
-          <p v-if="rewardFeedback && !pendingCompletionKind && !stepRewardFeedbackTargetId && !isCountProgressFeedback" :class="['detail-atelier-feedback', rewardFeedbackTone]" role="status" aria-live="polite">{{ rewardFeedback }}</p>
+          <p v-if="rewardFeedback && !stepRewardFeedbackTargetId && !isCountProgressFeedback" :class="['detail-atelier-feedback', rewardFeedbackTone]" role="status" aria-live="polite">{{ rewardFeedback }}</p>
         </article>
 
         <article class="page-card detail-atelier-cover-card detail-atelier-desktop-only">
@@ -398,9 +396,9 @@ async function confirmDeleteWish() {
             <div class="detail-atelier-progress-quick-action">
               <div class="detail-atelier-progress-quick-copy">
                 <strong>先让它继续往前一点</strong>
-                <p>每往前一点，小奖励都会先被空间页接住。</p>
+                <p>{{ canProgressSelectedWish ? getCountStarCoinLabel() : '你可以评论和打气，进度由愿望归属人推进。' }}</p>
               </div>
-              <button class="detail-atelier-primary detail-atelier-progress-primary" type="button" @click="void adjustCountProgress(1)">
+              <button v-if="canProgressSelectedWish" class="detail-atelier-primary detail-atelier-progress-primary" type="button" @click="void adjustCountProgress(1)">
                 +1{{ selectedWish.progressUnit ? ` ${selectedWish.progressUnit}` : '' }}
               </button>
               <p v-if="rewardFeedback && isCountProgressFeedback" :class="['detail-atelier-feedback', 'detail-atelier-step-feedback', 'detail-atelier-progress-feedback', rewardFeedbackTone]" role="status" aria-live="polite">{{ rewardFeedback }}</p>
@@ -410,9 +408,13 @@ async function confirmDeleteWish() {
           <div v-else-if="progressSnapshot?.mode === 'steps'" class="detail-atelier-progress-stack">
             <div v-if="selectedWish.steps.length" class="detail-atelier-step-list detail-atelier-desktop-only">
               <article v-for="step in selectedWish.steps" :key="step.id" :class="['detail-atelier-step-card', { done: step.isDone }]">
-                <button class="detail-atelier-secondary detail-atelier-step-toggle" type="button" @click="void toggleWishStep(step.id)">{{ getStepActionLabel(step.id, step.isDone) }}</button>
+                <button v-if="canProgressSelectedWish" class="detail-atelier-secondary detail-atelier-step-toggle" type="button" @click="void toggleWishStep(step.id)">{{ getStepActionLabel(step.id, step.isDone) }}</button>
                 <div class="detail-atelier-step-copy">
                   <strong>{{ step.title }}</strong>
+                  <div class="detail-atelier-chip-row compact">
+                    <span class="detail-atelier-chip">{{ getStepStarCoinLabel(step.id) }}</span>
+                    <span v-if="!canProgressSelectedWish" class="detail-atelier-chip">只读</span>
+                  </div>
                   <div v-if="wishStore.getStepRewardClaim(step.id)" class="detail-atelier-chip-row compact">
                     <span class="detail-atelier-chip">{{ getClaimToneLabel(wishStore.getStepRewardClaim(step.id)?.claimKind || '') }}</span>
                     <span class="detail-atelier-chip">{{ wishStore.getStepRewardClaim(step.id)?.titleSnapshot }}</span>
@@ -444,9 +446,9 @@ async function confirmDeleteWish() {
             <div class="detail-atelier-progress-quick-action">
               <div class="detail-atelier-progress-quick-copy">
                 <strong>{{ selectedWish.steps.length ? '先完成眼前这一步' : '先写下第一步' }}</strong>
-                <p>{{ selectedWish.steps.length ? '走完下一步时，这页会继续替你把过程留住。' : '有了第一步，这条愿望会更容易继续往前。' }}</p>
+                <p>{{ canProgressSelectedWish ? (selectedWish.steps.length ? '走完下一步时，星星币会自动到账。' : '有了第一步，这条愿望会更容易继续往前。') : '你可以在下面评论和打气，步骤由愿望归属人推进。' }}</p>
               </div>
-              <button class="detail-atelier-primary detail-atelier-progress-primary" type="button" @click="mobilePrimaryStep ? void toggleWishStep(mobilePrimaryStep.id) : undefined" :disabled="!mobilePrimaryStep || mobilePrimaryStep.isDone">
+              <button v-if="canProgressSelectedWish" class="detail-atelier-primary detail-atelier-progress-primary" type="button" @click="mobilePrimaryStep ? void toggleWishStep(mobilePrimaryStep.id) : undefined" :disabled="!mobilePrimaryStep || mobilePrimaryStep.isDone">
                 {{ selectedWish.steps.length ? '完成这一步' : '先去下面补一步' }}
               </button>
               <p v-if="rewardFeedback && stepRewardFeedbackTargetId" :class="['detail-atelier-feedback', 'detail-atelier-step-feedback', rewardFeedbackTone]" role="status" aria-live="polite">{{ rewardFeedback }}</p>
@@ -460,9 +462,12 @@ async function confirmDeleteWish() {
 
               <div class="detail-atelier-step-list">
                 <article v-for="step in selectedWish.steps" :key="`mobile-step-${step.id}`" :class="['detail-atelier-step-card', { done: step.isDone }]">
-                  <button class="detail-atelier-secondary detail-atelier-step-toggle" type="button" @click="void toggleWishStep(step.id)">{{ getStepActionLabel(step.id, step.isDone) }}</button>
+                  <button v-if="canProgressSelectedWish" class="detail-atelier-secondary detail-atelier-step-toggle" type="button" @click="void toggleWishStep(step.id)">{{ getStepActionLabel(step.id, step.isDone) }}</button>
                   <div class="detail-atelier-step-copy">
                     <strong>{{ step.title }}</strong>
+                    <div class="detail-atelier-chip-row compact">
+                      <span class="detail-atelier-chip">{{ getStepStarCoinLabel(step.id) }}</span>
+                    </div>
                     <div v-if="wishStore.getStepRewardClaim(step.id)" class="detail-atelier-chip-row compact">
                       <span class="detail-atelier-chip">{{ getClaimToneLabel(wishStore.getStepRewardClaim(step.id)?.claimKind || '') }}</span>
                       <span class="detail-atelier-chip">{{ wishStore.getStepRewardClaim(step.id)?.titleSnapshot }}</span>
@@ -481,8 +486,8 @@ async function confirmDeleteWish() {
             </div>
           </div>
 
-          <div v-if="canShowProgressCompletionAction" class="detail-atelier-inline-buttons detail-atelier-progress-completion-row">
-            <button class="detail-atelier-secondary detail-atelier-secondary-action detail-atelier-progress-completion" type="button" @click="void handleWishCompletionAction()">完成并领奖</button>
+          <div v-if="canShowProgressCompletionAction && canProgressSelectedWish" class="detail-atelier-inline-buttons detail-atelier-progress-completion-row">
+            <button class="detail-atelier-secondary detail-atelier-secondary-action detail-atelier-progress-completion" type="button" @click="void handleWishCompletionAction()">完成并获得 {{ getCompletionStarCoinLabel() }}</button>
           </div>
         </article>
       </section>
@@ -959,7 +964,7 @@ async function confirmDeleteWish() {
             </button>
           </div>
 
-          <div v-if="progressSnapshot?.mode === 'count'" class="detail-atelier-tools-section">
+          <div v-if="progressSnapshot?.mode === 'count' && canProgressSelectedWish" class="detail-atelier-tools-section">
             <div class="detail-atelier-tools-copy">
               <span>数字进度校正</span>
               <p>只有当你想回头整理记录时，再从这里校正现在的数值。</p>
@@ -982,7 +987,7 @@ async function confirmDeleteWish() {
             </div>
           </div>
 
-          <div v-if="progressSnapshot?.mode === 'steps'" class="detail-atelier-tools-section">
+          <div v-if="progressSnapshot?.mode === 'steps' && canProgressSelectedWish" class="detail-atelier-tools-section">
             <div class="detail-atelier-tools-copy">
               <span>步骤整理</span>
               <p>当你想回头整理步骤顺序时，再从这里增删小步骤就好。</p>
@@ -992,6 +997,10 @@ async function confirmDeleteWish() {
               <label>
                 <span>补一小步</span>
                 <input v-model="stepDraft" type="text" maxlength="60" placeholder="例如：先确认路线和预算" />
+              </label>
+              <label>
+                <span>完成可得星星币</span>
+                <input v-model.number="stepStarCoinDraft" type="number" min="0" step="0.5" />
               </label>
               <div class="detail-atelier-inline-buttons detail-atelier-tools-actions">
                 <button class="detail-atelier-secondary" type="submit" :disabled="isSubmittingStep || !stepDraft.trim()">
@@ -1119,64 +1128,6 @@ async function confirmDeleteWish() {
         </section>
       </div>
     </Teleport>
-
-    <div v-if="pendingCompletionKind" class="detail-atelier-overlay" @click.self="closeRewardDialog()">
-      <div class="detail-atelier-dialog detail-atelier-reward-dialog page-card" role="dialog" aria-modal="true" aria-labelledby="detail-reward-dialog-title">
-        <div class="detail-atelier-dialog-head">
-          <div>
-            <p class="detail-atelier-kicker">愿望奖励</p>
-            <h3 id="detail-reward-dialog-title">给这次完成一个正式的奖励仪式</h3>
-          </div>
-          <button class="detail-atelier-secondary" type="button" @click="closeRewardDialog()">关闭</button>
-        </div>
-
-        <p class="detail-atelier-support">整条愿望完成时，可以从高档奖励池里认真挑一个。</p>
-
-        <div class="detail-atelier-balance-grid detail-atelier-balance-grid-compact">
-          <article class="detail-atelier-balance-card">
-            <span>手里的星星币</span>
-            <strong>{{ currentMemberStarCoins }}</strong>
-          </article>
-          <article class="detail-atelier-balance-card">
-            <span>眼前可选的奖励</span>
-            <strong>{{ currentMemberPremiumRewards.length }}</strong>
-          </article>
-        </div>
-
-        <div v-if="currentMemberPremiumRewards.length" class="detail-atelier-choice-grid detail-atelier-choice-grid-reward">
-          <button
-            v-for="item in currentMemberPremiumRewards"
-            :key="item.id"
-            :class="['detail-atelier-choice-card', { active: pendingWishRewardSelectionId === item.id }]"
-            type="button"
-            @click="pendingWishRewardSelectionId = item.id"
-          >
-            <div class="detail-atelier-choice-head">
-              <strong>{{ item.title }}</strong>
-              <span class="detail-atelier-chip">高档奖励</span>
-            </div>
-            <p>{{ item.note || '这条奖励还没有补充说明。' }}</p>
-            <div class="detail-atelier-chip-row compact">
-              <span class="detail-atelier-chip">已领 {{ wishStore.getRewardItemClaimCount(item) }} 份</span>
-              <span v-if="item.starCoinCost > 0" class="detail-atelier-chip">{{ item.starCoinCost }} 星星币可兑换</span>
-            </div>
-          </button>
-        </div>
-        <div v-else class="detail-atelier-empty-block">
-          <strong>你的高档奖励池还是空的</strong>
-          <p>先去空间页放进一两个大奖励，再回来会更顺。</p>
-        </div>
-
-        <p v-if="rewardFeedback && pendingCompletionKind" :class="['detail-atelier-feedback', rewardFeedbackTone]" role="status" aria-live="polite">{{ rewardFeedback }}</p>
-
-        <div class="detail-atelier-inline-buttons detail-atelier-dialog-actions">
-          <button class="detail-atelier-secondary" type="button" @click="closeRewardDialog()">先放一放</button>
-          <button class="detail-atelier-primary" type="button" :disabled="!canConfirmWishReward" @click="void confirmWishCompletionReward()">
-            {{ isSubmittingReward ? '确认中...' : '完成并领取高档奖励' }}
-          </button>
-        </div>
-      </div>
-    </div>
 
     <div v-if="previewImage" class="detail-atelier-overlay" @click.self="closeImagePreview()">
       <div class="detail-atelier-lightbox detail-atelier-preview-lightbox page-card" role="dialog" aria-modal="true" aria-labelledby="detail-image-preview-title">

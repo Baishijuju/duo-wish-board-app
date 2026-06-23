@@ -1,7 +1,7 @@
 import { computed } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useFilterStore } from '../stores/filters'
-import type { WishPriority, WishRecord, WishScope } from '../stores/wishes'
+import type { WishPriority, WishRecord } from '../stores/wishes'
 import { useWishStore } from '../stores/wishes'
 import { formatBeijingDate } from '../utils/datetime'
 
@@ -9,11 +9,6 @@ const priorityLabels: Record<WishPriority, string> = {
   high: '很想靠近',
   medium: '慢慢靠近',
   low: '先放在这里',
-}
-
-const scopeLabels: Record<WishScope, string> = {
-  private: '只属于我',
-  shared: '我们一起',
 }
 
 export function useListWishBoardState() {
@@ -28,8 +23,8 @@ export function useListWishBoardState() {
       const matchStatus = filterStore.status === 'all' || wish.status === filterStore.status
       const matchVisibility =
         filterStore.visibility === 'all'
-        || (filterStore.visibility === 'shared' && wish.scope === 'shared')
-        || (filterStore.visibility === 'mine' && wish.scope === 'private' && wish.ownerId === currentMemberId)
+        || (filterStore.visibility === 'mine' && wish.ownerId === currentMemberId)
+        || (filterStore.visibility === 'others' && wish.ownerId !== currentMemberId)
       const matchSearch = `${wish.title} ${wish.category} ${wish.note}`
         .toLowerCase()
         .includes(filterStore.search.trim().toLowerCase())
@@ -178,19 +173,43 @@ export function useListWishBoardState() {
       : '先把它留在清单里，也是一种认真开始。'
   }
 
+  function canCurrentMemberProgressWish(wish: WishRecord) {
+    return !!authStore.currentMember?.id && wish.ownerId === authStore.currentMember.id
+  }
+
+  function formatStarCoinAmount(value: number) {
+    const roundedValue = Math.round(value * 10) / 10
+    return Number.isInteger(roundedValue) ? `${roundedValue}` : roundedValue.toFixed(1)
+  }
+
+  function getWishStarCoinSummary(wish: WishRecord) {
+    if (wish.progressMode === 'count') {
+      const unitText = wish.progressUnit || '点'
+      return `每 ${unitText} ${formatStarCoinAmount(wish.progressStarCoinValue)} 星星币 · 完成 ${formatStarCoinAmount(wish.completionStarCoinBonus)} 星星币`
+    }
+
+    if (wish.progressMode === 'steps') {
+      const stepTotal = wish.steps.reduce((total, step) => total + Math.max(0, step.starCoinValue), 0)
+      return `步骤共 ${formatStarCoinAmount(stepTotal)} 星星币 · 完成 ${formatStarCoinAmount(wish.completionStarCoinBonus)} 星星币`
+    }
+
+    return `完成 ${formatStarCoinAmount(wish.completionStarCoinBonus)} 星星币`
+  }
+
   return {
     authStore,
     filterStore,
     filteredWishes,
     formatDateLabel,
+    canCurrentMemberProgressWish,
     getCoverImageUrl,
     getMemberName,
     getRelativeDueLabel,
     getWishMood,
     getWishProgress,
     getWishProgressHint,
+    getWishStarCoinSummary,
     priorityLabels,
-    scopeLabels,
     wishStore,
   }
 }

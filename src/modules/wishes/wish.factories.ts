@@ -39,10 +39,16 @@ export function createWishStep(partial: Partial<WishStep> & Pick<WishStep, 'titl
   return {
     id: partial.id ?? createId(),
     title: partial.title.trim(),
+    starCoinValue: normalizeStarCoinValue(partial.starCoinValue),
     isDone: partial.isDone ?? false,
     createdAt,
     updatedAt: partial.updatedAt ?? createdAt,
   }
+}
+
+export function normalizeStarCoinValue(value: unknown) {
+  const numericValue = Number(value ?? 0)
+  return Number.isFinite(numericValue) ? Math.max(0, numericValue) : 0
 }
 
 export function createWishCoinRecord(
@@ -70,6 +76,7 @@ export function createWishRecord(partial: Partial<WishRecord> & WishDraft): Wish
   const progressMode = normalizeProgressMode(partial.progressMode, normalizedSteps, rawProgressTarget, rawProgressCurrent, rawProgressUnit)
   const progressTarget = progressMode === 'count' ? Math.max(1, rawProgressTarget) : rawProgressTarget
   const progressCurrent = progressMode === 'count' ? Math.min(rawProgressCurrent, progressTarget) : rawProgressCurrent
+  const progressStarCoinValue = progressMode === 'count' ? normalizeStarCoinValue(partial.progressStarCoinValue) : 0
   const createdAt = partial.createdAt ?? new Date().toISOString()
   const updatedAt = partial.updatedAt ?? createdAt
   const status = partial.status ?? 'active'
@@ -90,6 +97,8 @@ export function createWishRecord(partial: Partial<WishRecord> & WishDraft): Wish
     progressCurrent,
     progressTarget,
     progressUnit: rawProgressUnit,
+    progressStarCoinValue,
+    completionStarCoinBonus: normalizeStarCoinValue(partial.completionStarCoinBonus),
     completedAt: status === 'done' ? normalizedCompletedAt ?? updatedAt : null,
     steps: normalizedSteps,
     comments: Array.isArray(partial.comments) ? partial.comments.map((comment) => createWishComment(comment)) : [],

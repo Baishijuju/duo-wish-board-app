@@ -34,6 +34,28 @@ export function useReviewPageState() {
   const monthlySnapshots = computed(() => {
     return [...wishStore.monthlyJournalSnapshots].sort((left, right) => right.monthKey.localeCompare(left.monthKey))
   })
+  const featuredReviewThreads = computed(() => {
+    return liveMonthlyThreads.value.slice(0, 3)
+  })
+  const reviewSyncState = computed(() => {
+    if (wishStore.isLoading) {
+      return {
+        tone: 'loading',
+        title: '正在把这一期翻到最新',
+        message: wishStore.syncMessage,
+      }
+    }
+
+    if (wishStore.realtimeStatus === 'error') {
+      return {
+        tone: 'error',
+        title: '同步暂时有点慢',
+        message: wishStore.realtimeMessage,
+      }
+    }
+
+    return null
+  })
   const reviewHighlights = computed(() => {
     return [
       {
@@ -108,18 +130,18 @@ export function useReviewPageState() {
   const reviewTabOptions = computed(() => {
     return [
       {
-        count: `${completedWishJournals.value.length} 本`,
-        eyebrow: '已经定稿',
-        label: '完成册页',
-        note: '已经走完整条路的愿望，会在这里留下更完整的册页。',
-        value: 'journals' as const,
-      },
-      {
         count: `${liveMonthlyThreads.value.length} 条`,
         eyebrow: '这一期正在写',
         label: '这一期',
         note: `${currentMonthLabel.value} 里正在发生的推进、留言和回应，会先留在这一栏。`,
         value: 'live' as const,
+      },
+      {
+        count: `${completedWishJournals.value.length} 本`,
+        eyebrow: '已经定稿',
+        label: '完成册页',
+        note: '已经走完整条路的愿望，会在这里留下更完整的册页。',
+        value: 'journals' as const,
       },
       {
         count: `${monthlySnapshots.value.length} 本`,
@@ -389,6 +411,7 @@ export function useReviewPageState() {
     activeReviewTabOption,
     completedWishJournals,
     currentMonthLabel,
+    featuredReviewThreads,
     formatDateLabel,
     formatDateTimeLabel,
     formatMonthLabel,
@@ -417,6 +440,7 @@ export function useReviewPageState() {
     reviewHeroTitle,
     reviewMemberSummaries,
     reviewHighlights,
+    reviewSyncState,
     reviewTab,
     reviewTabOptions,
     toggleReviewReactionMembers,

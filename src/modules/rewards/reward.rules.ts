@@ -8,17 +8,35 @@ export function buildRewardClaimCountsByItem(claims: RewardClaimRecord[]) {
       continue
     }
 
+    if (claim.claimKind !== 'premium_redeem') {
+      continue
+    }
+
     counts.set(claim.rewardItemId, (counts.get(claim.rewardItemId) ?? 0) + claim.quantity)
   }
 
   return counts
 }
 
+export function buildRewardDepositTotalsByItem(claims: RewardClaimRecord[]) {
+  const totals = new Map<string, number>()
+
+  for (const claim of claims) {
+    if (!claim.rewardItemId || claim.claimKind !== 'reward_deposit') {
+      continue
+    }
+
+    totals.set(claim.rewardItemId, (totals.get(claim.rewardItemId) ?? 0) + Math.abs(claim.starCoinDelta))
+  }
+
+  return totals
+}
+
 export function buildRewardClaimByWishId(claims: RewardClaimRecord[]) {
   const claimMap = new Map<string, RewardClaimRecord>()
 
   for (const claim of claims) {
-    if (claim.sourceWishId && claim.claimKind === 'wish_reward') {
+    if (claim.sourceWishId && (claim.claimKind === 'wish_reward' || claim.claimKind === 'wish_completion_bonus')) {
       claimMap.set(claim.sourceWishId, claim)
     }
   }
@@ -56,7 +74,7 @@ export function buildCountRewardClaimedUnitsByWish(claims: RewardClaimRecord[]) 
       continue
     }
 
-    if (claim.claimKind !== 'count_reward' && claim.claimKind !== 'star_coin') {
+    if (claim.claimKind !== 'count_reward' && claim.claimKind !== 'star_coin' && claim.claimKind !== 'count_star_coin') {
       continue
     }
 

@@ -1,8 +1,16 @@
 import { computed, ref, watch } from 'vue'
 import { supabaseAuthMode, supabaseReadinessMessage } from '../lib/supabase'
 import { useAuthStore } from '../stores/auth'
-import { useWishStore, WISH_COIN_BUDGET_PER_CYCLE } from '../stores/wishes'
+import { useWishStore, WISH_COIN_BUDGET_PER_CYCLE, type RewardPoolItem } from '../stores/wishes'
 import { formatBeijingDateTime } from '../utils/datetime'
+
+type RewardTaskKind = 'personal' | 'shared' | 'assist'
+
+interface RewardTaskEntry {
+  item: RewardPoolItem
+  kind: RewardTaskKind
+  ownerName: string
+}
 
 export function useSpaceState() {
   const authStore = useAuthStore()
@@ -31,6 +39,7 @@ export function useSpaceState() {
   const premiumRewardTitleDraft = ref('')
   const premiumRewardNoteDraft = ref('')
   const premiumRewardCostDraft = ref(6)
+  const premiumRewardScopeDraft = ref<'personal' | 'shared'>('personal')
   const editingDailyRewardId = ref<string | null>(null)
   const editingPremiumRewardId = ref<string | null>(null)
   const isSendingMagicLink = ref(false)
@@ -58,6 +67,10 @@ export function useSpaceState() {
   const currentMemberPremiumExchangeRewards = computed(() => {
     return currentMemberPremiumRewards.value.filter((item) => item.starCoinCost > 0)
   })
+  const sharedPremiumRewards = computed(() => wishStore.getSharedRewardPoolItems('premium'))
+  const sharedPremiumExchangeRewards = computed(() => {
+    return sharedPremiumRewards.value.filter((item) => item.starCoinCost > 0)
+  })
   const pendingStepRewards = computed(() => wishStore.pendingStepRewards)
   const pendingCountRewardSummaries = computed(() => wishStore.pendingCountRewardSummaries)
   const pendingCountRewardUnits = computed(() => {
@@ -68,10 +81,12 @@ export function useSpaceState() {
     return currentMemberPremiumRewards.value.reduce((total, item) => total + Math.max(item.starCoinCost, 0), 0)
   })
   const premiumRedeemableNowCount = computed(() => {
-    return currentMemberPremiumRewards.value.filter((item) => item.starCoinCost > 0 && currentMemberStarCoins.value >= item.starCoinCost).length
+    return [...currentMemberPremiumRewards.value, ...sharedPremiumRewards.value]
+      .filter((item) => item.starCoinCost > 0 && getRewardDepositedStarCoins(item) >= item.starCoinCost).length
   })
   const pendingStarCoinSpend = computed(() => {
-    return Math.max(premiumWishlistCostTotal.value - currentMemberStarCoins.value, 0)
+    return [...currentMemberPremiumRewards.value, ...sharedPremiumRewards.value]
+      .reduce((total, item) => total + getRewardRemainingStarCoins(item), 0)
   })
   const rewardPoolByMember = computed(() => {
     return authStore.members.map((member) => ({
@@ -81,12 +96,44 @@ export function useSpaceState() {
       starCoins: wishStore.getMemberStarCoinBalance(member.id),
     }))
   })
+  const currentMemberRewardEntries = computed<RewardTaskEntry[]>(() => {
+    const memberName = authStore.currentMember?.displayName || '我'
+    return currentMemberPremiumExchangeRewards.value.map((item) => ({ item, kind: 'personal', ownerName: memberName }))
+  })
+  const sharedRewardEntries = computed<RewardTaskEntry[]>(() => {
+    return sharedPremiumExchangeRewards.value.map((item) => ({ item, kind: 'shared', ownerName: '共同' }))
+  })
+  const assistRewardEntries = computed<RewardTaskEntry[]>(() => {
+    return rewardPoolByMember.value
+      .filter((entry) => entry.member.id !== currentMemberId.value)
+      .flatMap((entry) => entry.premiumRewards
+        .filter((item) => item.starCoinCost > 0)
+        .map((item) => ({
+          item,
+          kind: 'assist' as const,
+          ownerName: entry.member.displayName || '对方',
+        })))
+      .sort((left, right) => getRewardRemainingStarCoins(left.item) - getRewardRemainingStarCoins(right.item))
+  })
+  const rewardTaskEntries = computed(() => [...currentMemberRewardEntries.value, ...sharedRewardEntries.value])
+  const claimableRewardEntries = computed(() => {
+    return rewardTaskEntries.value
+      .filter((entry) => canRedeemPremiumReward(entry.item))
+      .sort((left, right) => getRewardRemainingStarCoins(left.item) - getRewardRemainingStarCoins(right.item))
+  })
+  const savingRewardEntries = computed(() => {
+    return rewardTaskEntries.value
+      .filter((entry) => !canRedeemPremiumReward(entry.item) && getRewardRemainingStarCoins(entry.item) > 0)
+      .sort((left, right) => getRewardRemainingStarCoins(left.item) - getRewardRemainingStarCoins(right.item))
+  })
+  const closestRewardEntry = computed(() => savingRewardEntries.value[0] ?? assistRewardEntries.value[0] ?? null)
   const recentRewardClaims = computed(() => {
     return wishStore.latestRewardClaims.map((claim) => ({
       claim,
       memberName: authStore.members.find((member) => member.id === claim.ownerId)?.displayName ?? '未命名成员',
     }))
   })
+  const recentRewardClaimPreview = computed(() => recentRewardClaims.value.slice(0, 3))
   const currentCatchMoment = computed(() => {
     const firstPendingStepReward = pendingStepRewards.value[0]
 
@@ -365,13 +412,14 @@ export function useSpaceState() {
     premiumRewardTitleDraft.value = ''
     premiumRewardNoteDraft.value = ''
     premiumRewardCostDraft.value = 6
+    premiumRewardScopeDraft.value = 'personal'
     editingPremiumRewardId.value = null
   }
 
   function startEditingReward(itemId: string, tier: 'daily' | 'premium') {
     const source = tier === 'daily'
       ? currentMemberDailyRewards.value.find((item) => item.id === itemId)
-      : currentMemberPremiumRewards.value.find((item) => item.id === itemId)
+      : [...currentMemberPremiumRewards.value, ...sharedPremiumRewards.value].find((item) => item.id === itemId)
 
     if (!source) {
       return
@@ -388,6 +436,7 @@ export function useSpaceState() {
     premiumRewardTitleDraft.value = source.title
     premiumRewardNoteDraft.value = source.note
     premiumRewardCostDraft.value = source.starCoinCost
+    premiumRewardScopeDraft.value = source.scope
   }
 
   async function submitDailyReward() {
@@ -422,11 +471,13 @@ export function useSpaceState() {
       const result = editingPremiumRewardId.value
         ? await wishStore.updateRewardPoolItem(editingPremiumRewardId.value, {
             note: premiumRewardNoteDraft.value,
+            scope: premiumRewardScopeDraft.value,
             starCoinCost: premiumRewardCostDraft.value,
             title: premiumRewardTitleDraft.value,
           })
         : await wishStore.addRewardPoolItem({
             note: premiumRewardNoteDraft.value,
+            scope: premiumRewardScopeDraft.value,
             starCoinCost: premiumRewardCostDraft.value,
             tier: 'premium',
             title: premiumRewardTitleDraft.value,
@@ -474,8 +525,67 @@ export function useSpaceState() {
     }
   }
 
-  function canRedeemPremiumReward(starCoinCost: number) {
-    return starCoinCost > 0 && currentMemberStarCoins.value >= starCoinCost
+  async function depositRewardStarCoins(itemId: string, amount: number) {
+    processingRewardItemId.value = itemId
+
+    try {
+      const result = await wishStore.depositRewardStarCoins(itemId, amount)
+      setRewardMessage(result.message, result.ok ? 'success' : 'danger')
+    } finally {
+      processingRewardItemId.value = null
+    }
+  }
+
+  function getRewardDepositedStarCoins(item: { id: string; starCoinCost: number }) {
+    return wishStore.getRewardItemAvailableDepositedStarCoins(item)
+  }
+
+  function getRewardRemainingStarCoins(item: { id: string; starCoinCost: number }) {
+    return Math.max(item.starCoinCost - getRewardDepositedStarCoins(item), 0)
+  }
+
+  function getRewardDepositPercent(item: { id: string; starCoinCost: number }) {
+    return item.starCoinCost > 0
+      ? Math.min(Math.round((getRewardDepositedStarCoins(item) / item.starCoinCost) * 100), 100)
+      : 0
+  }
+
+  function canDepositReward(item: { id: string; starCoinCost: number }, amount: number) {
+    return item.starCoinCost > 0 && getRewardRemainingStarCoins(item) > 0 && currentMemberStarCoins.value >= Math.min(amount, getRewardRemainingStarCoins(item))
+  }
+
+  function canRedeemPremiumReward(item: { id: string; starCoinCost: number }) {
+    return item.starCoinCost > 0 && getRewardDepositedStarCoins(item) >= item.starCoinCost
+  }
+
+  function getRecommendedDepositAmount(item: { id: string; starCoinCost: number }) {
+    return Math.max(Math.min(getRewardRemainingStarCoins(item), currentMemberStarCoins.value), 0)
+  }
+
+  function getRewardTaskKindLabel(kind: RewardTaskKind) {
+    if (kind === 'shared') {
+      return '共同奖励'
+    }
+
+    if (kind === 'assist') {
+      return '帮对方'
+    }
+
+    return '我的奖励'
+  }
+
+  function getRewardPrimaryActionLabel(entry: RewardTaskEntry) {
+    if (canRedeemPremiumReward(entry.item)) {
+      return entry.kind === 'shared' ? '领取共同奖励' : '领取奖励'
+    }
+
+    const amount = getRecommendedDepositAmount(entry.item)
+
+    if (amount <= 0) {
+      return '星币不足'
+    }
+
+    return entry.kind === 'assist' ? `助力 ${amount} 枚` : `存入 ${amount} 枚`
   }
 
   function getPendingRewardSelection(sourceKey: string) {
@@ -581,6 +691,22 @@ export function useSpaceState() {
       return '存星星币'
     }
 
+    if (claimKind === 'step_star_coin') {
+      return '步骤星币'
+    }
+
+    if (claimKind === 'count_star_coin') {
+      return '进度星币'
+    }
+
+    if (claimKind === 'wish_completion_bonus') {
+      return '完成星币'
+    }
+
+    if (claimKind === 'reward_deposit') {
+      return '助力存入'
+    }
+
     return '兑换奖励'
   }
 
@@ -612,6 +738,22 @@ export function useSpaceState() {
         : `因为「${sourceWishTitle}」数字进度推进了 ${Math.max(1, claim.quantity)} 点，这次先存成了 ${Math.max(1, claim.quantity)} 枚星星币。`
     }
 
+    if (claim.claimKind === 'step_star_coin') {
+      return `因为「${sourceWishTitle}」的小步骤完成了，自动获得了「${rewardTitle}」。`
+    }
+
+    if (claim.claimKind === 'count_star_coin') {
+      return `因为「${sourceWishTitle}」数字进度推进了 ${Math.max(1, claim.quantity)} 点，自动获得了「${rewardTitle}」。`
+    }
+
+    if (claim.claimKind === 'wish_completion_bonus') {
+      return `因为「${sourceWishTitle}」整条完成了，自动获得了「${rewardTitle}」。`
+    }
+
+    if (claim.claimKind === 'reward_deposit') {
+      return `往「${rewardTitle}」助力存入了 ${Math.max(1, claim.quantity)} 枚星星币。`
+    }
+
     return `用星星币兑换到了「${rewardTitle}」。`
   }
 
@@ -626,6 +768,9 @@ export function useSpaceState() {
     claimCurrentCatchMoment,
     claimPendingCountReward,
     claimPendingStepReward,
+    claimableRewardEntries,
+    closestRewardEntry,
+    canDepositReward,
     canRedeemPremiumReward,
     copyInviteCode,
     currentMemberDailyRewards,
@@ -637,6 +782,7 @@ export function useSpaceState() {
     currentWishCoinCycleLabel,
     dailyRewardNoteDraft,
     dailyRewardTitleDraft,
+    depositRewardStarCoins,
     downloadBackup,
     editingDailyRewardId,
     editingPremiumRewardId,
@@ -647,6 +793,12 @@ export function useSpaceState() {
     formatStorageBytes,
     getRewardClaimLabel,
     getRewardClaimReason,
+    getRewardDepositedStarCoins,
+    getRewardDepositPercent,
+    getRecommendedDepositAmount,
+    getRewardPrimaryActionLabel,
+    getRewardRemainingStarCoins,
+    getRewardTaskKindLabel,
     inviteDraft,
     inviteMessage,
     inviteTone,
@@ -669,6 +821,7 @@ export function useSpaceState() {
     perMemberStats,
     premiumRewardCostDraft,
     premiumRewardNoteDraft,
+    premiumRewardScopeDraft,
     premiumRewardTitleDraft,
     premiumRedeemableNowCount,
     premiumWishlistCostTotal,
@@ -679,12 +832,18 @@ export function useSpaceState() {
     pendingStepRewards,
     processingRewardItemId,
     recentRewardClaims,
+    recentRewardClaimPreview,
     redeemPremiumReward,
     resetRewardDraft,
     rewardMessage,
     rewardPoolByMember,
+    rewardTaskEntries,
     rewardTone,
     roleLabels,
+    sharedPremiumExchangeRewards,
+    sharedPremiumRewards,
+    savingRewardEntries,
+    assistRewardEntries,
     showOtpForm,
     startEditingReward,
     storageSummary,

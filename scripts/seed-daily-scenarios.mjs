@@ -177,10 +177,12 @@ async function main() {
           note: input.note,
           owner_id: input.ownerId,
           priority: input.priority,
+          progress_star_coin_value: input.progressStarCoinValue ?? 0,
           progress_current: input.progressCurrent ?? 0,
           progress_mode: input.progressMode,
           progress_target: input.progressTarget ?? 0,
           progress_unit: input.progressUnit ?? '',
+          completion_star_coin_bonus: input.completionStarCoinBonus ?? 0,
           scope: input.scope,
           space_id: input.spaceId,
           status: input.status ?? 'active',
@@ -293,32 +295,16 @@ async function main() {
         return { rows: rows.length }
       }, { critical: true })
 
-      const dailyFocus = await op('reward.daily.focus', () => insertReward({
-        note: `${seedPrefix} 日常奖励：专注后的小休息`,
-        ownerId: userId,
-        spaceId,
-        starCoinCost: 0,
-        tier: 'daily',
-        title: `${seedPrefix} 买一杯喜欢的咖啡`,
-      }), { critical: true })
-      const dailyWalk = await op('reward.daily.walk', () => insertReward({
-        note: `${seedPrefix} 日常奖励：去附近散步`,
-        ownerId: userId,
-        spaceId,
-        starCoinCost: 0,
-        tier: 'daily',
-        title: `${seedPrefix} 傍晚散步 20 分钟`,
-      }), { critical: true })
       const premiumDinner = await op('reward.premium.dinner', () => insertReward({
-        note: `${seedPrefix} 高档奖励：完成重要愿望后兑现`,
+        note: `${seedPrefix} 星币奖励：完成重要愿望后兑换`,
         ownerId: userId,
         spaceId,
-        starCoinCost: 0,
+        starCoinCost: 2,
         tier: 'premium',
         title: `${seedPrefix} 周末吃一顿庆祝晚餐`,
       }), { critical: true })
       const premiumTrip = await op('reward.premium.trip', () => insertReward({
-        note: `${seedPrefix} 高档奖励：攒星星币兑换`,
+        note: `${seedPrefix} 星币奖励：攒星星币兑换`,
         ownerId: userId,
         spaceId,
         starCoinCost: 1,
@@ -345,8 +331,10 @@ async function main() {
         priority: 'high',
         progressCurrent: 1,
         progressMode: 'count',
+        progressStarCoinValue: 0.5,
         progressTarget: 5,
         progressUnit: '次',
+        completionStarCoinBonus: 2,
         scope: 'shared',
         spaceId,
         title: `${seedPrefix} 完成 5 次晨间运动`,
@@ -358,6 +346,7 @@ async function main() {
         ownerId: userId,
         priority: 'high',
         progressMode: 'steps',
+        completionStarCoinBonus: 3,
         scope: 'shared',
         spaceId,
         title: `${seedPrefix} 整理一个作品集页面`,
@@ -380,6 +369,7 @@ async function main() {
         ownerId: userId,
         priority: 'medium',
         progressMode: 'none',
+        completionStarCoinBonus: 2,
         scope: 'shared',
         spaceId,
         status: 'done',
@@ -397,24 +387,17 @@ async function main() {
       }), { critical: true })
 
       await op('count.progress.update', async () => {
-        requireOk(await supabase.from('wishes').update({ progress_current: 4 }).eq('id', countWish.id), 'count progress update')
-      })
-      await op('count.reward.claim.star', async () => {
-        const claim = requireOk(await supabase.rpc('claim_count_progress_reward', {
-          claim_quantity: 1,
-          claim_star_coin: true,
-          target_reward_item_id: null,
+        requireOk(await supabase.rpc('set_wish_count_progress_with_star_coin', {
+          next_current: 4,
           target_wish_id: countWish.id,
-        }), 'claim_count_progress_reward')
-        created.rewardClaims.push({ id: claim?.id, kind: 'count_star', wishId: countWish.id })
-        return { id: claim?.id }
+        }), 'set_wish_count_progress_with_star_coin')
       })
 
       const stepRows = await op('steps.insert.three', async () => {
         const rows = requireOk(await supabase.from('wish_steps').insert([
-          { is_done: false, title: `${seedPrefix} 收集 6 个参考案例`, wish_id: stepWish.id },
-          { is_done: false, title: `${seedPrefix} 写首页文案草稿`, wish_id: stepWish.id },
-          { is_done: false, title: `${seedPrefix} 做移动端检查`, wish_id: stepWish.id },
+          { is_done: false, star_coin_value: 1, title: `${seedPrefix} 收集 6 个参考案例`, wish_id: stepWish.id },
+          { is_done: false, star_coin_value: 1.5, title: `${seedPrefix} 写首页文案草稿`, wish_id: stepWish.id },
+          { is_done: false, star_coin_value: 2, title: `${seedPrefix} 做移动端检查`, wish_id: stepWish.id },
         ]).select('id, title, created_at').order('created_at', { ascending: true }), 'insert steps') ?? []
         created.steps.push(...rows.map((row) => ({ id: row.id, wishId: stepWish.id, title: row.title })))
         return { ids: rows.map((row) => row.id) }
@@ -422,26 +405,22 @@ async function main() {
 
       if (stepRows?.ids?.length) {
         await op('steps.complete.partial', async () => {
-          requireOk(await supabase.from('wish_steps').update({ is_done: true }).in('id', stepRows.ids.slice(0, 2)), 'complete partial steps')
-        })
-        await op('step.reward.claim.daily', async () => {
-          const claim = requireOk(await supabase.rpc('claim_completed_step_reward', {
-            claim_star_coin: false,
-            target_reward_item_id: dailyFocus.id,
-            target_step_id: stepRows.ids[0],
-            target_wish_id: stepWish.id,
-          }), 'claim_completed_step_reward')
-          created.rewardClaims.push({ id: claim?.id, kind: 'step_daily', stepId: stepRows.ids[0], wishId: stepWish.id })
-          return { id: claim?.id }
+          for (const stepId of stepRows.ids.slice(0, 2)) {
+            requireOk(await supabase.rpc('set_wish_step_done_with_star_coin', {
+              next_done: true,
+              target_step_id: stepId,
+              target_wish_id: stepWish.id,
+            }), `set_wish_step_done_with_star_coin ${stepId}`)
+          }
         })
       }
 
       await op('wish.complete.with.reward', async () => {
         const claim = requireOk(await supabase.rpc('complete_wish_with_reward', {
-          target_reward_item_id: premiumDinner.id,
+          target_reward_item_id: null,
           target_wish_id: completeTargetWish.id,
         }), 'complete_wish_with_reward')
-        created.rewardClaims.push({ id: claim?.id, kind: 'wish_reward', wishId: completeTargetWish.id })
+        created.rewardClaims.push({ id: claim?.id, kind: 'wish_completion_bonus', wishId: completeTargetWish.id })
         return { id: claim?.id }
       })
       await op('premium.redeem.try', async () => {

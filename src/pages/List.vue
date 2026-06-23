@@ -6,6 +6,7 @@ import { useListWishBoardState } from '../composables/useListWishBoardState'
 
 const {
   authStore,
+  canCurrentMemberProgressWish,
   filterStore,
   filteredWishes,
   formatDateLabel,
@@ -15,8 +16,8 @@ const {
   getWishMood,
   getWishProgress,
   getWishProgressHint,
+  getWishStarCoinSummary,
   priorityLabels,
-  scopeLabels,
   wishStore,
 } = useListWishBoardState()
 
@@ -25,8 +26,8 @@ type ListFeedbackTone = 'success' | 'danger' | 'info'
 
 const visibilityLabels = {
   all: '全部愿望',
-  shared: '我们一起',
-  mine: '只属于我',
+  mine: '我的愿望',
+  others: '对方愿望',
 } as const
 
 const statusLabels = {
@@ -47,14 +48,18 @@ const selectedSortLabel = computed(() => sortLabels[filterStore.sortMode])
 const archiveSummary = computed(() => {
   if (filterStore.visibility === 'mine') {
     if (filterStore.status === 'done') {
-      return `这里只看 ${viewerName.value} 已经实现的私藏愿望。`
+      return `这里只看归属于 ${viewerName.value} 的已实现愿望。`
     }
 
     if (filterStore.status === 'all') {
-      return `这里只看 ${viewerName.value} 写下的私藏愿望。`
+      return `这里只看归属于 ${viewerName.value} 的愿望。`
     }
 
-    return `这里只看 ${viewerName.value} 还在路上的私藏愿望。`
+    return `这里只看 ${viewerName.value} 能亲自推进的愿望。`
+  }
+
+  if (filterStore.visibility === 'others') {
+    return '这里只看对方的愿望，可以评论、打气和投愿望币。'
   }
 
   if (filterStore.status === 'done') {
@@ -101,35 +106,35 @@ const boardHeading = computed(() => {
   }
 
   if (filterStore.status === 'done') {
-    if (filterStore.visibility === 'shared') {
-      return '已经一起实现的愿望'
+    if (filterStore.visibility === 'mine') {
+      return `${viewerName.value} 已经实现的愿望`
     }
 
-    if (filterStore.visibility === 'mine') {
-      return `${viewerName.value} 已经实现的私藏愿望`
+    if (filterStore.visibility === 'others') {
+      return '对方已经实现的愿望'
     }
 
     return '已经实现的愿望'
   }
 
   if (filterStore.status === 'all') {
-    if (filterStore.visibility === 'shared') {
-      return '一起写下的全部愿望'
+    if (filterStore.visibility === 'mine') {
+      return `${viewerName.value} 的全部愿望`
     }
 
-    if (filterStore.visibility === 'mine') {
-      return `${viewerName.value} 只留给自己的愿望`
+    if (filterStore.visibility === 'others') {
+      return '对方的全部愿望'
     }
 
     return '这一阵子的全部愿望'
   }
 
-  if (filterStore.visibility === 'shared') {
-    return '一起推进的愿望'
+  if (filterStore.visibility === 'mine') {
+    return `${viewerName.value} 今天能亲自推进的愿望`
   }
 
-  if (filterStore.visibility === 'mine') {
-    return `${viewerName.value} 想自己慢慢靠近的事`
+  if (filterStore.visibility === 'others') {
+    return '可以评论和打气的对方愿望'
   }
 
   return '今天继续往前的愿望'
@@ -232,18 +237,18 @@ async function handleCastWishCoin(wish: WishRecord) {
               <button
                 class="list-board-filter-pill"
                 type="button"
-                :class="{ 'is-active': filterStore.visibility === 'shared' }"
-                @click="filterStore.visibility = 'shared'"
+                :class="{ 'is-active': filterStore.visibility === 'mine' }"
+                @click="filterStore.visibility = 'mine'"
               >
-                我们一起
+                我的愿望
               </button>
               <button
                 class="list-board-filter-pill"
                 type="button"
-                :class="{ 'is-active': filterStore.visibility === 'mine' }"
-                @click="filterStore.visibility = 'mine'"
+                :class="{ 'is-active': filterStore.visibility === 'others' }"
+                @click="filterStore.visibility = 'others'"
               >
-                只属于我
+                对方愿望
               </button>
             </div>
           </div>
@@ -338,7 +343,7 @@ async function handleCastWishCoin(wish: WishRecord) {
         <article v-for="wish in filteredWishes" :key="wish.id" class="list-board-item">
           <div class="list-board-card-top">
             <div class="list-board-card-overline">
-              <span class="list-board-card-scope" :class="wish.scope === 'shared' ? 'is-shared' : 'is-private'">{{ scopeLabels[wish.scope] }}</span>
+              <span class="list-board-card-scope" :class="canCurrentMemberProgressWish(wish) ? 'is-mine' : 'is-other'">{{ canCurrentMemberProgressWish(wish) ? '我的愿望' : `${getMemberName(wish.ownerId)} 的愿望` }}</span>
               <span class="list-board-card-caption">{{ getWishCaption(wish) }}</span>
             </div>
 
@@ -361,6 +366,7 @@ async function handleCastWishCoin(wish: WishRecord) {
               <span>当前进度</span>
               <strong>{{ getProgressCopy(wish) }}</strong>
               <p>{{ getWishProgressHint(wish) || '等这条愿望继续往前时，这里会慢慢更清楚。' }}</p>
+              <p class="list-board-starcoin-line">{{ getWishStarCoinSummary(wish) }}</p>
             </RouterLink>
           </div>
 
@@ -1004,12 +1010,12 @@ async function handleCastWishCoin(wish: WishRecord) {
   letter-spacing: var(--type-meta-spacing);
 }
 
-.list-board-card-scope.is-shared {
+.list-board-card-scope.is-mine {
   border: 1px solid rgba(110, 151, 120, 0.18);
   background: rgba(218, 234, 223, 0.8);
 }
 
-.list-board-card-scope.is-private {
+.list-board-card-scope.is-other {
   border: 1px solid rgba(201, 124, 97, 0.16);
   background: rgba(243, 222, 210, 0.72);
 }
