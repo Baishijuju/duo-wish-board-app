@@ -1265,14 +1265,15 @@ const seedRewardPoolItems: RewardPoolItem[] = [
 
 function createSeedWishState() {
   const mockSeed = createMockWishSeedState()
+  const hasMockSeed = mockSeed.wishes.length > 0
 
   return {
-    coins: mockSeed.wishes.length > 0 ? [] : seedWishCoins.map((coin) => createWishCoinRecord(coin)),
-    monthlyJournalSnapshots: [] as MonthlyJournalSnapshotRecord[],
+    coins: hasMockSeed ? mockSeed.coins.map((coin) => createWishCoinRecord(coin)) : seedWishCoins.map((coin) => createWishCoinRecord(coin)),
+    monthlyJournalSnapshots: hasMockSeed ? mockSeed.monthlyJournalSnapshots.map((snapshot) => createMonthlyJournalSnapshotRecord(snapshot)) : [] as MonthlyJournalSnapshotRecord[],
     rewardClaims: mockSeed.rewardClaims.map((claim) => createRewardClaimRecord(claim)),
-    rewardPoolItems: seedRewardPoolItems.map((item) => createRewardPoolItem(item)),
-    threadReactions: mockSeed.wishes.length > 0 ? [] : seedThreadReactions.map((reaction) => createThreadReactionRecord(reaction)),
-    wishes: mockSeed.wishes.length > 0 ? mockSeed.wishes.map((wish) => createWishRecord(wish)) : seedWishes.map((wish) => createWishRecord(wish)),
+    rewardPoolItems: hasMockSeed ? mockSeed.rewardPoolItems.map((item) => createRewardPoolItem(item)) : seedRewardPoolItems.map((item) => createRewardPoolItem(item)),
+    threadReactions: hasMockSeed ? mockSeed.threadReactions.map((reaction) => createThreadReactionRecord(reaction)) : seedThreadReactions.map((reaction) => createThreadReactionRecord(reaction)),
+    wishes: hasMockSeed ? mockSeed.wishes.map((wish) => createWishRecord(wish)) : seedWishes.map((wish) => createWishRecord(wish)),
   }
 }
 

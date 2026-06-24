@@ -1,6 +1,8 @@
-import type { RewardClaimRecord, WishPriority, WishRecord } from '../../stores/wishes'
-import { createRewardClaimRecord } from '../rewards/reward.factories'
-import { createWishRecord, createWishStep } from './wish.factories'
+import type { RewardClaimRecord, RewardPoolItem, ThreadReactionRecord, WishImage, WishPriority, WishRecord } from '../../stores/wishes'
+import { createMonthlyJournalSnapshotRecord, createThreadReactionRecord } from '../journal/journal.factories'
+import { createRewardClaimRecord, createRewardPoolItem } from '../rewards/reward.factories'
+import type { SeedWishState } from './wish.local'
+import { createWishCoinRecord, createWishComment, createWishImage, createWishRecord, createWishStep } from './wish.factories'
 
 type MockWishProgress =
   | { mode: 'count'; current: number; target: number; unit: string; starCoinValue: number }
@@ -22,6 +24,19 @@ interface MockWishDefinition {
   completionStarCoinBonus: number
   scope?: 'private' | 'shared'
   starred?: boolean
+}
+
+interface MockRewardDeposit {
+  itemId: string
+  ownerId: 'member-a' | 'member-b'
+  amount: number
+  daysAgo: number
+}
+
+interface MockRewardRedeem {
+  itemId: string
+  ownerId: 'member-a' | 'member-b'
+  daysAgo: number
 }
 
 const mockWishDefinitions: MockWishDefinition[] = [
@@ -57,6 +72,107 @@ const mockWishDefinitions: MockWishDefinition[] = [
   { id: 'wish-b-plant-corner', title: '把玄关做成小植物角', category: '居家', priority: 'medium', note: '换一个托盘，把灯和植物放顺。', ownerId: 'member-b', status: 'done', createdDaysAgo: 90, updatedDaysAgo: 11, dueInDays: -9, progress: { mode: 'steps', doneSteps: 4, stepTitles: ['量玄关尺寸', '买托盘', '换上耐阴植物', '整理灯线'], stepStarCoinValues: [0.5, 0.5, 1, 1] }, completionStarCoinBonus: 2 },
 ]
 
+const mockWishComments: Record<string, Array<{ authorId: 'member-a' | 'member-b'; message: string; daysAgo: number }>> = {
+  'wish-a-meal-prep': [
+    { authorId: 'member-a', message: '这周先做番茄鸡蛋和照烧鸡腿，不追求花样。', daysAgo: 2 },
+    { authorId: 'member-b', message: '我可以顺手把饭盒洗出来，周日晚上别太赶。', daysAgo: 1 },
+  ],
+  'wish-a-balcony-herbs': [
+    { authorId: 'member-b', message: '罗勒如果活下来，下次可以做青酱意面。', daysAgo: 5 },
+    { authorId: 'member-a', message: '今天薄荷长出新叶了，先把浇水提醒设好。', daysAgo: 2 },
+  ],
+  'wish-a-morning-walk': [
+    { authorId: 'member-a', message: '今天走到面包店再绕回来，刚好 22 分钟。', daysAgo: 0 },
+    { authorId: 'member-b', message: '这个节奏挺舒服的，不用加速。', daysAgo: 0 },
+  ],
+  'wish-a-skincare-reset': [
+    { authorId: 'member-a', message: '四周结束，最有用的是别再乱加新步骤。', daysAgo: 5 },
+  ],
+  'wish-a-photo-album': [
+    { authorId: 'member-a', message: '先挑了 12 张，发现好多小日子其实值得留下。', daysAgo: 3 },
+  ],
+  'wish-a-budget-date': [
+    { authorId: 'member-b', message: '复盘的时候别太严厉，主要是看清楚。', daysAgo: 10 },
+  ],
+  'wish-a-dentist': [
+    { authorId: 'member-a', message: '洗完牙终于不再惦记这件事了。', daysAgo: 10 },
+    { authorId: 'member-b', message: '这条应该奖励一下，拖延很久的小事也很消耗。', daysAgo: 9 },
+  ],
+  'wish-b-running': [
+    { authorId: 'member-b', message: '跑第五次的时候膝盖没不舒服，可以继续。', daysAgo: 1 },
+    { authorId: 'member-a', message: '下次我在终点买水等你。', daysAgo: 1 },
+  ],
+  'wish-b-home-coffee': [
+    { authorId: 'member-b', message: '手冲比例先固定 1:15，今天这杯比较稳。', daysAgo: 0 },
+  ],
+  'wish-b-bike-maintenance': [
+    { authorId: 'member-b', message: '刹车调完之后安心很多，周末可以骑远一点。', daysAgo: 7 },
+  ],
+  'wish-b-sleep-before': [
+    { authorId: 'member-a', message: '我也一起提前放手机，互相少刷一点。', daysAgo: 2 },
+    { authorId: 'member-b', message: '第二晚最难，第三晚反而轻松一点。', daysAgo: 1 },
+  ],
+  'wish-b-family-photo': [
+    { authorId: 'member-b', message: '翻到一张小时候在楼下吃冰棍的照片。', daysAgo: 32 },
+  ],
+}
+
+const mockWishImages: Record<string, Array<{ note: string; daysAgo: number; color: string }>> = {
+  'wish-a-meal-prep': [{ note: '周日晚上先备好的两盒便当。', daysAgo: 1, color: '#d89b72' }],
+  'wish-a-balcony-herbs': [{ note: '阳台香草角的第一批小苗。', daysAgo: 2, color: '#8fb49a' }],
+  'wish-a-photo-album': [{ note: '准备冲洗的小照片清单。', daysAgo: 3, color: '#b9a7cf' }],
+  'wish-a-desk': [{ note: '桌面空出来之后舒服很多。', daysAgo: 2, color: '#c9a184' }],
+  'wish-b-home-coffee': [{ note: '今天这杯手冲比例刚好。', daysAgo: 0, color: '#9b806f' }],
+  'wish-b-bike-maintenance': [{ note: '链条清理完，车也轻了一点。', daysAgo: 7, color: '#8aa4a6' }],
+  'wish-b-plant-corner': [{ note: '玄关的小植物角终于成形。', daysAgo: 11, color: '#8da98b' }],
+}
+
+const mockRewardPoolDefinitions: Array<Partial<RewardPoolItem> & Pick<RewardPoolItem, 'id' | 'ownerId' | 'tier' | 'title'>> = [
+  { id: 'reward-a-coffee', ownerId: 'member-a', tier: 'daily', title: '上班路上买一杯拿铁', note: '不纠结价格，今天喝喜欢的那杯。', createdAt: createSeedTimestamp(12) },
+  { id: 'reward-a-drama', ownerId: 'member-a', tier: 'daily', title: '晚饭后看一集轻松的剧', note: '不倍速，也不边看边回消息。', createdAt: createSeedTimestamp(10) },
+  { id: 'reward-a-dessert', ownerId: 'member-a', tier: 'daily', title: '给自己带一小块甜点', note: '选一个真正想吃的口味。', createdAt: createSeedTimestamp(8) },
+  { id: 'reward-a-flowers', ownerId: 'member-a', tier: 'premium', title: '给书桌换一小束鲜花', note: '让这周的房间先亮起来一点。', starCoinCost: 12, createdAt: createSeedTimestamp(24) },
+  { id: 'reward-a-bookstore', ownerId: 'member-a', tier: 'premium', title: '留一个下午逛书店', note: '不用赶场，慢慢翻书。', starCoinCost: 18, createdAt: createSeedTimestamp(34) },
+  { id: 'reward-a-brunch', ownerId: 'member-a', tier: 'premium', title: '找一家窗边早餐店', note: '慢慢吃一顿不赶时间的早餐。', starCoinCost: 22, createdAt: createSeedTimestamp(45) },
+  { id: 'reward-b-iced-coffee', ownerId: 'member-b', tier: 'daily', title: '午后买一杯冰咖啡', note: '当作今天认真推进的小收尾。', createdAt: createSeedTimestamp(9) },
+  { id: 'reward-b-game-hour', ownerId: 'member-b', tier: 'daily', title: '晚上留一小时打游戏', note: '提前收尾家务，玩的时候不愧疚。', createdAt: createSeedTimestamp(7) },
+  { id: 'reward-b-night-walk', ownerId: 'member-b', tier: 'daily', title: '饭后去河边散步', note: '不带任务，只吹一会儿风。', createdAt: createSeedTimestamp(6) },
+  { id: 'reward-b-headphones', ownerId: 'member-b', tier: 'premium', title: '换一副通勤耳机', note: '让路上的音乐和播客更舒服。', starCoinCost: 20, createdAt: createSeedTimestamp(40) },
+  { id: 'reward-b-bike-route', ownerId: 'member-b', tier: 'premium', title: '租车骑一下午河边路线', note: '找一条风景舒服、坡度不狠的路线。', starCoinCost: 16, createdAt: createSeedTimestamp(31) },
+  { id: 'reward-b-weekend-brunch', ownerId: 'member-b', tier: 'premium', title: '吃一次周末早午餐', note: '点一份平时不会点的主菜。', starCoinCost: 24, createdAt: createSeedTimestamp(25) },
+]
+
+const mockRewardDeposits: MockRewardDeposit[] = [
+  { itemId: 'reward-a-flowers', ownerId: 'member-a', amount: 8, daysAgo: 6 },
+  { itemId: 'reward-a-bookstore', ownerId: 'member-a', amount: 18, daysAgo: 14 },
+  { itemId: 'reward-a-brunch', ownerId: 'member-b', amount: 6, daysAgo: 4 },
+  { itemId: 'reward-b-headphones', ownerId: 'member-b', amount: 9, daysAgo: 8 },
+  { itemId: 'reward-b-bike-route', ownerId: 'member-b', amount: 16, daysAgo: 18 },
+  { itemId: 'reward-b-weekend-brunch', ownerId: 'member-a', amount: 5, daysAgo: 3 },
+]
+
+const mockRewardRedeems: MockRewardRedeem[] = [
+  { itemId: 'reward-a-bookstore', ownerId: 'member-a', daysAgo: 12 },
+  { itemId: 'reward-b-bike-route', ownerId: 'member-b', daysAgo: 16 },
+]
+
+const mockCoinTargets = [
+  { wishId: 'wish-a-morning-walk', voterId: 'member-b', amount: 3, daysAgo: 8 },
+  { wishId: 'wish-a-balcony-herbs', voterId: 'member-b', amount: 2, daysAgo: 12 },
+  { wishId: 'wish-a-photo-album', voterId: 'member-a', amount: 2, daysAgo: 30 },
+  { wishId: 'wish-b-running', voterId: 'member-a', amount: 4, daysAgo: 6 },
+  { wishId: 'wish-b-home-coffee', voterId: 'member-b', amount: 1, daysAgo: 2 },
+  { wishId: 'wish-b-bike-ride', voterId: 'member-a', amount: 3, daysAgo: 70 },
+]
+
+const mockThreadReactions: Array<Partial<ThreadReactionRecord> & Pick<ThreadReactionRecord, 'targetThreadId' | 'actorId' | 'emoji'>> = [
+  { id: 'reaction-a-walk-comment-b', targetThreadId: 'wish-a-morning-walk-comment-2', actorId: 'member-a', emoji: '✨', createdAt: createSeedTimestamp(0, 7) },
+  { id: 'reaction-a-dentist-complete-b', targetThreadId: 'thread-wish-completed-wish-a-dentist', actorId: 'member-b', emoji: '🎉', createdAt: createSeedTimestamp(9, 2) },
+  { id: 'reaction-b-running-comment-a', targetThreadId: 'wish-b-running-comment-2', actorId: 'member-b', emoji: '💪', createdAt: createSeedTimestamp(1, 5) },
+  { id: 'reaction-b-bike-reward-a', targetThreadId: 'thread-reward-claim-reward-b-bike-route-redeem', actorId: 'member-a', emoji: '🚲', createdAt: createSeedTimestamp(16, 3) },
+  { id: 'reaction-a-bookstore-reward-b', targetThreadId: 'thread-reward-claim-reward-a-bookstore-redeem', actorId: 'member-b', emoji: '📚', createdAt: createSeedTimestamp(12, 3) },
+]
+
 function createSeedTimestamp(daysAgo: number, hourOffset = 0) {
   const date = new Date()
   date.setHours(9 + (hourOffset % 8), 0, 0, 0)
@@ -73,6 +189,38 @@ function createSeedDueDate(daysFromNow: number | null) {
   date.setHours(0, 0, 0, 0)
   date.setDate(date.getDate() + daysFromNow)
   return date.toISOString().slice(0, 10)
+}
+
+function createMockImageDataUrl(label: string, color: string) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800"><rect width="1200" height="800" fill="${color}"/><circle cx="220" cy="180" r="120" fill="rgba(255,255,255,.28)"/><circle cx="980" cy="620" r="180" fill="rgba(255,255,255,.18)"/><text x="80" y="690" fill="rgba(55,42,36,.72)" font-family="sans-serif" font-size="58" font-weight="700">${label}</text></svg>`
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
+}
+
+function createMockWishImages(definition: MockWishDefinition): WishImage[] {
+  const imageDefinitions = mockWishImages[definition.id] ?? []
+
+  return imageDefinitions.map((image, imageIndex) => createWishImage({
+    id: `${definition.id}-image-${imageIndex + 1}`,
+    createdAt: createSeedTimestamp(image.daysAgo, imageIndex + 2),
+    createdBy: definition.ownerId,
+    fileName: `${definition.id}-${imageIndex + 1}.svg`,
+    mimeType: 'image/svg+xml',
+    note: image.note,
+    sizeBytes: 24_000 + imageIndex * 1200,
+    storagePath: `mock/${definition.id}/${imageIndex + 1}.svg`,
+    url: createMockImageDataUrl(definition.category || '生活记录', image.color),
+  }))
+}
+
+function createMockWishComments(definition: MockWishDefinition) {
+  const comments = mockWishComments[definition.id] ?? []
+
+  return comments.map((comment, commentIndex) => createWishComment({
+    id: `${definition.id}-comment-${commentIndex + 1}`,
+    authorId: comment.authorId,
+    message: comment.message,
+    createdAt: createSeedTimestamp(comment.daysAgo, commentIndex + 3),
+  }))
 }
 
 function createMockSeedWishes() {
@@ -114,11 +262,135 @@ function createMockSeedWishes() {
       completionStarCoinBonus: definition.completionStarCoinBonus,
       completedAt: definition.status === 'done' ? updatedAt : null,
       steps,
-      comments: [],
+      comments: createMockWishComments(definition),
+      images: createMockWishImages(definition),
       createdAt,
       updatedAt,
     })
   })
+}
+
+function createMockRewardPoolItems() {
+  return mockRewardPoolDefinitions.map((item) => createRewardPoolItem(item))
+}
+
+function createMockRewardDepositClaims(rewardPoolItems: RewardPoolItem[]) {
+  const rewardMap = new Map(rewardPoolItems.map((item) => [item.id, item]))
+
+  return mockRewardDeposits.flatMap((deposit) => {
+    const rewardItem = rewardMap.get(deposit.itemId)
+
+    if (!rewardItem) {
+      return []
+    }
+
+    return [createRewardClaimRecord({
+      id: `${deposit.itemId}-deposit-${deposit.ownerId}`,
+      ownerId: deposit.ownerId,
+      rewardItemId: rewardItem.id,
+      claimKind: 'reward_deposit',
+      quantity: deposit.amount,
+      starCoinDelta: -deposit.amount,
+      titleSnapshot: rewardItem.title,
+      noteSnapshot: `本地模拟：给「${rewardItem.title}」存入星星币`,
+      createdAt: createSeedTimestamp(deposit.daysAgo, 4),
+    })]
+  })
+}
+
+function createMockRewardRedeemClaims(rewardPoolItems: RewardPoolItem[]) {
+  const rewardMap = new Map(rewardPoolItems.map((item) => [item.id, item]))
+
+  return mockRewardRedeems.flatMap((redeem) => {
+    const rewardItem = rewardMap.get(redeem.itemId)
+
+    if (!rewardItem) {
+      return []
+    }
+
+    return [createRewardClaimRecord({
+      id: `${redeem.itemId}-redeem`,
+      ownerId: redeem.ownerId,
+      rewardItemId: rewardItem.id,
+      claimKind: 'premium_redeem',
+      quantity: 1,
+      starCoinDelta: 0,
+      titleSnapshot: rewardItem.title,
+      noteSnapshot: rewardItem.note,
+      createdAt: createSeedTimestamp(redeem.daysAgo, 5),
+    })]
+  })
+}
+
+function createMockWishCoins() {
+  return mockCoinTargets.flatMap((target) => Array.from({ length: target.amount }, (_, coinIndex) => createWishCoinRecord({
+    id: `${target.wishId}-coin-${target.voterId}-${coinIndex + 1}`,
+    wishId: target.wishId,
+    voterId: target.voterId,
+    cycleKey: `mock-${Math.ceil(target.daysAgo / 7)}`,
+    amount: 1,
+    createdAt: createSeedTimestamp(Math.max(target.daysAgo - coinIndex, 0), coinIndex),
+  })))
+}
+
+function createMockThreadReactions() {
+  return mockThreadReactions.map((reaction) => createThreadReactionRecord(reaction))
+}
+
+function createMockMonthlyJournalSnapshots() {
+  return [
+    createMonthlyJournalSnapshotRecord({
+      id: 'snapshot-mock-last-month',
+      monthKey: createMonthKey(-1),
+      coverTitle: '把小事慢慢收进生活里',
+      coverSubtitle: '上个月完成了几件拖了很久的小愿望。',
+      createdAt: createSeedTimestamp(18, 2),
+      createdBy: 'member-a',
+      metricsSnapshot: {
+        completedWishCount: 4,
+        commentCount: 7,
+        rewardEventCount: 9,
+        wishCount: 12,
+      },
+      narrativeBlocks: [
+        { actorId: 'member-a', title: '换窗帘、洗牙、早餐这几件事终于落地', body: '很多愿望并不大，但做完之后会明显少一点惦记。' },
+        { actorId: 'member-b', title: '自行车和玄关植物角都完成了', body: '空间被整理顺了，周末也多了一点出门的理由。' },
+      ],
+      sourceRefs: [
+        { wishId: 'wish-a-dentist', eventKind: 'wish_completed' },
+        { wishId: 'wish-b-bike-maintenance', eventKind: 'wish_completed' },
+      ],
+    }),
+    createMonthlyJournalSnapshotRecord({
+      id: 'snapshot-mock-two-months-ago',
+      monthKey: createMonthKey(-2),
+      coverTitle: '认真开始之前，也先好好记录',
+      coverSubtitle: '这个月更多是在写下、整理和找到节奏。',
+      createdAt: createSeedTimestamp(49, 1),
+      createdBy: 'member-b',
+      metricsSnapshot: {
+        completedWishCount: 2,
+        commentCount: 4,
+        rewardEventCount: 5,
+        wishCount: 9,
+      },
+      narrativeBlocks: [
+        { actorId: 'member-a', title: '照片、预算和衣柜都开始有了轮廓', body: '不是一下子完成，而是先把入口找到。' },
+        { actorId: 'member-b', title: '跑步、咖啡和睡前放手机进入清单', body: '生活习惯类愿望开始变得可追踪。' },
+      ],
+      sourceRefs: [
+        { wishId: 'wish-a-photo-album', eventKind: 'wish_published' },
+        { wishId: 'wish-b-sleep-before', eventKind: 'wish_published' },
+      ],
+    }),
+  ]
+}
+
+function createMonthKey(monthOffset: number) {
+  const date = new Date()
+  date.setDate(1)
+  date.setMonth(date.getMonth() + monthOffset)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 }
 
 function createMockSeedRewardClaims(wishes: WishRecord[]) {
@@ -173,10 +445,19 @@ function createMockSeedRewardClaims(wishes: WishRecord[]) {
   })
 }
 
-export function createMockWishSeedState() {
+export function createMockWishSeedState(): SeedWishState {
   const wishes = createMockSeedWishes()
+  const rewardPoolItems = createMockRewardPoolItems()
   return {
-    rewardClaims: createMockSeedRewardClaims(wishes),
+    coins: createMockWishCoins(),
+    monthlyJournalSnapshots: createMockMonthlyJournalSnapshots(),
+    rewardClaims: [
+      ...createMockSeedRewardClaims(wishes),
+      ...createMockRewardDepositClaims(rewardPoolItems),
+      ...createMockRewardRedeemClaims(rewardPoolItems),
+    ],
+    rewardPoolItems,
+    threadReactions: createMockThreadReactions(),
     wishes,
   }
 }
