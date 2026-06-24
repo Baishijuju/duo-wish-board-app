@@ -53,6 +53,7 @@ import {
   createWishRecord as createWishRecordModule,
   createWishStep as createWishStepModule,
 } from '../modules/wishes/wish.factories'
+import { createMockWishSeedState } from '../modules/wishes/wish.mock-seed'
 import { addCommentWrite, deleteCommentWrite, updateCommentWrite } from '../modules/wishes/wish.comments.write'
 import {
   addWishStepWrite,
@@ -1263,13 +1264,15 @@ const seedRewardPoolItems: RewardPoolItem[] = [
 ]
 
 function createSeedWishState() {
+  const mockSeed = createMockWishSeedState()
+
   return {
-    coins: seedWishCoins.map((coin) => createWishCoinRecord(coin)),
+    coins: mockSeed.wishes.length > 0 ? [] : seedWishCoins.map((coin) => createWishCoinRecord(coin)),
     monthlyJournalSnapshots: [] as MonthlyJournalSnapshotRecord[],
-    rewardClaims: [] as RewardClaimRecord[],
+    rewardClaims: mockSeed.rewardClaims.map((claim) => createRewardClaimRecord(claim)),
     rewardPoolItems: seedRewardPoolItems.map((item) => createRewardPoolItem(item)),
-    threadReactions: seedThreadReactions.map((reaction) => createThreadReactionRecord(reaction)),
-    wishes: seedWishes.map((wish) => createWishRecord(wish)),
+    threadReactions: mockSeed.wishes.length > 0 ? [] : seedThreadReactions.map((reaction) => createThreadReactionRecord(reaction)),
+    wishes: mockSeed.wishes.length > 0 ? mockSeed.wishes.map((wish) => createWishRecord(wish)) : seedWishes.map((wish) => createWishRecord(wish)),
   }
 }
 

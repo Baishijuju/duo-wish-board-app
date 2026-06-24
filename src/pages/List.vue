@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { WishRecord } from '../stores/wishes'
 import { useListWishBoardState } from '../composables/useListWishBoardState'
@@ -9,20 +9,10 @@ const {
   canCurrentMemberProgressWish,
   filterStore,
   filteredWishes,
-  formatDateLabel,
-  getCoverImageUrl,
-  getMemberName,
-  getRelativeDueLabel,
-  getWishMood,
-  getWishProgress,
-  getWishProgressHint,
-  getWishStarCoinSummary,
-  priorityLabels,
+  getWishSortContext,
+  listWorkbenchStats,
   wishStore,
 } = useListWishBoardState()
-
-type ListActionKind = 'coin'
-type ListFeedbackTone = 'success' | 'danger' | 'info'
 
 const visibilityLabels = {
   all: '全部愿望',
@@ -37,14 +27,17 @@ const statusLabels = {
 } as const
 
 const sortLabels = {
-  time: '按时间',
-  progress: '按进度',
+  updated: '最近更新',
+  progress: '进度',
+  starCoins: '星星币',
+  age: '存在更久',
 } as const
 
 const viewerName = computed(() => authStore.currentMember?.displayName ?? '我们')
 const selectedVisibilityLabel = computed(() => visibilityLabels[filterStore.visibility])
 const selectedStatusLabel = computed(() => statusLabels[filterStore.status])
 const selectedSortLabel = computed(() => sortLabels[filterStore.sortMode])
+const selectedSortDirectionLabel = computed(() => filterStore.sortDirection === 'desc' ? '倒序' : '正序')
 const archiveSummary = computed(() => {
   if (filterStore.visibility === 'mine') {
     if (filterStore.status === 'done') {
@@ -59,7 +52,7 @@ const archiveSummary = computed(() => {
   }
 
   if (filterStore.visibility === 'others') {
-    return '这里只看对方的愿望，可以评论、打气和投愿望币。'
+    return '这里只看对方的愿望，可以评论、打气，也可以看看对方最近在努力什么。'
   }
 
   if (filterStore.status === 'done') {
@@ -92,8 +85,8 @@ const quickGuide = computed(() => {
     return searchSummary.value
   }
 
-  if (filterStore.visibility !== 'all' || filterStore.status !== 'active' || filterStore.sortMode !== 'time') {
-    return `现在先看 ${selectedVisibilityLabel.value} · ${selectedStatusLabel.value} · ${selectedSortLabel.value}。`
+  if (filterStore.visibility !== 'all' || filterStore.status !== 'active' || filterStore.sortMode !== 'updated' || filterStore.sortDirection !== 'desc') {
+    return `现在先看 ${selectedVisibilityLabel.value} · ${selectedStatusLabel.value} · ${selectedSortLabel.value}${selectedSortDirectionLabel.value}。`
   }
 
   return '先从眼前这批愿望里挑一条，继续往前就好。'
@@ -139,80 +132,39 @@ const boardHeading = computed(() => {
 
   return '今天继续往前的愿望'
 })
-const pendingWishAction = ref<{ wishId: string; kind: ListActionKind } | null>(null)
-const pageFeedback = ref<{ tone: ListFeedbackTone; text: string } | null>(null)
-const hasActiveFilters = computed(() => {
-  return !!filterStore.search.trim() || filterStore.visibility !== 'all' || filterStore.status !== 'active' || filterStore.sortMode !== 'time'
-})
-
-function getWishCaption(wish: WishRecord) {
-  return [wish.category || '还没有分类', priorityLabels[wish.priority]].join(' · ')
+function getWishOwnerClass(wish: WishRecord) {
+  return canCurrentMemberProgressWish(wish) ? 'is-personal-owner' : 'is-assist-owner'
 }
 
-function getProgressCopy(wish: WishRecord) {
-  const progress = getWishProgress(wish)
-
-  if (progress.mode === 'count') {
-    return progress.label
+function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
+  if (filterStore.sortMode !== sortMode) {
+    return sortLabels[sortMode]
   }
 
-  if (progress.mode === 'steps') {
-    return progress.target ? progress.label : '还没有写第一个步骤'
-  }
-
-  return '先把愿望本身写清楚'
+  return `${sortLabels[sortMode]}${selectedSortDirectionLabel.value}`
 }
 
-function resetFilters() {
-  filterStore.reset()
-  showPageFeedback('info', '先把这些筛选放下，看看全部愿望。')
-}
-
-function showPageFeedback(tone: ListFeedbackTone, text: string) {
-  pageFeedback.value = { tone, text }
-}
-
-function isWishActionPending(wishId: string, kind?: ListActionKind) {
-  return pendingWishAction.value?.wishId === wishId && (!kind || pendingWishAction.value.kind === kind)
-}
-
-async function handleCastWishCoin(wish: WishRecord) {
-  pendingWishAction.value = { wishId: wish.id, kind: 'coin' }
-
-  try {
-    const isSuccess = await wishStore.castWishCoin(wish.id)
-    showPageFeedback(
-      isSuccess ? 'success' : 'danger',
-      isSuccess
-        ? `已把 1 枚愿望币投给「${wish.title}」。`
-        : wishStore.syncMessage || `这次没能把愿望币投给「${wish.title}」。`,
-    )
-  } finally {
-    pendingWishAction.value = null
-  }
-}
 </script>
 
 <template>
   <section class="list-board-page">
-    <article class="page-card list-board-hero-card">
-      <div class="list-board-hero-copy">
-        <p class="list-board-kicker">这批愿望</p>
-        <h1>
-          <span class="list-board-hero-name">{{ viewerName }}</span>
-          <span class="list-board-hero-promise">把正在路上的愿望，排成今天能继续推进的顺序。</span>
-        </h1>
-        <div class="list-board-hero-actions">
-          <RouterLink class="list-board-button is-solid" :to="{ name: 'compose' }">写下新愿望</RouterLink>
-          <RouterLink class="list-board-button is-ghost" :to="{ name: 'review' }">打开回顾页</RouterLink>
-        </div>
+    <article class="page-card list-board-hero-card list-board-workbench-hero">
+      <div class="list-board-hero-copy list-board-workbench-copy">
+        <p class="list-board-kicker">今日清单</p>
+        <h1>{{ viewerName }}，挑一件继续</h1>
+        <p>{{ listWorkbenchStats.activeCount }} 条正在推进 · {{ listWorkbenchStats.currentMemberActiveCount }} 条归我 · 还能获得 {{ listWorkbenchStats.remainingStarCoins }} 星星币</p>
+      </div>
+
+      <div class="list-board-hero-actions list-board-workbench-actions">
+        <RouterLink class="list-board-button is-solid" :to="{ name: 'compose' }">写下新愿望</RouterLink>
+        <RouterLink class="list-board-button is-ghost" :to="{ name: 'review' }">打开回顾页</RouterLink>
       </div>
     </article>
 
     <article class="page-card list-board-toolbar-card">
       <div class="list-board-toolbar-copy">
-        <p class="list-board-kicker">先看哪一类</p>
-        <h2>想先看得更近一点，也可以</h2>
+        <p class="list-board-kicker">筛选</p>
+        <h2>把眼前这批排清楚</h2>
         <p>{{ quickGuide }}</p>
       </div>
 
@@ -284,48 +236,48 @@ async function handleCastWishCoin(wish: WishRecord) {
           </div>
 
           <div class="list-board-filter-group">
-            <span class="list-board-filter-label">想按什么顺序看</span>
-            <div class="list-board-filter-row is-sort-row">
-              <button
-                class="list-board-filter-pill"
-                type="button"
-                :class="{ 'is-active': filterStore.sortMode === 'time' }"
-                @click="filterStore.sortMode = 'time'"
-              >
-                先看最近的
-              </button>
+            <span class="list-board-filter-label">排序</span>
+            <div class="list-board-filter-row is-sort-row list-board-filter-row-wide">
               <button
                 class="list-board-filter-pill"
                 type="button"
                 :class="{ 'is-active': filterStore.sortMode === 'progress' }"
-                @click="filterStore.sortMode = 'progress'"
+                @click="filterStore.setSortMode('progress')"
               >
-                先看快靠近的
+                {{ getSortButtonLabel('progress') }}
+              </button>
+              <button
+                class="list-board-filter-pill"
+                type="button"
+                :class="{ 'is-active': filterStore.sortMode === 'starCoins' }"
+                @click="filterStore.setSortMode('starCoins')"
+              >
+                {{ getSortButtonLabel('starCoins') }}
+              </button>
+              <button
+                class="list-board-filter-pill"
+                type="button"
+                :class="{ 'is-active': filterStore.sortMode === 'age' }"
+                @click="filterStore.setSortMode('age')"
+              >
+                {{ getSortButtonLabel('age') }}
+              </button>
+              <button
+                class="list-board-filter-pill"
+                type="button"
+                :class="{ 'is-active': filterStore.sortMode === 'updated' }"
+                @click="filterStore.setSortMode('updated')"
+              >
+                {{ getSortButtonLabel('updated') }}
               </button>
             </div>
           </div>
         </div>
 
-        <div class="list-board-toolbar-side">
-          <div class="list-board-toolbar-side-copy">
-            <span class="list-board-filter-label">眼前这批</span>
-            <strong>{{ filteredWishes.length }} 条</strong>
-            <p>{{ searchSummary }}</p>
-          </div>
-          <div class="list-board-inline-actions">
-            <button v-if="hasActiveFilters" class="list-board-side-button" type="button" @click="resetFilters()">先看全部</button>
-            <RouterLink class="list-board-side-button" :to="{ name: 'review' }">去回顾页</RouterLink>
-          </div>
-        </div>
       </div>
     </article>
 
     <article class="page-card list-board-card">
-      <div v-if="pageFeedback" class="list-board-status-banner" :class="`is-${pageFeedback.tone}`" role="status" aria-live="polite">
-        <p>{{ pageFeedback.text }}</p>
-        <button class="list-board-side-button" type="button" @click="pageFeedback = null">收起</button>
-      </div>
-
       <div class="list-board-head">
         <div>
           <p class="list-board-kicker">今天这批</p>
@@ -335,65 +287,31 @@ async function handleCastWishCoin(wish: WishRecord) {
         <div class="list-board-badge-row">
           <span class="list-board-badge">{{ selectedVisibilityLabel }}</span>
           <span class="list-board-badge">{{ selectedStatusLabel }} · {{ filteredWishes.length }} 条</span>
-          <span class="list-board-badge">{{ selectedSortLabel }}</span>
+          <span class="list-board-badge">{{ selectedSortLabel }}{{ selectedSortDirectionLabel }}</span>
         </div>
       </div>
 
       <div v-if="filteredWishes.length" class="list-board-grid">
-        <article v-for="wish in filteredWishes" :key="wish.id" class="list-board-item">
-          <div class="list-board-card-top">
-            <div class="list-board-card-overline">
-              <span class="list-board-card-scope" :class="canCurrentMemberProgressWish(wish) ? 'is-mine' : 'is-other'">{{ canCurrentMemberProgressWish(wish) ? '我的愿望' : `${getMemberName(wish.ownerId)} 的愿望` }}</span>
-              <span class="list-board-card-caption">{{ getWishCaption(wish) }}</span>
-            </div>
+        <article v-for="wish in filteredWishes" :key="wish.id" class="list-board-item" :class="getWishOwnerClass(wish)">
+          <span class="list-board-owner-dot" aria-hidden="true"></span>
 
-            <div class="list-board-card-tools">
-              <span class="list-board-card-mood">{{ getWishMood(wish) }}</span>
-            </div>
-          </div>
-
-          <div class="list-board-card-body" :class="{ 'has-image': !!getCoverImageUrl(wish) }">
+          <div class="list-board-card-body">
             <div class="list-board-card-copy">
               <h3>{{ wish.title }}</h3>
-              <p>{{ wish.note || '先留一个名字也没关系，想说的话还可以慢慢补。' }}</p>
             </div>
-
-            <img v-if="getCoverImageUrl(wish)" class="list-board-card-image" :src="getCoverImageUrl(wish)" :alt="`${wish.title} 首图`" />
           </div>
 
           <div class="list-board-card-data">
-            <RouterLink class="list-board-data-block list-board-progress-link" :to="{ name: 'wish-detail', params: { id: wish.id }, hash: '#progress' }" aria-label="打开详情页进度区域">
-              <span>当前进度</span>
-              <strong>{{ getProgressCopy(wish) }}</strong>
-              <p>{{ getWishProgressHint(wish) || '等这条愿望继续往前时，这里会慢慢更清楚。' }}</p>
-              <p class="list-board-starcoin-line">{{ getWishStarCoinSummary(wish) }}</p>
+            <RouterLink class="list-board-data-block list-board-progress-link list-board-sort-context" :to="{ name: 'wish-detail', params: { id: wish.id }, hash: '#progress' }" aria-label="打开详情页进度区域">
+              <span>{{ getWishSortContext(wish).label }}</span>
+              <strong>{{ getWishSortContext(wish).value }}</strong>
+              <em>{{ getWishSortContext(wish).meta }}</em>
+              <div v-if="getWishSortContext(wish).progressPercent !== null" class="list-board-progress-track" :aria-label="`当前进度 ${getWishSortContext(wish).progressPercent}%`">
+                <span :style="{ width: `${getWishSortContext(wish).progressPercent}%` }"></span>
+              </div>
             </RouterLink>
           </div>
 
-          <div class="list-board-card-meta">
-            <span>{{ getRelativeDueLabel(wish.dueDate) }}</span>
-            <span>{{ getMemberName(wish.ownerId) }} 写下于 {{ formatDateLabel(wish.createdAt) }}</span>
-          </div>
-
-          <div class="list-board-card-actions">
-            <RouterLink class="list-board-action is-solid is-detail" :to="{ name: 'wish-detail', params: { id: wish.id } }">详情</RouterLink>
-            <button
-              class="list-board-action is-soft"
-              type="button"
-              :disabled="wish.status === 'done' || wishStore.currentMemberRemainingCoins <= 0 || isWishActionPending(wish.id)"
-              @click="void handleCastWishCoin(wish)"
-            >
-              {{
-                isWishActionPending(wish.id, 'coin')
-                  ? '正在投币...'
-                  : wish.status === 'done'
-                    ? '愿望已实现'
-                    : wishStore.currentMemberRemainingCoins > 0
-                      ? '投 1 币'
-                      : '本周已投完'
-              }}
-            </button>
-          </div>
         </article>
       </div>
 
@@ -440,8 +358,6 @@ async function handleCastWishCoin(wish: WishRecord) {
 .list-board-hero-metrics,
 .list-board-hero-focus-card,
 .list-board-toolbar-actions,
-.list-board-toolbar-side,
-.list-board-toolbar-side-copy,
 .list-board-data-block {
   display: grid;
   gap: 1rem;
@@ -451,7 +367,6 @@ async function handleCastWishCoin(wish: WishRecord) {
 .list-board-badge-row,
 .list-board-card-top,
 .list-board-card-meta,
-.list-board-card-actions,
 .list-board-inline-actions,
 .list-board-delete-actions,
 .list-board-card-overline,
@@ -476,7 +391,7 @@ async function handleCastWishCoin(wish: WishRecord) {
   position: relative;
   overflow: hidden;
   gap: 1.08rem;
-  padding: 1.18rem;
+  padding: 0.96rem;
 }
 
 .list-board-hero-card {
@@ -489,11 +404,86 @@ async function handleCastWishCoin(wish: WishRecord) {
     radial-gradient(circle at 50% 100%, var(--sage-glow), transparent 30%);
 }
 
+.list-board-workbench-hero {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.72rem;
+  padding: 0.74rem 0.86rem;
+  background: linear-gradient(135deg, rgba(255, 252, 246, 0.94), rgba(249, 241, 231, 0.78));
+}
+
+.list-board-workbench-copy {
+  gap: 0.2rem;
+}
+
+.list-board-workbench-copy h1 {
+  max-width: none;
+  font-family: var(--list-heading-font);
+  font-size: var(--type-l4-size);
+  font-weight: 700;
+  line-height: var(--type-l4-line);
+  letter-spacing: 0;
+}
+
+.list-board-workbench-copy p:last-child {
+  margin: 0;
+  color: var(--list-ink-soft);
+  font-family: var(--list-body-font);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line);
+}
+
+.list-board-workbench-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.48rem;
+}
+
+.list-board-workbench-stat {
+  display: grid;
+  gap: 0.1rem;
+  min-height: 3.3rem;
+  align-content: center;
+  padding: 0.48rem 0.56rem;
+  border: 1px solid rgba(126, 96, 76, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.54);
+}
+
+.list-board-workbench-stat span {
+  color: var(--text-soft);
+  font-family: var(--list-body-font);
+  font-size: var(--type-eyebrow-size);
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.list-board-workbench-stat strong {
+  color: var(--list-ink);
+  font-family: var(--list-heading-font);
+  font-size: var(--type-meta-size);
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.list-board-workbench-actions {
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+}
+
+.list-board-workbench-actions .list-board-button {
+  min-height: 2.28rem;
+  padding: 0.46rem 0.72rem;
+  font-size: var(--type-meta-size);
+}
+
 .list-board-toolbar-card {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.72fr);
+  gap: 0.72rem 0.82rem;
+  padding: 0.86rem;
   background:
-    linear-gradient(180deg, var(--warm-panel-strong), var(--surface-soft)),
-    radial-gradient(circle at 4% 10%, var(--danger-panel), transparent 26%),
-    radial-gradient(circle at 100% 0%, var(--cool-glow), transparent 30%);
+    linear-gradient(180deg, rgba(255, 252, 246, 0.82), rgba(249, 241, 231, 0.72)),
+    radial-gradient(circle at 100% 0%, rgba(226, 239, 237, 0.58), transparent 28%);
 }
 
 .list-board-hero-copy {
@@ -538,7 +528,6 @@ async function handleCastWishCoin(wish: WishRecord) {
 }
 
 .list-board-card-meta span,
-.list-board-card-caption,
 .list-board-card-mood,
 .list-board-filter-label {
   font-family: var(--list-body-font);
@@ -717,8 +706,7 @@ async function handleCastWishCoin(wish: WishRecord) {
 .list-board-summary-card p,
 .list-board-toolbar-copy p,
 .list-board-empty p,
-.list-board-data-block p,
-.list-board-toolbar-side p {
+.list-board-data-block p {
   margin: 0;
   font-family: var(--list-body-font);
   color: var(--list-ink-soft);
@@ -740,8 +728,7 @@ async function handleCastWishCoin(wish: WishRecord) {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.list-board-hero-focus-card strong,
-.list-board-toolbar-side-copy strong {
+.list-board-hero-focus-card strong {
   color: var(--list-ink);
   font-family: var(--list-heading-font);
   font-size: var(--type-card-title-size);
@@ -775,7 +762,6 @@ async function handleCastWishCoin(wish: WishRecord) {
 }
 
 .list-board-summary-card-compact,
-.list-board-toolbar-side,
 .list-board-filter-group {
   background: var(--surface-soft);
 }
@@ -804,7 +790,7 @@ async function handleCastWishCoin(wish: WishRecord) {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 1;
 }
 
 .list-board-data-block p {
@@ -814,23 +800,61 @@ async function handleCastWishCoin(wish: WishRecord) {
   -webkit-line-clamp: 2;
 }
 
+.list-board-progress-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.56rem;
+}
+
+.list-board-progress-summary strong {
+  font-size: var(--type-l4-size);
+  line-height: var(--type-l4-line);
+}
+
+.list-board-progress-summary em {
+  color: var(--text-soft);
+  font-family: var(--list-body-font);
+  font-size: var(--type-meta-size);
+  font-style: normal;
+  font-weight: 700;
+  line-height: var(--type-meta-line);
+}
+
+.list-board-progress-track {
+  width: 100%;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card-border-soft) 72%, transparent);
+}
+
+.list-board-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--owner-progress-start), var(--owner-progress-end));
+}
+
 .list-board-card-meta {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.48rem 0.56rem;
+  grid-template-columns: repeat(auto-fit, minmax(7.2rem, 1fr));
+  gap: 0.38rem;
   color: var(--list-ink-faint);
 }
 
 .list-board-card-meta span {
   display: inline-flex;
   align-items: center;
-  min-height: 32px;
-  padding: 0.36rem 0.66rem;
+  min-height: 28px;
+  padding: 0.3rem 0.52rem;
   border-radius: 999px;
   border: 1px solid var(--card-border-soft);
   background: var(--panel-bg);
   justify-content: center;
   text-align: center;
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line);
 }
 
 .list-board-head {
@@ -840,25 +864,28 @@ async function handleCastWishCoin(wish: WishRecord) {
 .list-board-search-field {
   gap: 0.46rem;
   max-width: 34rem;
-  padding: 0.92rem 0.96rem;
-  border-radius: var(--radius-xl);
+  padding: 0.64rem 0.72rem;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--list-line);
   background: var(--surface-raised);
-  box-shadow: var(--shadow-card);
+  box-shadow: none;
 }
 
 .list-board-search-field input {
-  min-height: 52px;
-  padding-block: 0.92rem;
+  min-height: 38px;
+  padding-block: 0.52rem;
   font-family: var(--list-body-font);
   font-size: var(--type-body-size);
   background: var(--input-bg);
 }
 
 .list-board-toolbar-card {
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.82fr);
-  gap: 0.94rem 1.08rem;
-  background: var(--surface-card);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.72fr);
+  gap: 0.72rem 0.82rem;
+  padding: 0.86rem;
+  background:
+    linear-gradient(180deg, rgba(255, 252, 246, 0.82), rgba(249, 241, 231, 0.72)),
+    radial-gradient(circle at 100% 0%, rgba(226, 239, 237, 0.58), transparent 28%);
 }
 
 .list-board-toolbar-copy {
@@ -872,128 +899,183 @@ async function handleCastWishCoin(wish: WishRecord) {
 }
 
 .list-board-toolbar-copy p {
-  width: max-content;
   max-width: min(100%, 52ch);
-  white-space: nowrap;
 }
 
 .list-board-toolbar-actions {
   grid-column: 1 / -1;
-  grid-template-columns: minmax(0, 1.24fr) minmax(260px, 0.76fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
-  gap: 0.88rem;
-  padding-top: 0.42rem;
-  border-top: 1px solid var(--card-border-soft);
+  gap: 0;
+  padding: 0.42rem 0.46rem 0.48rem;
+  border: 1px solid rgba(126, 96, 76, 0.08);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 253, 249, 0.46);
 }
 
 .list-board-filter-stack {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.9rem;
+  gap: 0;
 }
 
 .list-board-filter-group {
-  gap: 0.54rem;
-  padding: 0.76rem;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--list-line);
-  background: var(--surface-soft);
+  gap: 0.34rem;
+  padding: 0.12rem 0.38rem;
+  border: 0;
+  border-right: 1px solid rgba(126, 96, 76, 0.08);
+  border-radius: 0;
+  background: transparent;
   box-shadow: none;
 }
 
+.list-board-filter-group:last-child {
+  border-right: 0;
+}
+
 .list-board-filter-label {
-  color: var(--text-muted);
+  color: rgba(95, 80, 72, 0.7);
+  font-size: 0.72rem;
   font-weight: 600;
+  line-height: 1.2;
 }
 
 .list-board-filter-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.58rem;
+  gap: 0.3rem;
 }
 
 .list-board-filter-row.is-sort-row {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.18rem;
+  margin-inline: 0;
+  padding: 0;
+  overflow: visible;
+  scrollbar-width: auto;
+}
+
+.list-board-filter-row-wide {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.list-board-filter-row.is-sort-row .list-board-filter-pill {
+  width: 100%;
+  min-width: 0;
 }
 
 .list-board-filter-pill {
   width: 100%;
-  min-height: 42px;
-  padding: 0.56rem 0.72rem;
-  border-radius: var(--radius-md);
+  min-width: 0;
+  min-height: 28px;
+  padding: 0.3rem 0.32rem;
+  border-radius: 8px;
+  font-size: 0.74rem;
   justify-content: center;
   text-align: center;
   white-space: nowrap;
   box-shadow: none;
 }
 
+.list-board-filter-row.is-sort-row .list-board-filter-pill {
+  padding-inline: 0.08rem;
+  font-size: 0.68rem;
+}
+
 .list-board-filter-pill.is-active {
   background: linear-gradient(135deg, var(--active-item-bg), var(--card-bg-popover));
   border-color: var(--active-item-border);
   color: var(--text-main);
-  box-shadow: 0 8px 16px var(--accent-shadow-soft);
-}
-
-.list-board-toolbar-side {
-  gap: 0.62rem;
-  justify-items: start;
-  padding: 0.78rem 0.82rem;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--list-line);
-  background: var(--card-bg);
-}
-
-.list-board-toolbar-side-copy {
-  gap: 0.28rem;
-  max-width: 28ch;
-}
-
-.list-board-toolbar-side p {
-  max-width: 26ch;
+  box-shadow: 0 4px 10px var(--accent-shadow-soft);
 }
 
 .list-board-card {
-  background: var(--panel-bg-strong);
+  background: color-mix(in srgb, var(--panel-bg-strong) 82%, var(--surface-card));
 }
 
 .list-board-badge {
   display: inline-flex;
   align-items: center;
-  min-height: 36px;
-  padding: 0.48rem 0.82rem;
+  min-height: 30px;
+  padding: 0.36rem 0.62rem;
   border-radius: 999px;
-  border: 1px solid rgba(126, 96, 76, 0.12);
-  background: rgba(255, 255, 255, 0.76);
-  color: rgba(61, 46, 40, 0.74);
+  border: 1px solid rgba(126, 96, 76, 0.08);
+  background: rgba(255, 255, 255, 0.48);
+  color: rgba(61, 46, 40, 0.62);
   font-family: var(--list-body-font);
-  font-size: var(--type-meta-size);
+  font-size: 0.75rem;
   line-height: var(--type-meta-line);
 }
 
 .list-board-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.9rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid rgba(126, 96, 76, 0.08);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 253, 249, 0.58);
 }
 
 .list-board-item {
+  --owner-accent: color-mix(in srgb, var(--accent) 70%, var(--text-muted));
+  --owner-row-hover: color-mix(in srgb, var(--owner-accent) 5%, transparent);
+  --owner-progress-start: var(--accent-sun);
+  --owner-progress-end: var(--accent);
   position: relative;
-  gap: 0.76rem;
-  padding: 0.96rem;
-  background: var(--surface-card);
-  border-radius: var(--radius-xl);
-  box-shadow: 0 10px 24px rgba(82, 61, 48, 0.06);
+  grid-template-columns: 0.5rem minmax(0, 1fr);
+  column-gap: 0.58rem;
+  row-gap: 0.18rem;
+  align-items: baseline;
+  padding: 0.64rem 0.66rem 0.66rem 0.62rem;
+  border-bottom: 1px solid rgba(126, 96, 76, 0.075);
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  transition: background 160ms ease;
+}
+
+.list-board-item:last-child {
+  border-bottom: 0;
+}
+
+.list-board-item.is-personal-owner {
+  --owner-accent: color-mix(in srgb, var(--accent) 64%, var(--text-muted));
+  --owner-row-hover: color-mix(in srgb, var(--accent-panel) 52%, transparent);
+  --owner-progress-start: color-mix(in srgb, var(--accent-sun) 78%, var(--surface-card));
+  --owner-progress-end: color-mix(in srgb, var(--accent) 82%, var(--text-muted));
+}
+
+.list-board-item.is-assist-owner {
+  --owner-accent: color-mix(in srgb, var(--accent-teal) 72%, var(--text-muted));
+  --owner-row-hover: color-mix(in srgb, var(--mist) 48%, transparent);
+  --owner-progress-start: color-mix(in srgb, var(--accent-teal) 76%, var(--surface-card));
+  --owner-progress-end: color-mix(in srgb, var(--accent-teal) 72%, var(--text-muted));
+}
+
+.list-board-item:hover,
+.list-board-item:focus-within {
+  background: var(--owner-row-hover);
+}
+
+.list-board-owner-dot {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  width: 0.42rem;
+  height: 0.42rem;
+  margin-top: 0.42rem;
+  border-radius: 999px;
+  background: var(--owner-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--owner-accent) 12%, transparent);
 }
 
 .list-board-card-top {
-  gap: 0.42rem 0.6rem;
-  align-items: flex-start;
+  grid-column: 1;
+  gap: 0.28rem;
+  align-items: center;
 }
 
 .list-board-card-tools {
   align-items: center;
-}
-
-.list-board-card-caption {
-  max-width: 32ch;
 }
 
 .list-board-card-scope {
@@ -1054,8 +1136,9 @@ async function handleCastWishCoin(wish: WishRecord) {
 }
 
 .list-board-card-body {
+  grid-column: 2;
   display: grid;
-  gap: 0.68rem;
+  gap: 0;
 }
 
 .list-board-card-body.has-image {
@@ -1064,29 +1147,92 @@ async function handleCastWishCoin(wish: WishRecord) {
 }
 
 .list-board-card-copy {
-  gap: 0.32rem;
-  max-width: 34ch;
+  gap: 0;
+  max-width: 100%;
 }
 
 .list-board-item h3 {
-  font-size: var(--type-card-title-size);
-  line-height: var(--type-card-title-line);
-  letter-spacing: var(--type-card-title-tracking);
-  text-wrap: balance;
+  overflow: hidden;
+  color: var(--list-ink);
+  font-family: var(--list-body-font);
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.28;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  text-wrap: nowrap;
+  white-space: nowrap;
 }
 
 .list-board-card-data {
+  grid-column: 2;
   grid-template-columns: 1fr;
-  gap: 0.58rem;
+  gap: 0;
   margin-top: 0;
 }
 
 .list-board-data-block {
-  gap: 0.28rem;
-  padding: 0.7rem 0.74rem 0.74rem;
-  border-radius: var(--radius-lg);
-  background: var(--surface-soft);
+  gap: 0.12rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   box-shadow: none;
+}
+
+.list-board-sort-context {
+  display: grid;
+  grid-template-columns: auto minmax(0, auto);
+  align-items: baseline;
+  column-gap: 0.28rem;
+  row-gap: 0.1rem;
+}
+
+.list-board-sort-context > span,
+.list-board-sort-context em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-board-sort-context > span {
+  color: rgba(76, 59, 50, 0.46);
+  font-family: var(--list-body-font);
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.list-board-sort-context strong {
+  font-family: var(--list-body-font);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.list-board-sort-context em {
+  grid-column: 1 / -1;
+  min-width: 0;
+  color: rgba(76, 59, 50, 0.5);
+  font-family: var(--list-body-font);
+  font-size: 0.75rem;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 1.3;
+  letter-spacing: 0;
+}
+
+.list-board-sort-context .list-board-progress-track {
+  grid-column: 1 / -1;
+}
+
+.list-board-starcoin-line {
+  color: var(--text-muted);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line);
+  -webkit-line-clamp: 1;
 }
 
 .list-board-data-block.is-coin {
@@ -1096,72 +1242,22 @@ async function handleCastWishCoin(wish: WishRecord) {
 .list-board-progress-link {
   color: inherit;
   text-decoration: none;
-  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+  border-radius: 6px;
+  transition: color 160ms ease, outline-color 160ms ease;
 }
 
 .list-board-progress-link:hover,
 .list-board-progress-link:focus-visible {
-  transform: translateY(-1px);
-  border-color: rgba(201, 124, 97, 0.22);
-  background: rgba(255, 248, 240, 0.96);
-  box-shadow: 0 10px 20px rgba(163, 91, 73, 0.1);
+  color: color-mix(in srgb, var(--owner-accent) 38%, var(--list-ink));
 }
 
 .list-board-progress-link:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 4px rgba(201, 124, 97, 0.12), 0 10px 20px rgba(163, 91, 73, 0.1);
-}
-
-.list-board-card-action-primary {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.58rem;
-  width: 100%;
-}
-
-.list-board-card-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.54rem;
-  align-items: start;
-  padding-top: 0.68rem;
-  border-top: 1px solid rgba(126, 96, 76, 0.12);
-}
-
-.list-board-card-action-secondary {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.58rem;
-  width: 100%;
+  outline: 2px solid color-mix(in srgb, var(--owner-accent) 18%, transparent);
+  outline-offset: 3px;
 }
 
 .list-board-action {
   width: 100%;
-}
-
-.list-board-card-actions .list-board-action {
-  min-height: 42px;
-  border-radius: var(--radius-md);
-}
-
-.list-board-card-actions .list-board-action.is-soft {
-  background: rgba(255, 250, 244, 0.92);
-}
-
-.list-board-card-actions .list-board-action.is-solid {
-  box-shadow: 0 10px 18px rgba(163, 91, 73, 0.14);
-}
-
-.list-board-card-actions .list-board-action.is-detail {
-  min-height: 44px;
-  border: 1px solid rgba(201, 124, 97, 0.2);
-  background: linear-gradient(135deg, rgba(210, 121, 87, 0.14), rgba(255, 250, 245, 0.94));
-  color: #3a2922;
-  box-shadow: none;
-}
-
-.list-board-card-actions .list-board-action.is-ghost {
-  background: rgba(255, 255, 255, 0.78);
 }
 
 .list-board-more-panel {
@@ -1235,27 +1331,67 @@ async function handleCastWishCoin(wish: WishRecord) {
     grid-template-columns: 1fr;
   }
 
+  .list-board-workbench-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .list-board-workbench-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .list-board-workbench-actions {
+    justify-content: flex-start;
+  }
+
   .list-board-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .list-board-filter-stack {
     grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .list-board-filter-group {
+    padding: 0.42rem 0.28rem;
+    border-right: 0;
+    border-bottom: 1px solid rgba(126, 96, 76, 0.08);
+  }
+
+  .list-board-filter-group:last-child {
+    border-bottom: 0;
   }
 
   .list-board-summary-grid > .list-board-summary-card:first-child {
     grid-column: 1 / -1;
   }
 
-  .list-board-toolbar-side {
-    justify-items: start;
-  }
 }
 
 @media (max-width: 760px) {
   .list-board-toolbar-card,
   .list-board-toolbar-actions {
     grid-template-columns: 1fr;
+  }
+
+  .list-board-workbench-hero {
+    padding: 0.9rem;
+  }
+
+  .list-board-workbench-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .list-board-workbench-stat-wide {
+    grid-column: 1 / -1;
+  }
+
+  .list-board-workbench-actions {
+    flex-wrap: wrap;
+  }
+
+  .list-board-workbench-actions .list-board-button {
+    flex: 1 1 10rem;
   }
 
   .list-board-head,
@@ -1277,62 +1413,57 @@ async function handleCastWishCoin(wish: WishRecord) {
 
   .list-board-filter-row {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.46rem;
+    gap: 0.28rem;
+  }
+
+  .list-board-filter-row-wide {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .list-board-summary-grid > .list-board-summary-card:first-child {
     grid-column: auto;
   }
 
-  .list-board-filter-group,
-  .list-board-toolbar-side,
   .list-board-search-field {
     padding: 0.84rem 0.88rem;
   }
 
   .list-board-filter-pill {
-    min-height: 40px;
-    padding: 0.52rem 0.66rem;
-    border-radius: var(--radius-md);
+    min-height: 28px;
+    padding: 0.3rem 0.3rem;
+    border-radius: 8px;
+    font-size: 0.72rem;
+  }
+
+  .list-board-filter-row.is-sort-row .list-board-filter-pill {
+    padding-inline: 0.06rem;
+    font-size: 0.66rem;
   }
 
   .list-board-card-image {
     max-width: none;
   }
 
-  .list-board-card,
-  .list-board-item {
-    padding: 0.96rem;
+  .list-board-card {
+    padding: 0.72rem;
   }
 
   .list-board-item {
-    gap: 0.72rem;
+    column-gap: 0.54rem;
+    row-gap: 0.16rem;
+    padding: 0.62rem 0.58rem 0.64rem 0.58rem;
   }
 
   .list-board-card-top {
-    gap: 0.42rem 0.56rem;
+    gap: 0.26rem;
   }
 
   .list-board-card-body {
-    gap: 0.72rem;
+    gap: 0;
   }
 
-  .list-board-card-meta {
-    gap: 0.4rem 0.48rem;
-  }
-
-  .list-board-card-actions {
-    gap: 0.56rem;
-  }
-
-  .list-board-card-action-primary,
-  .list-board-card-action-secondary,
   .list-board-delete-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .list-board-card-actions .list-board-action {
-    min-height: 40px;
   }
 
   .list-board-card-data {
@@ -1341,36 +1472,39 @@ async function handleCastWishCoin(wish: WishRecord) {
 }
 
 @media (max-width: 460px) {
-  .list-board-card-action-primary,
-  .list-board-card-action-secondary,
   .list-board-delete-actions,
   .list-board-inline-actions {
     grid-template-columns: 1fr;
   }
 
-  .list-board-card-actions,
   .list-board-card-meta {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .list-board-filter-row {
-    gap: 0.4rem;
-    grid-auto-flow: column;
-    grid-auto-columns: max-content;
-    grid-template-columns: none;
-    overflow-x: auto;
-    padding-bottom: 0.1rem;
-    scrollbar-width: none;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.22rem;
+    overflow: visible;
+    padding-bottom: 0;
   }
 
-  .list-board-filter-row::-webkit-scrollbar {
-    display: none;
+  .list-board-filter-row-wide,
+  .list-board-filter-row.is-sort-row {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.14rem;
   }
 
   .list-board-filter-pill {
-    width: auto;
-    padding-inline: 0.6rem;
-    font-size: var(--type-l6-size);
+    width: 100%;
+    min-height: 26px;
+    padding: 0.25rem 0.18rem;
+    font-size: 0.66rem;
+    letter-spacing: 0;
+  }
+
+  .list-board-filter-row.is-sort-row .list-board-filter-pill {
+    padding-inline: 0.02rem;
+    font-size: 0.6rem;
   }
 
   .list-board-inline-actions {

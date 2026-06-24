@@ -13,8 +13,8 @@ import {
 import { createRewardClaimRecord, createRewardPoolItem } from '../rewards/reward.factories'
 import { createWishCoinRecord, createWishRecord } from './wish.factories'
 
-export const STORAGE_KEY = 'duo-wish-board-app:v3'
-export const LEGACY_STORAGE_KEYS = ['duo-wish-board-app:v2'] as const
+export const STORAGE_KEY = 'duo-wish-board-app:v4'
+export const LEGACY_STORAGE_KEYS = ['duo-wish-board-app:v2', 'duo-wish-board-app:v3'] as const
 
 export interface PersistedWishState {
   version: 6
