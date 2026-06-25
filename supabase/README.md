@@ -25,6 +25,7 @@
 - [202605120002_backfill_owner_memberships.sql](migrations/202605120002_backfill_owner_memberships.sql)
 - [202605190001_space_small_rewards.sql](migrations/202605190001_space_small_rewards.sql)
 - [202606060001_app_capabilities_contract.sql](migrations/202606060001_app_capabilities_contract.sql)
+- [202606250001_remove_wish_coins.sql](migrations/202606250001_remove_wish_coins.sql)
 
 ## 建议应用方式
 
@@ -47,7 +48,6 @@
 - 当前环境有没有邮箱绑定能力
 - 有没有愿望进度能力
 - 有没有留言图片能力
-- 有没有愿望币能力
 - 有没有奖励池能力
 - 有没有统一手账链路能力
 - 有没有月刊快照能力

@@ -3,20 +3,17 @@ import type {
   RewardClaimRecord,
   RewardPoolItem,
   ThreadReactionRecord,
-  WishCoinRecord,
   WishThreadEntry,
 } from '../../stores/wishes'
 import { createMonthlyJournalSnapshotRecord, isPlainRecord } from '../journal/journal.factories'
 import { buildDerivedWishThreadEntries } from '../journal/journal.projection.local'
 import { buildWishThreadEntriesFromRows, buildCommentRowsFromThreadEntries, mapCommentImageRowsFromThreadImages } from '../journal/journal.mapping.cloud'
-import { createWishCoinRecord } from '../wishes/wish.factories'
 import {
   createRewardClaimFromRow,
   createRewardPoolItemFromRow,
   createWishRecordFromRow,
   type RewardClaimRowLike,
   type RewardPoolItemRowLike,
-  type WishCoinRowLike,
   type WishCommentImageRowLike,
   type WishCommentRowLike,
   type WishRowLike,
@@ -26,7 +23,6 @@ import type { WishCloudFetchResult } from './wish.cloud.fetch'
 export interface WishCloudComposedState {
   rewardPoolItems: RewardPoolItem[]
   rewardClaims: RewardClaimRecord[]
-  wishCoins: WishCoinRecord[]
   wishes: ReturnType<typeof createWishRecordFromRow>[]
   threadReactions: ThreadReactionRecord[]
   wishThreads: WishThreadEntry[]
@@ -36,16 +32,6 @@ export interface WishCloudComposedState {
 export function composeWishCloudState(fetchResult: WishCloudFetchResult) {
   const nextRewardPoolItems = fetchResult.rewardPoolItemRows.map((row) => createRewardPoolItemFromRow(row as RewardPoolItemRowLike))
   const nextRewardClaims = fetchResult.rewardClaimRows.map((row) => createRewardClaimFromRow(row as RewardClaimRowLike))
-  const nextWishCoins = fetchResult.wishCoinRows.map((coin) =>
-    createWishCoinRecord({
-      amount: (coin as WishCoinRowLike & { amount: number }).amount,
-      createdAt: (coin as WishCoinRowLike & { created_at: string }).created_at,
-      cycleKey: (coin as WishCoinRowLike & { cycle_key: string }).cycle_key,
-      id: (coin as WishCoinRowLike & { id: string }).id,
-      voterId: (coin as WishCoinRowLike & { voter_id: string }).voter_id,
-      wishId: (coin as WishCoinRowLike & { wish_id: string }).wish_id,
-    }),
-  )
 
   const commentRows = fetchResult.hasUnifiedThreadData
     ? buildCommentRowsFromThreadEntries(
@@ -69,7 +55,6 @@ export function composeWishCloudState(fetchResult: WishCloudFetchResult) {
     ? mapCommentImageRowsFromThreadImages(fetchResult.threadImageRows)
     : fetchResult.commentImageRows
 
-  const coinRowsByWishId = groupRowsByKey(fetchResult.wishCoinRows, (coin) => coin.wish_id)
   const commentRowsByWishId = groupRowsByKey(commentRows, (comment) => comment.wish_id)
   const commentImageRowsByCommentId = groupRowsByKey(commentImageRows, (image) => image.comment_id)
   const imageRowsByWishId = groupRowsByKey(fetchResult.imageRows, (image) => image.wish_id)
@@ -78,7 +63,6 @@ export function composeWishCloudState(fetchResult: WishCloudFetchResult) {
   const nextWishes = fetchResult.wishRows.map((wish) =>
     createWishRecordFromRow(
       wish as WishRowLike,
-      coinRowsByWishId.get(wish.id) ?? [],
       commentRowsByWishId.get(wish.id) ?? [],
       getCommentImagesForComments(commentRowsByWishId.get(wish.id) ?? [], commentImageRowsByCommentId),
       imageRowsByWishId.get(wish.id) ?? [],
@@ -90,7 +74,7 @@ export function composeWishCloudState(fetchResult: WishCloudFetchResult) {
 
   const nextWishThreads = fetchResult.hasUnifiedThreadData
     ? buildWishThreadEntriesFromRows(fetchResult.threadRows, fetchResult.threadImageRows, fetchResult.threadReactionRows, createWishImageRecord, fetchResult.commentImageUrlMap)
-    : buildDerivedWishThreadEntries(nextWishes, nextWishCoins, nextRewardClaims, fetchResult.threadReactionRows)
+    : buildDerivedWishThreadEntries(nextWishes, nextRewardClaims, fetchResult.threadReactionRows)
 
   const nextMonthlySnapshots = fetchResult.monthlySnapshotRows.map((snapshot) =>
     createMonthlyJournalSnapshotRecord({
@@ -115,7 +99,6 @@ export function composeWishCloudState(fetchResult: WishCloudFetchResult) {
   return {
     rewardPoolItems: nextRewardPoolItems,
     rewardClaims: nextRewardClaims,
-    wishCoins: nextWishCoins,
     wishes: nextWishes,
     threadReactions: fetchResult.threadReactionRows,
     wishThreads: nextWishThreads,

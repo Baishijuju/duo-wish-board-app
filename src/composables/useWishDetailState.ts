@@ -1,7 +1,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, toValue, watch, type MaybeRefOrGetter } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { DRAGON_BALL_COIN_TARGET, type WishImage, type WishThreadEntry, useWishStore } from '../stores/wishes'
+import { type WishImage, type WishThreadEntry, useWishStore } from '../stores/wishes'
 
 interface UseWishDetailStateOptions {
   wishId?: MaybeRefOrGetter<string | null | undefined>
@@ -70,9 +70,6 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
   const shouldRecordCountProgressLog = ref(true)
 
   const deletableImageCount = computed(() => selectedWish.value?.images.filter((image) => canDeleteImage(image.createdBy)).length ?? 0)
-  const coinSnapshot = computed(() => {
-    return selectedWish.value ? wishStore.getWishCoinSummary(selectedWish.value) : null
-  })
   const progressSnapshot = computed(() => {
     return selectedWish.value ? wishStore.getWishProgressSnapshot(selectedWish.value) : null
   })
@@ -87,13 +84,6 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     return selectedWish.value ? wishStore.getWishRewardClaim(selectedWish.value) : null
   })
   const canConfirmWishReward = computed(() => !!selectedWish.value && canProgressSelectedWish.value && !isSubmittingReward.value)
-  const coinProgressPercent = computed(() => {
-    if (!coinSnapshot.value) {
-      return 0
-    }
-
-    return Math.min(100, Math.round((Math.min(coinSnapshot.value.total, DRAGON_BALL_COIN_TARGET) / DRAGON_BALL_COIN_TARGET) * 100))
-  })
   const previewImageIndex = computed(() => {
     if (!previewImageId.value) {
       return -1
@@ -256,14 +246,6 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
       return '步骤完成'
     }
 
-    if (thread.eventKind === 'wish_coin_cast') {
-      return '投币'
-    }
-
-    if (thread.eventKind === 'dragon_ball_reached') {
-      return '七龙珠'
-    }
-
     if (thread.eventKind === 'wish_completed') {
       return '完成'
     }
@@ -303,24 +285,12 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
       return '又往前走完了一小步'
     }
 
-    if (thread.eventKind === 'wish_coin_cast') {
-      return '有人替它轻轻投下一枚币'
-    }
-
-    if (thread.eventKind === 'dragon_ball_reached') {
-      return '七龙珠已经集齐'
-    }
-
     if (thread.eventKind === 'wish_completed') {
       return '它被正式收进回忆里'
     }
 
     if (thread.eventKind === 'premium_redeem') {
       return '星星币换成了一份奖励'
-    }
-
-    if (thread.eventKind === 'weekly_welfare_issued') {
-      return '这一周的新愿望币到了'
     }
 
     if (claimKind === 'count_reward') {
@@ -554,14 +524,6 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     } finally {
       deletingThreadId.value = ''
     }
-  }
-
-  function getCoinStatusLabel() {
-    if (!coinSnapshot.value) {
-      return `离七龙珠还差 ${DRAGON_BALL_COIN_TARGET} 枚`
-    }
-
-    return coinSnapshot.value.isDragonBallReady ? '七龙珠已经集齐' : `离七龙珠还差 ${coinSnapshot.value.remainingToDragonBall} 枚`
   }
 
   function canDeleteImage(createdBy: string) {
@@ -1240,8 +1202,6 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     closeImagePreview,
     closeThreadReactionPicker,
     closeRewardDialog,
-    coinProgressPercent,
-    coinSnapshot,
     commentFeedback,
     commentFeedbackTone,
     commentImageFiles,
@@ -1262,7 +1222,6 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     editingThreadMessage,
     formatFileSize,
     getClaimToneLabel,
-    getCoinStatusLabel,
     getCommentImageFileKey,
     getMemberName,
     getCompletionStarCoinLabel,

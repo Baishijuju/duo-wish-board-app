@@ -59,7 +59,7 @@ export function useSpacePageState() {
 
   const summaryGuide = computed(() => {
     if (space.authStore.members.length > 1) {
-      return '先认人，再看愿望币；邀请、照片和备份都在后面。'
+      return '先认人，再看奖励；邀请、照片和备份都在后面。'
     }
 
     if (space.authStore.isAuthenticated) {
@@ -81,13 +81,6 @@ export function useSpacePageState() {
     return [
       {
         accent: 'accent-sunrise',
-        caption: space.currentWishCoinCycleLabel.value,
-        label: '愿望币',
-        note: '这周还能投',
-        value: `${space.wishStore.currentMemberRemainingCoins} / ${space.WISH_COIN_BUDGET_PER_CYCLE}`,
-      },
-      {
-        accent: 'accent-coral',
         caption: space.pendingStarCoinSpend.value
           ? `想把高档奖励都换一遍，还差 ${space.pendingStarCoinSpend.value} 枚`
           : currentMemberRewardCount.value
@@ -129,7 +122,7 @@ export function useSpacePageState() {
   const memberStoryCards = computed(() => {
     return space.perMemberStats.value.map((item) => ({
       ...item,
-      footnote: `本周还剩 ${item.currentCycleRemaining} 枚愿望币，照片约 ${space.formatStorageBytes(item.imageBytes)}。`,
+      footnote: `星星币 ${item.starCoins} 枚，照片约 ${space.formatStorageBytes(item.imageBytes)}。`,
       roleLabel: space.roleLabels[item.member.role],
       statPills: [
         `在路上 ${item.active}`,
@@ -142,7 +135,7 @@ export function useSpacePageState() {
         : item.active
           ? `${item.active} 个愿望在往前走。`
           : '可以写下一条新愿望。',
-      supportingLine: `留言 ${item.comments} · 照片 ${item.imageCount} · 已投 ${item.currentCycleCoins}`,
+      supportingLine: `留言 ${item.comments} · 照片 ${item.imageCount} · 星币 ${item.starCoins}`,
     }))
   })
 

@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import type { WishRecord } from '../stores/wishes'
-import { DRAGON_BALL_COIN_TARGET, useWishStore } from '../stores/wishes'
+import { useWishStore } from '../stores/wishes'
 
 const authStore = useAuthStore()
 const wishStore = useWishStore()
@@ -170,7 +170,7 @@ type HomeThreadSummary = {
 
 const viewerName = computed(() => authStore.currentMember?.displayName ?? '我们')
 const nearestDueWishes = computed(() => wishStore.nearestDueWishes.slice(0, 3))
-const dragonBallWishes = computed(() => wishStore.dragonBallWishes.slice(0, 3))
+const recentlyUpdatedWishes = computed(() => wishStore.sortedWishes.filter((wish) => wish.status === 'active').slice(0, 3))
 const wishBottleSnapshot = computed(() => wishStore.wishBottleSnapshot)
 const wishBottleCountStarCount = computed(() => {
   return wishBottleSnapshot.value.completedCountUnits
@@ -234,7 +234,7 @@ const recentMemberCards = computed(() => {
 })
 const sharedLatestMoment = computed(() => latestHomeThreads.value.find((thread) => thread.actorId === null) ?? null)
 const heroPrimaryWish = computed(() => {
-  return nearestDueWishes.value[0] ?? dragonBallWishes.value[0] ?? wishStore.wishes[0] ?? null
+  return nearestDueWishes.value[0] ?? recentlyUpdatedWishes.value[0] ?? wishStore.wishes[0] ?? null
 })
 const heroPrimaryWishCaption = computed(() => {
   if (!heroPrimaryWish.value) {
@@ -245,7 +245,7 @@ const heroPrimaryWishCaption = computed(() => {
     return getRelativeDueLabel(heroPrimaryWish.value.dueDate)
   }
 
-  return getWishCoinHint(heroPrimaryWish.value)
+  return getWishProgressHint(heroPrimaryWish.value)
 })
 const heroPrimaryActionTo = computed(() => {
   if (!heroPrimaryWish.value) {
@@ -361,7 +361,7 @@ function getRelativeDueLabel(dueDate: string) {
   return `离希望完成的日子还有 ${dayDifference} 天`
 }
 
-function getWishCoinHint(wish: WishRecord) {
+function getWishProgressHint(wish: WishRecord) {
   const progressSnapshot = wishStore.getWishProgressSnapshot(wish)
 
   if (progressSnapshot.mode === 'none') {
@@ -370,17 +370,7 @@ function getWishCoinHint(wish: WishRecord) {
       : '它先安静住在这里，等你准备好时再往前走也不迟。'
   }
 
-  const coinSnapshot = wishStore.getWishCoinSummary(wish)
-
-  if (coinSnapshot.isDragonBallReady) {
-    return `已经集齐七龙珠，现在有 ${coinSnapshot.total} 枚愿望币。`
-  }
-
-  if (coinSnapshot.total > 0) {
-    return `现在有 ${coinSnapshot.total} 枚愿望币，还差 ${coinSnapshot.remainingToDragonBall} 枚召唤神龙。`
-  }
-
-  return `还没有收到愿望币，距离召唤神龙还差 ${DRAGON_BALL_COIN_TARGET} 枚。`
+  return `已经推进到 ${progressSnapshot.current}/${progressSnapshot.target}${progressSnapshot.unit ? ` ${progressSnapshot.unit}` : ''}，继续一点点往前就好。`
 }
 
 function getWishBottleRevealHeight() {
@@ -514,14 +504,6 @@ function getHomeThreadHeadline(
     return wishTitle ? `「${wishTitle}」刚被认真写进以后` : '刚刚又把一个新的以后写下来了'
   }
 
-  if (thread.eventKind === 'wish_coin_cast') {
-    return wishTitle ? `「${wishTitle}」刚被轻轻推了一把` : '刚刚又替一条愿望轻轻推了一把'
-  }
-
-  if (thread.eventKind === 'dragon_ball_reached') {
-    return wishTitle ? `「${wishTitle}」已经被摆到最想先实现的位置` : '刚刚有一条愿望，被摆到最想先实现的位置'
-  }
-
   if (thread.eventKind === 'reward_claimed') {
     const rewardTitle = getMetaString(thread.meta, 'titleSnapshot')
     const wishTarget = wishTitle || getMetaString(thread.meta, 'wishTitle') || '这条愿望'
@@ -530,10 +512,6 @@ function getHomeThreadHeadline(
 
   if (thread.eventKind === 'premium_redeem') {
     return '攒下来的星星币，刚刚换成了一份想要的东西'
-  }
-
-  if (thread.eventKind === 'weekly_welfare_issued') {
-    return '这周新的愿望币，已经先送到手边了'
   }
 
   if (wishTitle) {
@@ -572,14 +550,6 @@ function getHomeThreadDetail(
     return wishTitle ? `新的愿望「${wishTitle}」已经住进清单里，也算先和对方打了个招呼。` : '一个新的愿望已经住进清单里，先被轻轻说出口了。'
   }
 
-  if (thread.eventKind === 'wish_coin_cast') {
-    return '这一枚愿望币像一句“我记得这件事”，把它往前轻轻推了一下。'
-  }
-
-  if (thread.eventKind === 'dragon_ball_reached') {
-    return '它已经被放到更靠前的位置，像在提醒彼此：先把这个实现掉。'
-  }
-
   if (thread.eventKind === 'reward_claimed') {
     const rewardTitle = getMetaString(thread.meta, 'titleSnapshot')
     const quantityRaw = Number(thread.meta.quantity)
@@ -597,10 +567,6 @@ function getHomeThreadDetail(
 
   if (thread.eventKind === 'premium_redeem') {
     return '把慢慢攒下来的星星币，换成了一份想要的奖励，也算给最近的努力一个回应。'
-  }
-
-  if (thread.eventKind === 'weekly_welfare_issued') {
-    return '这一周又多了新的愿望币，可以继续把偏爱投向更想靠近的方向。'
   }
 
   return messageSummary
@@ -1042,16 +1008,16 @@ function formatRecentThreadTime(timestamp: string) {
                 </svg>
               </div>
               <div class="lane-head-copy">
-                <h3>愿望币先投向哪里</h3>
-                <p>先看哪几条最值得把愿望币投进去。</p>
+                <h3>最近该推进哪里</h3>
+                <p>先看哪几条还在路上，顺手接着往前走一点。</p>
               </div>
             </div>
 
-            <div v-if="dragonBallWishes.length" class="lane-list">
-              <article v-for="wish in dragonBallWishes" :key="wish.id" class="lane-row">
+            <div v-if="recentlyUpdatedWishes.length" class="lane-list">
+              <article v-for="wish in recentlyUpdatedWishes" :key="wish.id" class="lane-row">
                 <div class="lane-row-copy">
                   <strong>{{ wish.title }}</strong>
-                  <p>{{ getWishCoinHint(wish) }}</p>
+                  <p>{{ getWishProgressHint(wish) }}</p>
                 </div>
                 <RouterLink class="lane-link" :to="{ name: 'wish-detail', params: { id: wish.id } }">
                   查看
@@ -1060,8 +1026,8 @@ function formatRecentThreadTime(timestamp: string) {
             </div>
 
             <div v-else class="lane-empty">
-              <h3>这里还没有被愿望币点亮的愿望</h3>
-              <p>等第一枚愿望币落下后，这里就会亮起来。</p>
+              <h3>这里还没有正在推进的愿望</h3>
+              <p>写下一条愿望，或者给它补一点进度，这里就会亮起来。</p>
             </div>
           </section>
         </div>

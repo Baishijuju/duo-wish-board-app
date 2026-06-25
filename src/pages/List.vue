@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { WishRecord } from '../stores/wishes'
 import { useListWishBoardState } from '../composables/useListWishBoardState'
@@ -14,18 +14,6 @@ const {
   wishStore,
 } = useListWishBoardState()
 
-const visibilityLabels = {
-  all: '全部愿望',
-  mine: '我的愿望',
-  others: '对方愿望',
-} as const
-
-const statusLabels = {
-  all: '全部状态',
-  active: '正在推进',
-  done: '已经实现',
-} as const
-
 const sortLabels = {
   updated: '最近更新',
   progress: '进度',
@@ -34,63 +22,9 @@ const sortLabels = {
 } as const
 
 const viewerName = computed(() => authStore.currentMember?.displayName ?? '我们')
-const selectedVisibilityLabel = computed(() => visibilityLabels[filterStore.visibility])
-const selectedStatusLabel = computed(() => statusLabels[filterStore.status])
-const selectedSortLabel = computed(() => sortLabels[filterStore.sortMode])
 const selectedSortDirectionLabel = computed(() => filterStore.sortDirection === 'desc' ? '倒序' : '正序')
-const archiveSummary = computed(() => {
-  if (filterStore.visibility === 'mine') {
-    if (filterStore.status === 'done') {
-      return `这里只看归属于 ${viewerName.value} 的已实现愿望。`
-    }
-
-    if (filterStore.status === 'all') {
-      return `这里只看归属于 ${viewerName.value} 的愿望。`
-    }
-
-    return `这里只看 ${viewerName.value} 能亲自推进的愿望。`
-  }
-
-  if (filterStore.visibility === 'others') {
-    return '这里只看对方的愿望，可以评论、打气，也可以看看对方最近在努力什么。'
-  }
-
-  if (filterStore.status === 'done') {
-    return wishStore.stats.done
-      ? `现在只看已经实现的愿望，共 ${wishStore.stats.done} 条。`
-      : '这里会收下已经实现的愿望。'
-  }
-
-  if (filterStore.status === 'all') {
-    return wishStore.stats.done
-      ? `现在把不同状态放在一起看，已完成 ${wishStore.stats.done} 条。`
-      : '现在会把不同状态一起显示。'
-  }
-
-  return wishStore.stats.done
-    ? `已完成 ${wishStore.stats.done} 条，继续收进回顾页。`
-    : '这里只放还在推进的愿望。'
-})
-const searchSummary = computed(() => {
-  const query = filterStore.search.trim()
-
-  if (!query) {
-    return archiveSummary.value
-  }
-
-  return `正在搜「${query}」· 找到 ${filteredWishes.value.length} 条。`
-})
-const quickGuide = computed(() => {
-  if (filterStore.search.trim()) {
-    return searchSummary.value
-  }
-
-  if (filterStore.visibility !== 'all' || filterStore.status !== 'active' || filterStore.sortMode !== 'updated' || filterStore.sortDirection !== 'desc') {
-    return `现在先看 ${selectedVisibilityLabel.value} · ${selectedStatusLabel.value} · ${selectedSortLabel.value}${selectedSortDirectionLabel.value}。`
-  }
-
-  return '先从眼前这批愿望里挑一条，继续往前就好。'
-})
+const isFilterPanelOpen = ref(false)
+const filterPanelId = 'list-board-filter-panel'
 const boardHeading = computed(() => {
   const query = filterStore.search.trim()
 
@@ -162,18 +96,29 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
     </article>
 
     <article class="page-card list-board-toolbar-card">
-      <div class="list-board-toolbar-copy">
-        <p class="list-board-kicker">筛选</p>
-        <h2>把眼前这批排清楚</h2>
-        <p>{{ quickGuide }}</p>
+      <div class="list-board-search-row">
+        <label class="list-board-search-field">
+          <input v-model="filterStore.search" type="search" placeholder="搜索标题、分类或原因" />
+        </label>
+
+        <button
+          class="list-board-filter-toggle"
+          type="button"
+          :aria-controls="filterPanelId"
+          :aria-expanded="isFilterPanelOpen"
+          :aria-label="isFilterPanelOpen ? '收起筛选和排序' : '展开筛选和排序'"
+          :class="{ 'is-active': isFilterPanelOpen }"
+          @click="isFilterPanelOpen = !isFilterPanelOpen"
+        >
+          <span class="list-board-filter-toggle-icon" aria-hidden="true">
+            <i></i>
+            <i></i>
+            <i></i>
+          </span>
+        </button>
       </div>
 
-      <label class="list-board-search-field">
-        <span>搜索愿望</span>
-        <input v-model="filterStore.search" type="search" placeholder="搜索标题、分类或写下的原因" />
-      </label>
-
-      <div class="list-board-toolbar-actions">
+      <div v-if="isFilterPanelOpen" :id="filterPanelId" class="list-board-toolbar-actions">
         <div class="list-board-filter-stack">
           <div class="list-board-filter-group">
             <span class="list-board-filter-label">先看哪一类</span>
@@ -284,11 +229,9 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
           <h2>{{ boardHeading }}</h2>
         </div>
 
-        <div class="list-board-badge-row">
-          <span class="list-board-badge">{{ selectedVisibilityLabel }}</span>
-          <span class="list-board-badge">{{ selectedStatusLabel }} · {{ filteredWishes.length }} 条</span>
-          <span class="list-board-badge">{{ selectedSortLabel }}{{ selectedSortDirectionLabel }}</span>
-        </div>
+        <p class="list-board-head-summary">
+          {{ listWorkbenchStats.activeCount }} 条正在推进 · {{ listWorkbenchStats.currentMemberActiveCount }} 条归我 · 还能获得 {{ listWorkbenchStats.remainingStarCoins }} 星星币
+        </p>
       </div>
 
       <div v-if="filteredWishes.length" class="list-board-grid">
@@ -478,9 +421,11 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
 }
 
 .list-board-toolbar-card {
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.72fr);
-  gap: 0.72rem 0.82rem;
-  padding: 0.86rem;
+  grid-template-columns: minmax(0, 1fr);
+    gap: 0.46rem;
+    padding: 0.48rem;
+    border-radius: 14px;
+    box-shadow: none;
   background:
     linear-gradient(180deg, rgba(255, 252, 246, 0.82), rgba(249, 241, 231, 0.72)),
     radial-gradient(circle at 100% 0%, rgba(226, 239, 237, 0.58), transparent 28%);
@@ -861,28 +806,57 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
   align-items: end;
 }
 
+.list-board-head-summary {
+  margin: 0;
+  color: rgba(61, 46, 40, 0.58);
+  font-family: var(--list-body-font);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line);
+}
+
+.list-board-search-row {
+  display: grid;
+  grid-template-columns: minmax(12rem, 22rem) 38px;
+  gap: 0.36rem;
+  align-items: center;
+  justify-content: start;
+}
+
 .list-board-search-field {
-  gap: 0.46rem;
-  max-width: 34rem;
-  padding: 0.64rem 0.72rem;
-  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 22rem;
+  min-height: 38px;
+  padding: 0;
+  border-radius: 10px;
   border: 1px solid var(--list-line);
   background: var(--surface-raised);
   box-shadow: none;
 }
 
 .list-board-search-field input {
-  min-height: 38px;
-  padding-block: 0.52rem;
+  width: 100%;
+  min-height: 36px;
+  padding: 0.42rem 0.66rem;
+  border: 0;
+  border-radius: inherit;
   font-family: var(--list-body-font);
   font-size: var(--type-body-size);
-  background: var(--input-bg);
+  background: transparent;
+  color: var(--list-ink);
+  outline: none;
+}
+
+.list-board-search-field:focus-within {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 4px var(--accent-ring);
 }
 
 .list-board-toolbar-card {
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.72fr);
-  gap: 0.72rem 0.82rem;
-  padding: 0.86rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.46rem;
+  padding: 0.48rem;
+  border-radius: 14px;
+  box-shadow: none;
   background:
     linear-gradient(180deg, rgba(255, 252, 246, 0.82), rgba(249, 241, 231, 0.72)),
     radial-gradient(circle at 100% 0%, rgba(226, 239, 237, 0.58), transparent 28%);
@@ -895,7 +869,62 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
 }
 
 .list-board-filter-toggle {
-  justify-self: start;
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid var(--list-line);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--list-ink);
+  box-shadow: none;
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.list-board-filter-toggle:hover {
+  transform: translateY(-1px);
+}
+
+.list-board-filter-toggle:active {
+  transform: translateY(0) scale(0.985);
+}
+
+.list-board-filter-toggle:focus-visible {
+  outline: none;
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 4px var(--accent-ring);
+}
+
+.list-board-filter-toggle.is-active {
+  border-color: var(--active-item-border);
+  background: linear-gradient(135deg, var(--active-item-bg), var(--card-bg-popover));
+}
+
+.list-board-filter-toggle-icon {
+  display: grid;
+  gap: 3px;
+  width: 18px;
+}
+
+.list-board-filter-toggle-icon i {
+  display: block;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.list-board-filter-toggle-icon i:nth-child(1) {
+  width: 16px;
+}
+
+.list-board-filter-toggle-icon i:nth-child(2) {
+  width: 11px;
+  justify-self: end;
+}
+
+.list-board-filter-toggle-icon i:nth-child(3) {
+  width: 14px;
 }
 
 .list-board-toolbar-copy p {
@@ -1374,6 +1403,11 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
     grid-template-columns: 1fr;
   }
 
+  .list-board-search-row {
+    grid-template-columns: minmax(0, 1fr) 38px;
+    justify-content: stretch;
+  }
+
   .list-board-workbench-hero {
     padding: 0.9rem;
   }
@@ -1425,7 +1459,8 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
   }
 
   .list-board-search-field {
-    padding: 0.84rem 0.88rem;
+    max-width: none;
+    padding: 0;
   }
 
   .list-board-filter-pill {

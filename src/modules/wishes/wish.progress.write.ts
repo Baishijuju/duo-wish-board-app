@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { RewardPoolItem, WishRecord, WishStep } from '../../stores/wishes'
 import { createRewardClaimRecord } from '../rewards/reward.factories'
-import { createWishCoinRecord, createWishStep } from './wish.factories'
+import { createWishStep } from './wish.factories'
 
 export async function completeWishWithRewardWrite(options: {
   supabase: SupabaseClient | null
@@ -265,72 +265,6 @@ export async function toggleDoneWrite(options: {
       completedAt: options.wish.status === 'done' ? null : now,
       updatedAt: now,
     },
-  }
-}
-
-export async function castWishCoinWrite(options: {
-  supabase: SupabaseClient | null
-  isUsingCloudWishes: boolean
-  currentSpaceId: string | null | undefined
-  wish: WishRecord | undefined
-  wishId: string
-  memberId: string | null | undefined
-  currentMemberRemainingCoins: number
-  currentWishCoinCycleKey: string
-  allowsLegacyCapabilityFallback: boolean
-  onLoadingChange: (value: boolean) => void
-  onSyncMessage: (message: string) => void
-  syncFromSupabase: (spaceId: string) => Promise<boolean>
-}) {
-  if (!options.wish || !options.memberId) {
-    return false
-  }
-
-  if (options.wish.status === 'done') {
-    options.onSyncMessage('这个愿望已经实现了，不需要再为它投币。')
-    return false
-  }
-
-  if (options.currentMemberRemainingCoins <= 0) {
-    options.onSyncMessage('这周分给你的 3 枚愿望币已经投完了。')
-    return false
-  }
-
-  if (options.supabase && options.isUsingCloudWishes && options.currentSpaceId) {
-    options.onLoadingChange(true)
-    try {
-      const { error } = await options.supabase.rpc('cast_wish_coin', {
-        target_wish_id: options.wishId,
-      })
-
-      if (error) {
-        options.onSyncMessage(options.allowsLegacyCapabilityFallback && /cast_wish_coin|wish_coins/i.test(error.message)
-          ? `投币失败：${error.message}。如果你刚更新前端，请先执行新的 Supabase 愿望币 migration。`
-          : `投币失败：${error.message}`)
-        return false
-      }
-
-      await options.syncFromSupabase(options.currentSpaceId)
-      options.onSyncMessage('已为这个愿望投出 1 枚愿望币。')
-      return true
-    } finally {
-      options.onLoadingChange(false)
-    }
-  }
-
-  return {
-    localCoin: createWishCoinRecord({
-      cycleKey: options.currentWishCoinCycleKey,
-      voterId: options.memberId,
-      wishId: options.wishId,
-    }),
-    localWish: {
-      ...options.wish,
-      starred: true,
-    },
-    message: options.currentMemberRemainingCoins === 0
-      ? '已投出这周最后 1 枚愿望币。'
-      : '已为这个愿望投出 1 枚愿望币。',
   }
 }
 

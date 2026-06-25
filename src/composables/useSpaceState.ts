@@ -1,7 +1,7 @@
 import { computed, ref, watch } from 'vue'
 import { supabaseAuthMode, supabaseReadinessMessage } from '../lib/supabase'
 import { useAuthStore } from '../stores/auth'
-import { useWishStore, WISH_COIN_BUDGET_PER_CYCLE, type RewardPoolItem } from '../stores/wishes'
+import { useWishStore, type RewardPoolItem } from '../stores/wishes'
 import { formatBeijingDateTime } from '../utils/datetime'
 
 type RewardTaskKind = 'personal' | 'shared' | 'assist'
@@ -182,10 +182,6 @@ export function useSpaceState() {
     return roleLabels[authStore.currentMember?.role ?? 'member']
   })
 
-  const currentWishCoinCycleLabel = computed(() => {
-    return `${formatBeijingDateTime(wishStore.currentWishCoinCycle.startsAt)} 到 ${formatBeijingDateTime(wishStore.currentWishCoinCycle.endsAt)}`
-  })
-
   const syncStatusLabel = computed(() => {
     if (!authStore.usesSupabaseSpace) {
       return '暂未同步'
@@ -214,20 +210,15 @@ export function useSpaceState() {
   const perMemberStats = computed(() => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    const currentCycleKey = wishStore.currentWishCoinCycle.key
 
     return authStore.members.map((member) => {
       const mine = wishStore.wishes.filter((wish) => wish.ownerId === member.id)
       const imageCount = mine.reduce((count, wish) => count + wish.images.length, 0)
       const imageBytes = mine.reduce((count, wish) => count + wish.images.reduce((imageTotal, image) => imageTotal + image.sizeBytes, 0), 0)
-      const memberCoins = wishStore.wishCoins.filter((coin) => coin.voterId === member.id)
-      const currentCycleCoins = memberCoins.filter((coin) => coin.cycleKey === currentCycleKey)
 
       return {
         active: mine.filter((wish) => wish.status === 'active').length,
         comments: mine.reduce((count, wish) => count + wish.comments.length, 0),
-        currentCycleCoins: currentCycleCoins.reduce((count, coin) => count + coin.amount, 0),
-        currentCycleRemaining: Math.max(WISH_COIN_BUDGET_PER_CYCLE - currentCycleCoins.reduce((count, coin) => count + coin.amount, 0), 0),
         done: mine.filter((wish) => wish.status === 'done').length,
         imageBytes,
         imageCount,
@@ -238,7 +229,7 @@ export function useSpaceState() {
         }).length,
         privateCount: mine.filter((wish) => wish.scope === 'private').length,
         sharedCount: mine.filter((wish) => wish.scope === 'shared').length,
-        totalCoins: memberCoins.reduce((count, coin) => count + coin.amount, 0),
+        starCoins: wishStore.getMemberStarCoinBalance(member.id),
         total: mine.length,
       }
     })
@@ -779,7 +770,6 @@ export function useSpaceState() {
     currentMemberStarCoins,
     currentCatchMoment,
     currentRoleLabel,
-    currentWishCoinCycleLabel,
     dailyRewardNoteDraft,
     dailyRewardTitleDraft,
     depositRewardStarCoins,
@@ -855,6 +845,5 @@ export function useSpaceState() {
     supabaseReadinessMessage,
     syncStatusLabel,
     wishStore,
-    WISH_COIN_BUDGET_PER_CYCLE,
   }
 }

@@ -29,7 +29,6 @@ describe('sync.capabilities', () => {
     expect(result.hasRewardPools).toBe(true)
     expect(result.hasUnifiedThreads).toBe(false)
     expect(result.hasWishProgress).toBe(true)
-    expect(result.hasWishCoins).toBe(false)
   })
 
   it('treats missing capability rpc as unsupported fallback', async () => {

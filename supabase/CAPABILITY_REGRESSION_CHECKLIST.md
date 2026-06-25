@@ -12,7 +12,7 @@
 - 前端已经部署或本地连到目标 Supabase 项目
 - 目标环境至少已经执行基础 schema migration
 - 已有 1 个可登录账号
-- 最好准备 2 个账号，便于验证成员、留言、愿望币、表情回应
+- 最好准备 2 个账号，便于验证成员、留言、表情回应
 
 ## A. RPC 结果先验检查
 
@@ -27,7 +27,6 @@ select public.get_app_capabilities();
 - `has_bound_space_memberships`
 - `has_wish_progress`
 - `has_wish_comment_images`
-- `has_wish_coins`
 - `has_reward_pools`
 - `has_unified_threads`
 - `has_monthly_snapshots`
@@ -67,7 +66,6 @@ select public.get_app_capabilities();
 - 修改图片备注
 - 设为首图
 - 调整图片顺序
-- 投愿望币
 - 新增日常奖励
 - 新增高档奖励
 - 领取步骤奖励
@@ -99,7 +97,6 @@ select public.get_app_capabilities();
 建议分别验证：
 
 - `has_wish_progress = false`
-- `has_wish_coins = false`
 - `has_reward_pools = false`
 - `has_unified_threads = false`
 - `has_wish_comment_images = false`
@@ -131,7 +128,6 @@ select public.get_app_capabilities();
 当 capability 已知缺失时，应该优先出现这类文案：
 
 - 当前 Supabase 环境还没有愿望进度能力
-- 当前 Supabase 环境还没有愿望币能力
 - 当前 Supabase 环境还没有奖励池能力
 - 当前 Supabase 环境还没有手账主链能力
 - 当前 Supabase 环境还没有留言图片能力

@@ -1,9 +1,7 @@
 import { computed, ref } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import {
-  DRAGON_BALL_COIN_TARGET,
   useWishStore,
-  WISH_COIN_BUDGET_PER_CYCLE,
   type MonthlyJournalSnapshotRecord,
   type WishThreadEntry,
 } from '../stores/wishes'
@@ -15,9 +13,11 @@ export function useReviewPageState() {
 
   const reviewTab = ref<'journals' | 'live' | 'snapshots'>('live')
   const expandedReviewReactionKey = ref<string | null>(null)
-  const topCoinWish = computed(() => wishStore.dragonBallWishes[0] ?? null)
-  const topCoinWishSummary = computed(() => {
-    return topCoinWish.value ? wishStore.getWishCoinSummary(topCoinWish.value) : null
+  const latestActiveWish = computed(() => {
+    return [...wishStore.wishes]
+      .filter((wish) => wish.status === 'active')
+      .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+      [0] ?? null
   })
   const completedWishJournals = computed(() => {
     return [...wishStore.wishes]
@@ -69,23 +69,21 @@ export function useReviewPageState() {
       },
       {
         accent: 'accent-coral',
-        eyebrow: '这一周',
+        eyebrow: '这一期',
         featured: false,
-        key: 'coins',
-        label: '已经投出',
-        note: `手里还留着 ${wishStore.stats.currentCycleCoinsRemaining} 枚愿望币`,
-        value: `${wishStore.stats.currentCycleCoinsUsed}`,
+        key: 'active',
+        label: '还在推进',
+        note: latestActiveWish.value ? `最近更新：${latestActiveWish.value.title}` : '写下新愿望后会先出现在这里',
+        value: `${wishStore.stats.active}`,
       },
       {
         accent: 'accent-aurora',
-        eyebrow: '七龙珠',
+        eyebrow: '已经完成',
         featured: false,
-        key: 'dragon',
-        label: '已经集齐',
-        note: topCoinWish.value && topCoinWishSummary.value
-          ? `${topCoinWish.value.title} 现在有 ${topCoinWishSummary.value.total} 枚愿望币`
-          : `先集到 ${DRAGON_BALL_COIN_TARGET} 枚愿望币再召唤神龙`,
-        value: `${wishStore.stats.dragonBallReady}`,
+        key: 'done',
+        label: '收进册页',
+        note: wishStore.stats.done ? '这些愿望已经可以慢慢翻回来看' : '完成第一条后，这里会亮起来',
+        value: `${wishStore.stats.done}`,
       },
       {
         accent: 'accent-golden',
@@ -117,10 +115,6 @@ export function useReviewPageState() {
     return '回顾页不负责催促，它只把已经发生过的靠近、回应和完成整理成一册册可以慢慢翻看的记录。'
   })
   const reviewHeroAside = computed(() => {
-    if (topCoinWish.value && topCoinWishSummary.value && !topCoinWishSummary.value.isDragonBallReady) {
-      return `这一期里，${topCoinWish.value.title} 暂时最被偏爱，还差 ${topCoinWishSummary.value.remainingToDragonBall} 枚愿望币就能把七龙珠集齐。`
-    }
-
     if (wishStore.stats.done) {
       return `已经完成的 ${wishStore.stats.done} 个愿望会先在这里安静排好，提醒你们这段时间并没有白白过去。`
     }
@@ -158,18 +152,6 @@ export function useReviewPageState() {
   const monthlyNote = computed(() => {
     if (!wishStore.stats.total) {
       return '这一册还没有写进愿望。先从一个很小的开始，让未来先有一个可以靠近的方向。'
-    }
-
-    if (!wishStore.stats.totalWishCoins) {
-      return `这段时间，你们已经写下了 ${wishStore.stats.total} 个愿望。有些愿望只是先被认真写下，也已经很重要；等哪一天更想靠近时，再把本周的 ${WISH_COIN_BUDGET_PER_CYCLE} 枚愿望币轻轻投出去就好。`
-    }
-
-    if (topCoinWish.value && topCoinWishSummary.value && !topCoinWishSummary.value.isDragonBallReady) {
-      return `这段时间，${topCoinWish.value.title} 已经收到 ${topCoinWishSummary.value.total} 枚愿望币，还差 ${topCoinWishSummary.value.remainingToDragonBall} 枚就能集齐七龙珠。`
-    }
-
-    if (wishStore.stats.dragonBallReady) {
-      return `这段时间，已经有 ${wishStore.stats.dragonBallReady} 个愿望集齐了七龙珠。愿望币还可以继续往上投，谁最想先实现，现在会变得更清楚。`
     }
 
     if (!wishStore.stats.done) {
@@ -258,14 +240,6 @@ export function useReviewPageState() {
       return '步骤完成'
     }
 
-    if (eventKind === 'wish_coin_cast') {
-      return '愿望币'
-    }
-
-    if (eventKind === 'dragon_ball_reached') {
-      return '七龙珠'
-    }
-
     if (eventKind === 'wish_completed') {
       return '愿望完成'
     }
@@ -275,7 +249,7 @@ export function useReviewPageState() {
     }
 
     if (eventKind === 'weekly_welfare_issued') {
-      return '每周发币'
+      return '系统记录'
     }
 
     return '领取奖励'
@@ -298,14 +272,6 @@ export function useReviewPageState() {
       return `${actorName} 推进了「${wishTitle}」`
     }
 
-    if (thread.eventKind === 'wish_coin_cast') {
-      return `${actorName} 给「${wishTitle}」投下一枚愿望币`
-    }
-
-    if (thread.eventKind === 'dragon_ball_reached') {
-      return `${actorName} 为「${wishTitle}」集齐了七龙珠`
-    }
-
     if (thread.eventKind === 'wish_completed') {
       return `${actorName} 把「${wishTitle}」收进完成册页`
     }
@@ -316,10 +282,6 @@ export function useReviewPageState() {
         : '一份高档奖励'
 
       return `${actorName} 兑换了「${rewardTitle}」`
-    }
-
-    if (thread.eventKind === 'weekly_welfare_issued') {
-      return `${actorName} 收到了这一周的愿望币`
     }
 
     return messageText ? `${actorName} 记录了：${messageText}` : `${actorName} 留下了一条${getThreadEventLabel(thread.eventKind)}`

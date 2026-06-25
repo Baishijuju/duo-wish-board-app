@@ -85,10 +85,6 @@ join public.wish_comments comment on comment.id = image.comment_id
 join public.wishes wish on wish.id = comment.wish_id
 where wish.space_id in (select id from cleanup_target_spaces)
 union all
-select 'wish_coins' as relation, count(*) as row_count
-from public.wish_coins coin
-where coin.space_id in (select id from cleanup_target_spaces)
-union all
 select 'wish_threads' as relation, count(*) as row_count
 from public.wish_threads thread
 where thread.space_id in (select id from cleanup_target_spaces)

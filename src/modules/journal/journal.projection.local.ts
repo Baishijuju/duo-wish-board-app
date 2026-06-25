@@ -2,12 +2,10 @@ import type {
   MonthlyJournalSnapshotRecord,
   RewardClaimRecord,
   ThreadReactionRecord,
-  WishCoinRecord,
   WishRecord,
   WishThreadEntry,
   WishThreadEventKind,
 } from '../../stores/wishes'
-import { DRAGON_BALL_COIN_TARGET } from '../../stores/wishes'
 import {
   compareIsoAscending,
   createMonthlyJournalSnapshotRecord,
@@ -16,7 +14,6 @@ import {
 
 export function buildDerivedWishThreadEntries(
   wishes: WishRecord[],
-  coins: WishCoinRecord[],
   rewardClaims: RewardClaimRecord[],
   reactions: ThreadReactionRecord[],
 ) {
@@ -99,58 +96,6 @@ export function buildDerivedWishThreadEntries(
     }
   }
 
-  const coinTotals = new Map<string, number>()
-  const dragonBallCompletedWishIds = new Set<string>()
-
-  for (const coin of [...coins].sort((left, right) => compareIsoAscending(left.createdAt, right.createdAt) || left.id.localeCompare(right.id))) {
-    const wish = wishMap.get(coin.wishId)
-
-    if (!wish) {
-      continue
-    }
-
-    threadEntries.push(
-      createWishThreadEntry({
-        actorId: coin.voterId,
-        createdAt: coin.createdAt,
-        eventKind: 'wish_coin_cast',
-        id: `thread-wish-coin-${coin.id}`,
-        messageText: `给「${wish.title}」轻轻投下了 1 枚愿望币。`,
-        meta: {
-          amount: coin.amount,
-          cycleKey: coin.cycleKey,
-          wishTitle: wish.title,
-        },
-        updatedAt: coin.createdAt,
-        wishId: coin.wishId,
-      }),
-    )
-
-    const nextCoinTotal = (coinTotals.get(coin.wishId) ?? 0) + coin.amount
-    coinTotals.set(coin.wishId, nextCoinTotal)
-
-    if (!dragonBallCompletedWishIds.has(coin.wishId) && nextCoinTotal >= DRAGON_BALL_COIN_TARGET) {
-      dragonBallCompletedWishIds.add(coin.wishId)
-
-      threadEntries.push(
-        createWishThreadEntry({
-          actorId: coin.voterId,
-          createdAt: coin.createdAt,
-          eventKind: 'dragon_ball_reached',
-          id: `thread-dragon-ball-${coin.wishId}`,
-          messageText: `「${wish.title}」集齐了七龙珠，神龙开始认真听见这份心愿。`,
-          meta: {
-            cycleKey: coin.cycleKey,
-            totalCoins: nextCoinTotal,
-            wishTitle: wish.title,
-          },
-          updatedAt: coin.createdAt,
-          wishId: coin.wishId,
-        }),
-      )
-    }
-  }
-
   for (const claim of rewardClaims) {
     const relatedWish = claim.sourceWishId ? wishMap.get(claim.sourceWishId) ?? null : null
     const relatedStep = claim.sourceStepId ? stepMap.get(claim.sourceStepId)?.step ?? null : null
@@ -213,10 +158,8 @@ export function createLocalMonthlyJournalSnapshot(
     createdBy: currentMemberId,
     id: `snapshot-${monthKey}`,
     metricsSnapshot: {
-      coinEventCount: orderedThreads.filter((thread) => thread.eventKind === 'wish_coin_cast').length,
       commentCount: orderedThreads.filter((thread) => thread.eventKind === 'comment').length,
       completedWishCount: orderedThreads.filter((thread) => thread.eventKind === 'wish_completed').length,
-      dragonBallCount: orderedThreads.filter((thread) => thread.eventKind === 'dragon_ball_reached').length,
       reactionCount: orderedThreads.reduce((count, thread) => count + thread.reactions.reduce((total, reaction) => total + reaction.count, 0), 0),
       rewardEventCount: orderedThreads.filter((thread) => thread.eventKind === 'reward_claimed' || thread.eventKind === 'premium_redeem').length,
       threadCount: orderedThreads.length,

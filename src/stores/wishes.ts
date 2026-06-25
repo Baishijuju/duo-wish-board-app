@@ -48,7 +48,6 @@ import {
   buildStarCoinBalanceByMember,
 } from '../modules/rewards/reward.rules'
 import {
-  createWishCoinRecord as createWishCoinRecordModule,
   createWishComment as createWishCommentModule,
   createWishRecord as createWishRecordModule,
   createWishStep as createWishStepModule,
@@ -57,7 +56,6 @@ import { createMockWishSeedState } from '../modules/wishes/wish.mock-seed'
 import { addCommentWrite, deleteCommentWrite, updateCommentWrite } from '../modules/wishes/wish.comments.write'
 import {
   addWishStepWrite,
-  castWishCoinWrite,
   claimCompletedStepRewardWrite,
   claimCountProgressRewardWrite,
   completeWishWithRewardWrite,
@@ -88,7 +86,6 @@ import {
   getWishProgressSnapshot as getWishProgressSnapshotModule,
   normalizeProgressNumber as normalizeProgressNumberModule,
 } from '../modules/wishes/wish.progress'
-import { getWishCoinCycle as getWishCoinCycleModule } from '../modules/wishes/wish.coins'
 import {
   getBrowserStorage as getBrowserStorageModule,
   hydrateWishState as hydrateWishStateModule,
@@ -110,11 +107,9 @@ export type WishThreadEventKind =
   | 'comment'
   | 'wish_published'
   | 'wish_step_completed'
-  | 'wish_coin_cast'
   | 'reward_claimed'
   | 'wish_completed'
   | 'weekly_welfare_issued'
-  | 'dragon_ball_reached'
   | 'premium_redeem'
 export type MonthlyJournalSnapshotStatus = 'ready'
 
@@ -143,8 +138,6 @@ const WISH_MAX_IMAGE_COUNT_PER_WISH = 1
 const MAX_THREAD_REACTIONS_PER_MEMBER = 3
 const LOCAL_REALTIME_ECHO_TTL_MS = 15_000
 
-export const WISH_COIN_BUDGET_PER_CYCLE = 3
-export const DRAGON_BALL_COIN_TARGET = 7
 export const STEP_COMPLETION_STAR_COIN_REWARD = 1
 
 export interface WishDraft {
@@ -181,29 +174,6 @@ export interface WishImage {
   sizeBytes: number
   storagePath: string
   url: string
-}
-
-export interface WishCoinRecord {
-  id: string
-  wishId: string
-  voterId: string
-  cycleKey: string
-  amount: number
-  createdAt: string
-}
-
-export interface WishCoinMemberSummary {
-  memberId: string
-  displayName: string
-  total: number
-}
-
-export interface WishCoinSnapshot {
-  currentCycleTotal: number
-  isDragonBallReady: boolean
-  memberTotals: WishCoinMemberSummary[]
-  remainingToDragonBall: number
-  total: number
 }
 
 export interface WishBottleSnapshot {
@@ -363,7 +333,6 @@ export interface WishBackupPayload {
     memberCount: number
     name: string
   }
-  coins: WishCoinRecord[]
   monthlyJournalSnapshots: MonthlyJournalSnapshotRecord[]
   rewardClaims: RewardClaimRecord[]
   rewardPoolItems: RewardPoolItem[]
@@ -389,7 +358,6 @@ interface PersistedWishState {
   rewardPoolItems: RewardPoolItem[]
   threadReactions: ThreadReactionRecord[]
   wishes: WishRecord[]
-  coins: WishCoinRecord[]
 }
 
 function createId() {
@@ -402,12 +370,6 @@ function createWishComment(partial: Partial<WishComment> & Pick<WishComment, 'au
 
 function createWishStep(partial: Partial<WishStep> & Pick<WishStep, 'title'>): WishStep {
   return createWishStepModule(partial)
-}
-
-function createWishCoinRecord(
-  partial: Partial<WishCoinRecord> & Pick<WishCoinRecord, 'wishId' | 'voterId' | 'cycleKey'>,
-): WishCoinRecord {
-  return createWishCoinRecordModule(partial)
 }
 
 function createRewardPoolItem(
@@ -460,11 +422,10 @@ function getBeijingMonthKey(dateValue: Date | number | string = new Date()) {
 
 function buildDerivedWishThreadEntries(
   wishes: WishRecord[],
-  coins: WishCoinRecord[],
   rewardClaims: RewardClaimRecord[],
   reactions: ThreadReactionRecord[],
 ) {
-  return buildDerivedWishThreadEntriesModule(wishes, coins, rewardClaims, reactions)
+  return buildDerivedWishThreadEntriesModule(wishes, rewardClaims, reactions)
 }
 
 function reorderImagesByIds(images: WishImage[], orderedImageIds: string[]) {
@@ -645,10 +606,6 @@ function getTodayStartTimestamp() {
   return today.getTime()
 }
 
-function getWishCoinCycle(dateValue: Date | number | string = new Date()) {
-  return getWishCoinCycleModule(dateValue)
-}
-
 function normalizeProgressNumber(value: number | null | undefined) {
   return normalizeProgressNumberModule(value)
 }
@@ -668,9 +625,6 @@ function getWishBottleColorTier(percent: number): WishBottleColorTier {
 function createWishRecord(partial: Partial<WishRecord> & WishDraft): WishRecord {
   return createWishRecordModule(partial)
 }
-
-const currentSeedCoinCycle = getWishCoinCycle()
-const previousSeedCoinCycle = getWishCoinCycle(Date.now() - 7 * MILLISECONDS_PER_DAY)
 
 const seedWishes: WishRecord[] = [
   createWishRecord({
@@ -847,97 +801,6 @@ const seedWishes: WishRecord[] = [
   }),
 ]
 
-const seedWishCoins: WishCoinRecord[] = [
-  createWishCoinRecord({
-    id: 'coin-trip-prev-a-1',
-    wishId: 'wish-shared-trip',
-    voterId: 'member-a',
-    cycleKey: previousSeedCoinCycle.key,
-    amount: 1,
-    createdAt: previousSeedCoinCycle.startsAt,
-  }),
-  createWishCoinRecord({
-    id: 'coin-trip-prev-a-2',
-    wishId: 'wish-shared-trip',
-    voterId: 'member-a',
-    cycleKey: previousSeedCoinCycle.key,
-    amount: 1,
-    createdAt: previousSeedCoinCycle.startsAt,
-  }),
-  createWishCoinRecord({
-    id: 'coin-trip-prev-b-1',
-    wishId: 'wish-shared-trip',
-    voterId: 'member-b',
-    cycleKey: previousSeedCoinCycle.key,
-    amount: 1,
-    createdAt: previousSeedCoinCycle.startsAt,
-  }),
-  createWishCoinRecord({
-    id: 'coin-trip-prev-b-2',
-    wishId: 'wish-shared-trip',
-    voterId: 'member-b',
-    cycleKey: previousSeedCoinCycle.key,
-    amount: 1,
-    createdAt: previousSeedCoinCycle.startsAt,
-  }),
-  createWishCoinRecord({
-    id: 'coin-trip-prev-b-3',
-    wishId: 'wish-shared-trip',
-    voterId: 'member-b',
-    cycleKey: previousSeedCoinCycle.key,
-    amount: 1,
-    createdAt: previousSeedCoinCycle.startsAt,
-  }),
-  createWishCoinRecord({
-    id: 'coin-trip-current-a-1',
-    wishId: 'wish-shared-trip',
-    voterId: 'member-a',
-    cycleKey: currentSeedCoinCycle.key,
-    amount: 1,
-    createdAt: currentSeedCoinCycle.startsAt,
-  }),
-  createWishCoinRecord({
-    id: 'coin-trip-current-b-1',
-    wishId: 'wish-shared-trip',
-    voterId: 'member-b',
-    cycleKey: currentSeedCoinCycle.key,
-    amount: 1,
-    createdAt: currentSeedCoinCycle.startsAt,
-  }),
-  createWishCoinRecord({
-    id: 'coin-cert-prev-a-1',
-    wishId: 'wish-cert',
-    voterId: 'member-a',
-    cycleKey: previousSeedCoinCycle.key,
-    amount: 1,
-    createdAt: previousSeedCoinCycle.startsAt,
-  }),
-  createWishCoinRecord({
-    id: 'coin-cert-prev-a-2',
-    wishId: 'wish-cert',
-    voterId: 'member-a',
-    cycleKey: previousSeedCoinCycle.key,
-    amount: 1,
-    createdAt: previousSeedCoinCycle.startsAt,
-  }),
-  createWishCoinRecord({
-    id: 'coin-cert-prev-b-1',
-    wishId: 'wish-cert',
-    voterId: 'member-b',
-    cycleKey: previousSeedCoinCycle.key,
-    amount: 1,
-    createdAt: previousSeedCoinCycle.startsAt,
-  }),
-  createWishCoinRecord({
-    id: 'coin-cert-current-a-1',
-    wishId: 'wish-cert',
-    voterId: 'member-a',
-    cycleKey: currentSeedCoinCycle.key,
-    amount: 1,
-    createdAt: currentSeedCoinCycle.startsAt,
-  }),
-]
-
 const seedThreadReactions: ThreadReactionRecord[] = [
   createThreadReactionRecord({
     id: 'reaction-trip-comment-heart-b',
@@ -952,13 +815,6 @@ const seedThreadReactions: ThreadReactionRecord[] = [
     actorId: 'member-a',
     emoji: '✨',
     createdAt: '2026-04-24T12:10:00.000Z',
-  }),
-  createThreadReactionRecord({
-    id: 'reaction-trip-coin-fire-b',
-    targetThreadId: 'thread-wish-coin-coin-trip-current-a-1',
-    actorId: 'member-b',
-    emoji: '🔥',
-    createdAt: currentSeedCoinCycle.startsAt,
   }),
   createThreadReactionRecord({
     id: 'reaction-cert-comment-muscle-b',
@@ -1268,7 +1124,6 @@ function createSeedWishState() {
   const hasMockSeed = mockSeed.wishes.length > 0
 
   return {
-    coins: hasMockSeed ? mockSeed.coins.map((coin) => createWishCoinRecord(coin)) : seedWishCoins.map((coin) => createWishCoinRecord(coin)),
     monthlyJournalSnapshots: hasMockSeed ? mockSeed.monthlyJournalSnapshots.map((snapshot) => createMonthlyJournalSnapshotRecord(snapshot)) : [] as MonthlyJournalSnapshotRecord[],
     rewardClaims: mockSeed.rewardClaims.map((claim) => createRewardClaimRecord(claim)),
     rewardPoolItems: hasMockSeed ? mockSeed.rewardPoolItems.map((item) => createRewardPoolItem(item)) : seedRewardPoolItems.map((item) => createRewardPoolItem(item)),
@@ -1293,10 +1148,9 @@ export const useWishStore = defineStore('wishes', () => {
   const authStore = useAuthStore()
   const hydratedState = hydrateWishState()
   const wishes = ref<WishRecord[]>(hydratedState.wishes)
-  const wishCoins = ref<WishCoinRecord[]>(hydratedState.coins)
   const threadReactions = ref<ThreadReactionRecord[]>(hydratedState.threadReactions)
   const wishThreads = ref<WishThreadEntry[]>(
-    buildDerivedWishThreadEntries(hydratedState.wishes, hydratedState.coins, hydratedState.rewardClaims, hydratedState.threadReactions),
+    buildDerivedWishThreadEntries(hydratedState.wishes, hydratedState.rewardClaims, hydratedState.threadReactions),
   )
   const monthlyJournalSnapshots = ref<MonthlyJournalSnapshotRecord[]>(hydratedState.monthlyJournalSnapshots)
   const rewardPoolItems = ref<RewardPoolItem[]>(hydratedState.rewardPoolItems)
@@ -1347,45 +1201,6 @@ export const useWishStore = defineStore('wishes', () => {
     medium: 1,
     low: 2,
   }
-
-  const currentWishCoinCycle = computed(() => getWishCoinCycle())
-
-  const currentCycleWishCoins = computed(() => {
-    const currentCycleKey = currentWishCoinCycle.value.key
-    return wishCoins.value.filter((coin) => coin.cycleKey === currentCycleKey)
-  })
-
-  const currentCycleCoinUsageByMember = computed(() => {
-    const usageMap = new Map<string, number>()
-
-    for (const coin of currentCycleWishCoins.value) {
-      usageMap.set(coin.voterId, (usageMap.get(coin.voterId) ?? 0) + coin.amount)
-    }
-
-    return usageMap
-  })
-
-  const wishCoinTotals = computed(() => {
-    const totals = new Map<string, number>()
-
-    for (const coin of wishCoins.value) {
-      totals.set(coin.wishId, (totals.get(coin.wishId) ?? 0) + coin.amount)
-    }
-
-    return totals
-  })
-
-  const currentMemberRemainingCoins = computed(() => {
-    const memberId = authStore.currentMemberId || authStore.currentMember?.id
-
-    if (!memberId) {
-      return 0
-    }
-
-    return Math.max(0, WISH_COIN_BUDGET_PER_CYCLE - (currentCycleCoinUsageByMember.value.get(memberId) ?? 0))
-  })
-
-  const currentMemberUsedCoins = computed(() => Math.max(0, WISH_COIN_BUDGET_PER_CYCLE - currentMemberRemainingCoins.value))
 
   const rewardClaimCountsByItem = computed(() => {
     return buildRewardClaimCountsByItem(rewardClaims.value)
@@ -1481,32 +1296,6 @@ export const useWishStore = defineStore('wishes', () => {
           return leftDate - rightDate
         }
 
-        return (wishCoinTotals.value.get(right.id) ?? 0) - (wishCoinTotals.value.get(left.id) ?? 0)
-      })
-  })
-
-  const dragonBallWishes = computed(() => {
-    return [...wishes.value]
-      .filter((wish) => wish.status === 'active' && (wishCoinTotals.value.get(wish.id) ?? 0) > 0)
-      .sort((left, right) => {
-        const leftCoins = wishCoinTotals.value.get(left.id) ?? 0
-        const rightCoins = wishCoinTotals.value.get(right.id) ?? 0
-
-        if (leftCoins !== rightCoins) {
-          return rightCoins - leftCoins
-        }
-
-        const leftDate = getLocalDateTimestamp(left.dueDate) ?? Number.MAX_SAFE_INTEGER
-        const rightDate = getLocalDateTimestamp(right.dueDate) ?? Number.MAX_SAFE_INTEGER
-
-        if (leftDate !== rightDate) {
-          return leftDate - rightDate
-        }
-
-        if (priorityScore[left.priority] !== priorityScore[right.priority]) {
-          return priorityScore[left.priority] - priorityScore[right.priority]
-        }
-
         return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
       })
   })
@@ -1516,8 +1305,6 @@ export const useWishStore = defineStore('wishes', () => {
     const doneWishes = wishes.value.filter((wish) => wish.status === 'done')
     const todayStart = getTodayStartTimestamp()
     const dueSoonEnd = todayStart + DUE_SOON_WINDOW_DAYS * 24 * 60 * 60 * 1000
-    const currentCycleCoinsUsed = currentCycleWishCoins.value.reduce((count, coin) => count + coin.amount, 0)
-    const memberCount = Math.max(authStore.members.length, authStore.currentMemberId ? 1 : 0)
     const total = wishes.value.length
     const done = doneWishes.length
     const active = activeWishes.length
@@ -1542,9 +1329,6 @@ export const useWishStore = defineStore('wishes', () => {
       const dueTimestamp = getLocalDateTimestamp(wish.dueDate)
       return dueTimestamp !== null && dueTimestamp >= todayStart && dueTimestamp <= dueSoonEnd
     }).length
-    const wishesWithCoins = wishes.value.filter((wish) => (wishCoinTotals.value.get(wish.id) ?? 0) > 0).length
-    const dragonBallReady = activeWishes.filter((wish) => (wishCoinTotals.value.get(wish.id) ?? 0) >= DRAGON_BALL_COIN_TARGET).length
-    const totalWishCoins = wishCoins.value.reduce((count, coin) => count + coin.amount, 0)
     const totalImages = wishes.value.reduce(
       (count, wish) => count + wish.images.length + wish.comments.reduce((commentCount, comment) => commentCount + comment.images.length, 0),
       0,
@@ -1566,25 +1350,17 @@ export const useWishStore = defineStore('wishes', () => {
       completionRate: total ? Math.round((done / total) * 100) : 0,
       completedCountValue,
       completedStepCount,
-      currentCycleCoinsRemaining: Math.max(memberCount * WISH_COIN_BUDGET_PER_CYCLE - currentCycleCoinsUsed, 0),
-      currentCycleCoinsUsed,
-      currentMemberRemainingCoins: currentMemberRemainingCoins.value,
-      currentMemberUsedCoins: currentMemberUsedCoins.value,
       done,
-      dragonBallReady,
       dueSoon,
       overdue,
       shared,
-      starred: wishesWithCoins,
-      topWishCoinCount: dragonBallWishes.value.length ? wishCoinTotals.value.get(dragonBallWishes.value[0].id) ?? 0 : 0,
+      starred: wishes.value.filter((wish) => wish.starred).length,
       totalCountTarget,
       total,
       totalImageBytes,
       totalImages,
       totalStepCount,
-      totalWishCoins,
       tracked,
-      wishesWithCoins,
     }
   })
 
@@ -1740,13 +1516,6 @@ export const useWishStore = defineStore('wishes', () => {
         return left.status === 'done' ? 1 : -1
       }
 
-      const leftCoins = wishCoinTotals.value.get(left.id) ?? 0
-      const rightCoins = wishCoinTotals.value.get(right.id) ?? 0
-
-      if (leftCoins !== rightCoins) {
-        return rightCoins - leftCoins
-      }
-
       if (priorityScore[left.priority] !== priorityScore[right.priority]) {
         return priorityScore[left.priority] - priorityScore[right.priority]
       }
@@ -1773,36 +1542,6 @@ export const useWishStore = defineStore('wishes', () => {
 
   function findById(id: string) {
     return wishes.value.find((wish) => wish.id === id)
-  }
-
-  function getWishCoinSummary(target: string | Pick<WishRecord, 'id'>): WishCoinSnapshot {
-    const wishId = typeof target === 'string' ? target : target.id
-    const currentCycleKey = currentWishCoinCycle.value.key
-    const relevantCoins = wishCoins.value.filter((coin) => coin.wishId === wishId)
-    const memberTotalsMap = new Map<string, number>()
-
-    for (const coin of relevantCoins) {
-      memberTotalsMap.set(coin.voterId, (memberTotalsMap.get(coin.voterId) ?? 0) + coin.amount)
-    }
-
-    const total = relevantCoins.reduce((count, coin) => count + coin.amount, 0)
-
-    return {
-      currentCycleTotal: relevantCoins
-        .filter((coin) => coin.cycleKey === currentCycleKey)
-        .reduce((count, coin) => count + coin.amount, 0),
-      isDragonBallReady: total >= DRAGON_BALL_COIN_TARGET,
-      memberTotals: authStore.members
-        .map((member) => ({
-          displayName: member.displayName,
-          memberId: member.id,
-          total: memberTotalsMap.get(member.id) ?? 0,
-        }))
-        .filter((member) => member.total > 0)
-        .sort((left, right) => right.total - left.total),
-      remainingToDragonBall: Math.max(DRAGON_BALL_COIN_TARGET - total, 0),
-      total,
-    }
   }
 
   function getRewardPoolItems(memberId: string, tier?: RewardTier, includeArchived = false) {
@@ -1932,7 +1671,7 @@ export const useWishStore = defineStore('wishes', () => {
   }
 
   function refreshLocalActivityState() {
-    const nextThreads = buildDerivedWishThreadEntries(wishes.value, wishCoins.value, rewardClaims.value, threadReactions.value)
+    const nextThreads = buildDerivedWishThreadEntries(wishes.value, rewardClaims.value, threadReactions.value)
     wishThreads.value = nextThreads
     ensureLocalMonthlySnapshots(nextThreads)
   }
@@ -2326,14 +2065,6 @@ export const useWishStore = defineStore('wishes', () => {
           },
         },
         {
-          table: 'wish_coins',
-          filter: `space_id=eq.${spaceId}`,
-          capabilityKey: 'hasWishCoins',
-          onEvent: () => {
-            scheduleRealtimeSync('愿望币')
-          },
-        },
-        {
           table: 'reward_pool_items',
           filter: `space_id=eq.${spaceId}`,
           capabilityKey: 'hasRewardPools',
@@ -2402,7 +2133,6 @@ export const useWishStore = defineStore('wishes', () => {
 
       rewardPoolItems.value = composed.rewardPoolItems
       rewardClaims.value = composed.rewardClaims
-      wishCoins.value = composed.wishCoins
       wishes.value = composed.wishes
       threadReactions.value = composed.threadReactions
       wishThreads.value = composed.wishThreads
@@ -2439,7 +2169,6 @@ export const useWishStore = defineStore('wishes', () => {
 
   function removeWishLocally(id: string) {
     wishes.value = deleteWishLocal(id, wishes.value)
-    wishCoins.value = wishCoins.value.filter((coin) => coin.wishId !== id)
     rewardClaims.value = rewardClaims.value.map((claim) => {
       if (claim.sourceWishId !== id) {
         return claim
@@ -2935,45 +2664,18 @@ export const useWishStore = defineStore('wishes', () => {
     return result
   }
 
-  async function castWishCoin(id: string) {
-    const wishCoinCapabilityMessage = getKnownCapabilityMessage('hasWishCoins')
+  async function toggleStar(id: string) {
+    const wish = findById(id)
 
-    if (wishCoinCapabilityMessage) {
-      syncMessage.value = wishCoinCapabilityMessage
+    if (!wish) {
       return false
     }
 
-    const result = await castWishCoinWrite({
-      supabase,
-      isUsingCloudWishes: isUsingCloudWishes.value,
-      currentSpaceId: authStore.currentSpaceId,
-      wish: findById(id),
-      wishId: id,
-      memberId: authStore.currentMemberId || authStore.currentMember?.id,
-      currentMemberRemainingCoins: currentMemberRemainingCoins.value,
-      currentWishCoinCycleKey: currentWishCoinCycle.value.key,
-      allowsLegacyCapabilityFallback: !authStore.hasKnownCapabilities,
-      onLoadingChange: (value) => {
-        isLoading.value = value
-      },
-      onSyncMessage: (value) => {
-        syncMessage.value = value
-      },
-      syncFromSupabase,
-    })
-
-    if (result && typeof result === 'object' && 'localCoin' in result) {
-      wishCoins.value.unshift(result.localCoin)
-      wishes.value = wishes.value.map((wish) => wish.id === id ? result.localWish : wish)
-      syncMessage.value = result.message
-      return true
-    }
-
-    return result
-  }
-
-  async function toggleStar(id: string) {
-    return castWishCoin(id)
+    const nextStarred = !wish.starred
+    const now = new Date().toISOString()
+    wishes.value = wishes.value.map((entry) => entry.id === id ? { ...entry, starred: nextStarred, updatedAt: now } : entry)
+    syncMessage.value = nextStarred ? '已标记为重点愿望。' : '已取消重点标记。'
+    return true
   }
 
   async function setWishCountProgress(id: string, nextCurrent: number) {
@@ -3662,7 +3364,6 @@ export const useWishStore = defineStore('wishes', () => {
 
     const seedState = createSeedWishState()
     wishes.value = seedState.wishes
-    wishCoins.value = seedState.coins
     threadReactions.value = seedState.threadReactions
     monthlyJournalSnapshots.value = seedState.monthlyJournalSnapshots
     rewardPoolItems.value = seedState.rewardPoolItems
@@ -3682,7 +3383,6 @@ export const useWishStore = defineStore('wishes', () => {
         memberCount: authStore.members.length,
         name: authStore.spaceName,
       },
-      coins: wishCoins.value.map((coin) => createWishCoinRecord(coin)),
       monthlyJournalSnapshots: monthlyJournalSnapshots.value.map((snapshot) => createMonthlyJournalSnapshotRecord(snapshot)),
       rewardClaims: rewardClaims.value.map((claim) => createRewardClaimRecord(claim)),
       rewardPoolItems: rewardPoolItems.value.map((item) => createRewardPoolItem(item)),
@@ -3693,7 +3393,7 @@ export const useWishStore = defineStore('wishes', () => {
   }
 
   watch(
-    [wishes, wishCoins, rewardClaims, threadReactions],
+    [wishes, rewardClaims, threadReactions],
     () => {
       if (isUsingCloudWishes.value) {
         return
@@ -3708,11 +3408,10 @@ export const useWishStore = defineStore('wishes', () => {
 
   if (storage) {
     watch(
-      [wishes, wishCoins, rewardPoolItems, rewardClaims, threadReactions, monthlyJournalSnapshots],
-      ([nextWishes, nextCoins, nextRewardPoolItems, nextRewardClaims, nextThreadReactions, nextMonthlyJournalSnapshots]) => {
+      [wishes, rewardPoolItems, rewardClaims, threadReactions, monthlyJournalSnapshots],
+      ([nextWishes, nextRewardPoolItems, nextRewardClaims, nextThreadReactions, nextMonthlyJournalSnapshots]) => {
         const nextState: PersistedWishState = {
           version: 6,
-          coins: nextCoins.map((coin) => createWishCoinRecord(coin)),
           monthlyJournalSnapshots: nextMonthlyJournalSnapshots.map((snapshot) => createMonthlyJournalSnapshotRecord(snapshot)),
           rewardClaims: nextRewardClaims.map((claim) => createRewardClaimRecord(claim)),
           rewardPoolItems: nextRewardPoolItems.map((item) => createRewardPoolItem(item)),
@@ -3744,7 +3443,6 @@ export const useWishStore = defineStore('wishes', () => {
       if (lastLoadedSpaceId.value) {
         const localState = hydrateWishState()
         wishes.value = localState.wishes
-        wishCoins.value = localState.coins
         threadReactions.value = localState.threadReactions
         monthlyJournalSnapshots.value = localState.monthlyJournalSnapshots
         rewardPoolItems.value = localState.rewardPoolItems
@@ -3775,7 +3473,6 @@ export const useWishStore = defineStore('wishes', () => {
     deleteWish,
     depositRewardStarCoins,
     deleteWishStep,
-    dragonBallWishes,
     dueSoonWishes,
     findById,
     getMemberStarCoinBalance,
@@ -3788,7 +3485,6 @@ export const useWishStore = defineStore('wishes', () => {
     getSharedRewardPoolItems,
     getStepRewardClaim,
     getWishThreadEntries,
-    getWishCoinSummary,
     getWishProgressSnapshot,
     getWishRewardClaim,
     hasStepRewardClaim,
@@ -3799,10 +3495,6 @@ export const useWishStore = defineStore('wishes', () => {
     isUsingCloudWishes,
     latestComments,
     latestRewardClaims,
-    castWishCoin,
-    currentMemberRemainingCoins,
-    currentMemberUsedCoins,
-    currentWishCoinCycle,
     nearestDueWishes,
     monthlyJournalSnapshots,
     overdueWishes,
@@ -3835,7 +3527,6 @@ export const useWishStore = defineStore('wishes', () => {
     upcomingWishes,
     updateWish,
     wishBottleSnapshot,
-    wishCoins,
     wishThreads,
     wishes,
   }

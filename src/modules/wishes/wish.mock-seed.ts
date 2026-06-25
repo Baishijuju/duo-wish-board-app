@@ -2,7 +2,7 @@ import type { RewardClaimRecord, RewardPoolItem, ThreadReactionRecord, WishImage
 import { createMonthlyJournalSnapshotRecord, createThreadReactionRecord } from '../journal/journal.factories'
 import { createRewardClaimRecord, createRewardPoolItem } from '../rewards/reward.factories'
 import type { SeedWishState } from './wish.local'
-import { createWishCoinRecord, createWishComment, createWishImage, createWishRecord, createWishStep } from './wish.factories'
+import { createWishComment, createWishImage, createWishRecord, createWishStep } from './wish.factories'
 
 type MockWishProgress =
   | { mode: 'count'; current: number; target: number; unit: string; starCoinValue: number }
@@ -154,15 +154,6 @@ const mockRewardDeposits: MockRewardDeposit[] = [
 const mockRewardRedeems: MockRewardRedeem[] = [
   { itemId: 'reward-a-bookstore', ownerId: 'member-a', daysAgo: 12 },
   { itemId: 'reward-b-bike-route', ownerId: 'member-b', daysAgo: 16 },
-]
-
-const mockCoinTargets = [
-  { wishId: 'wish-a-morning-walk', voterId: 'member-b', amount: 3, daysAgo: 8 },
-  { wishId: 'wish-a-balcony-herbs', voterId: 'member-b', amount: 2, daysAgo: 12 },
-  { wishId: 'wish-a-photo-album', voterId: 'member-a', amount: 2, daysAgo: 30 },
-  { wishId: 'wish-b-running', voterId: 'member-a', amount: 4, daysAgo: 6 },
-  { wishId: 'wish-b-home-coffee', voterId: 'member-b', amount: 1, daysAgo: 2 },
-  { wishId: 'wish-b-bike-ride', voterId: 'member-a', amount: 3, daysAgo: 70 },
 ]
 
 const mockThreadReactions: Array<Partial<ThreadReactionRecord> & Pick<ThreadReactionRecord, 'targetThreadId' | 'actorId' | 'emoji'>> = [
@@ -322,17 +313,6 @@ function createMockRewardRedeemClaims(rewardPoolItems: RewardPoolItem[]) {
   })
 }
 
-function createMockWishCoins() {
-  return mockCoinTargets.flatMap((target) => Array.from({ length: target.amount }, (_, coinIndex) => createWishCoinRecord({
-    id: `${target.wishId}-coin-${target.voterId}-${coinIndex + 1}`,
-    wishId: target.wishId,
-    voterId: target.voterId,
-    cycleKey: `mock-${Math.ceil(target.daysAgo / 7)}`,
-    amount: 1,
-    createdAt: createSeedTimestamp(Math.max(target.daysAgo - coinIndex, 0), coinIndex),
-  })))
-}
-
 function createMockThreadReactions() {
   return mockThreadReactions.map((reaction) => createThreadReactionRecord(reaction))
 }
@@ -449,7 +429,6 @@ export function createMockWishSeedState(): SeedWishState {
   const wishes = createMockSeedWishes()
   const rewardPoolItems = createMockRewardPoolItems()
   return {
-    coins: createMockWishCoins(),
     monthlyJournalSnapshots: createMockMonthlyJournalSnapshots(),
     rewardClaims: [
       ...createMockSeedRewardClaims(wishes),

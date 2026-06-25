@@ -86,10 +86,6 @@ export interface WishStepRowLike {
   updated_at: string
 }
 
-export interface WishCoinRowLike {
-  wish_id: string
-}
-
 export interface RewardPoolItemRowLike {
   id: string
   owner_id: string
@@ -119,7 +115,6 @@ export interface RewardClaimRowLike {
 
 export function createWishRecordFromRow(
   row: WishRowLike,
-  coinRows: WishCoinRowLike[],
   commentRows: WishCommentRowLike[],
   commentImageRows: WishCommentImageRowLike[],
   imageRows: WishImageRowLike[],
@@ -141,7 +136,7 @@ export function createWishRecordFromRow(
     ownerId: row.owner_id,
     scope: row.scope,
     status: row.status,
-    starred: row.is_starred || coinRows.some((coin) => coin.wish_id === row.id),
+    starred: row.is_starred,
     progressMode: normalizedProgressMode,
     progressCurrent: typeof row.progress_current === 'number' ? row.progress_current : 0,
     progressStarCoinValue: typeof row.progress_star_coin_value === 'number' ? row.progress_star_coin_value : 0,

@@ -1,6 +1,5 @@
 import type {
   WishComment,
-  WishCoinRecord,
   WishDraft,
   WishImage,
   WishRecord,
@@ -49,21 +48,6 @@ export function createWishStep(partial: Partial<WishStep> & Pick<WishStep, 'titl
 export function normalizeStarCoinValue(value: unknown) {
   const numericValue = Number(value ?? 0)
   return Number.isFinite(numericValue) ? Math.max(0, numericValue) : 0
-}
-
-export function createWishCoinRecord(
-  partial: Partial<WishCoinRecord> & Pick<WishCoinRecord, 'wishId' | 'voterId' | 'cycleKey'>,
-): WishCoinRecord {
-  const normalizedAmount = Math.max(1, Math.round(Number(partial.amount ?? 1) || 1))
-
-  return {
-    id: partial.id ?? createId(),
-    wishId: partial.wishId,
-    voterId: partial.voterId,
-    cycleKey: partial.cycleKey.trim(),
-    amount: normalizedAmount,
-    createdAt: partial.createdAt ?? new Date().toISOString(),
-  }
 }
 
 export function createWishRecord(partial: Partial<WishRecord> & WishDraft): WishRecord {

@@ -5,7 +5,6 @@ import { createThreadReactionRecord } from '../journal/journal.factories'
 import type {
   RewardClaimRowLike,
   RewardPoolItemRowLike,
-  WishCoinRowLike,
   WishCommentImageRowLike,
   WishCommentRowLike,
   WishImageRowLike,
@@ -26,7 +25,6 @@ const signedUrlCache = new Map<string, SignedUrlCacheEntry>()
 
 export interface WishCloudFetchResult {
   wishRows: WishRowLike[]
-  wishCoinRows: WishCoinRowLike[]
   rewardPoolItemRows: RewardPoolItemRowLike[]
   rewardClaimRows: RewardClaimRowLike[]
   commentRows: WishCommentRowLike[]
@@ -158,7 +156,6 @@ export async function fetchWishCloudRows(
 
   const wishRows = ((wishRowsData ?? []) as WishRowLike[])
   const wishIds = wishRows.map((wish) => wish.id)
-  let wishCoinRows: WishCoinRowLike[] = []
   let rewardPoolItemRows: RewardPoolItemRowLike[] = []
   let rewardClaimRows: RewardClaimRowLike[] = []
   let commentRows: WishCommentRowLike[] = []
@@ -323,22 +320,6 @@ export async function fetchWishCloudRows(
   }
 
   if (wishIds.length) {
-    if (!options.capabilities || options.capabilities.hasWishCoins) {
-      const { data: wishCoinData, error: wishCoinError } = await supabase
-        .from('wish_coins')
-        .select('id, space_id, wish_id, voter_id, cycle_key, amount, created_at')
-        .eq('space_id', spaceId)
-        .order('created_at', { ascending: false })
-
-      if (wishCoinError) {
-        if (!allowsLegacyCapabilityFallback || (wishCoinError.code !== '42P01' && !/wish_coins/i.test(wishCoinError.message))) {
-          return { ok: false, message: `云端愿望币同步失败：${wishCoinError.message}` }
-        }
-      } else {
-        wishCoinRows = (wishCoinData ?? []) as WishCoinRowLike[]
-      }
-    }
-
     if (!hasUnifiedThreadData) {
       const { data, error: commentError } = await supabase
         .from('wish_comments')
@@ -422,7 +403,6 @@ export async function fetchWishCloudRows(
     ok: true,
     data: {
       wishRows,
-      wishCoinRows,
       rewardPoolItemRows,
       rewardClaimRows,
       commentRows,

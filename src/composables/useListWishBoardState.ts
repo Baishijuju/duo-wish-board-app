@@ -94,6 +94,7 @@ export function useListWishBoardState() {
       const matchStatus = filterStore.status === 'all' || wish.status === filterStore.status
       const matchVisibility =
         filterStore.visibility === 'all'
+        || !currentMemberId
         || (filterStore.visibility === 'mine' && wish.ownerId === currentMemberId)
         || (filterStore.visibility === 'others' && wish.ownerId !== currentMemberId)
       const matchSearch = `${wish.title} ${wish.category} ${wish.note}`
@@ -198,12 +199,6 @@ export function useListWishBoardState() {
       if (daysLeft >= 0 && daysLeft <= 3) {
         return '快要靠近了'
       }
-    }
-
-    const coinSnapshot = wishStore.getWishCoinSummary(wish)
-
-    if (coinSnapshot.isDragonBallReady) {
-      return '靠近完成'
     }
 
     if (wish.images.length) {

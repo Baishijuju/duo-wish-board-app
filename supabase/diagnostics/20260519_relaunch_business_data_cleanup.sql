@@ -10,7 +10,6 @@
 -- - wish_threads
 -- - wish_thread_images
 -- - thread_reactions
--- - wish_coins
 -- - reward_claims
 -- - monthly_journal_snapshots
 --
@@ -117,10 +116,6 @@ select 'thread_reactions' as relation, count(*) as row_count
 from public.thread_reactions reaction
 where reaction.space_id in (select id from cleanup_target_spaces)
 union all
-select 'wish_coins' as relation, count(*) as row_count
-from public.wish_coins coin
-where coin.space_id in (select id from cleanup_target_spaces)
-union all
 select 'reward_claims' as relation, count(*) as row_count
 from public.reward_claims claim
 where claim.space_id in (select id from cleanup_target_spaces)
@@ -166,9 +161,6 @@ where space_id in (select id from cleanup_target_spaces);
 delete from public.monthly_journal_snapshots
 where space_id in (select id from cleanup_target_spaces);
 
-delete from public.wish_coins
-where space_id in (select id from cleanup_target_spaces);
-
 delete from public.wish_threads
 where space_id in (select id from cleanup_target_spaces);
 
@@ -189,10 +181,6 @@ where space_id in (select id from cleanup_target_spaces)
 union all
 select 'remaining_wish_threads' as relation, count(*) as row_count
 from public.wish_threads
-where space_id in (select id from cleanup_target_spaces)
-union all
-select 'remaining_wish_coins' as relation, count(*) as row_count
-from public.wish_coins
 where space_id in (select id from cleanup_target_spaces)
 union all
 select 'remaining_monthly_journal_snapshots' as relation, count(*) as row_count

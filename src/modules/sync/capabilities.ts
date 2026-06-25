@@ -4,7 +4,6 @@ export interface AppCapabilities {
   hasBoundSpaceMemberships: boolean
   hasWishProgress: boolean
   hasWishCommentImages: boolean
-  hasWishCoins: boolean
   hasRewardPools: boolean
   hasUnifiedThreads: boolean
   hasMonthlySnapshots: boolean
@@ -27,7 +26,6 @@ const DEFAULT_APP_CAPABILITIES: AppCapabilities = {
   hasBoundSpaceMemberships: false,
   hasWishProgress: false,
   hasWishCommentImages: false,
-  hasWishCoins: false,
   hasRewardPools: false,
   hasUnifiedThreads: false,
   hasMonthlySnapshots: false,
@@ -41,7 +39,6 @@ const APP_CAPABILITY_MISSING_MESSAGES: Record<AppCapabilityKey, string> = {
   hasBoundSpaceMemberships: '当前 Supabase 环境还没有固定邮箱绑定能力，请先执行新的空间绑定 migration。',
   hasWishProgress: '当前 Supabase 环境还没有愿望进度能力，请先执行新的进度 migration。',
   hasWishCommentImages: '当前 Supabase 环境还没有留言图片能力，请先执行新的留言图片 migration。',
-  hasWishCoins: '当前 Supabase 环境还没有愿望币能力，请先执行新的愿望币 migration。',
   hasRewardPools: '当前 Supabase 环境还没有奖励池能力，请先执行新的奖励 migration。',
   hasUnifiedThreads: '当前 Supabase 环境还没有手账主链能力，请先执行新的手账 migration。',
   hasMonthlySnapshots: '当前 Supabase 环境还没有月刊快照能力，请先执行新的手账 migration。',
@@ -70,7 +67,6 @@ export function normalizeAppCapabilities(value: unknown): AppCapabilities {
     hasBoundSpaceMemberships: readBoolean(source, 'has_bound_space_memberships', 'hasBoundSpaceMemberships'),
     hasWishProgress: readBoolean(source, 'has_wish_progress', 'hasWishProgress'),
     hasWishCommentImages: readBoolean(source, 'has_wish_comment_images', 'hasWishCommentImages'),
-    hasWishCoins: readBoolean(source, 'has_wish_coins', 'hasWishCoins'),
     hasRewardPools: readBoolean(source, 'has_reward_pools', 'hasRewardPools'),
     hasUnifiedThreads: readBoolean(source, 'has_unified_threads', 'hasUnifiedThreads'),
     hasMonthlySnapshots: readBoolean(source, 'has_monthly_snapshots', 'hasMonthlySnapshots'),
@@ -141,10 +137,6 @@ export function isRewardFeatureMissing(message: string) {
 
 export function isWishThreadFeatureMissing(message: string) {
   return /wish_threads|wish_thread_images|thread_reactions|monthly_journal_snapshots|ensure_monthly_journal_snapshots/i.test(message)
-}
-
-export function isWishCoinFeatureMissing(message: string) {
-  return /cast_wish_coin|wish_coins/i.test(message)
 }
 
 export function isWishProgressFeatureMissing(message: string) {

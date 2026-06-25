@@ -3,16 +3,16 @@ import { toggleThreadReactionWrite } from '../../../src/modules/journal/journal.
 
 function createThread() {
   return {
-    id: 'thread-wish-coin-1c3e1b1d-1d03-4d5a-a074-8795dab5ba84',
+    id: 'thread-comment-1c3e1b1d-1d03-4d5a-a074-8795dab5ba84',
     wishId: 'wish-1',
     spaceId: 'space-1',
     actorId: 'member-1',
-    eventKind: 'wish_coin_cast',
-    messageText: '投下了 1 枚愿望币。',
+    eventKind: 'comment',
+    messageText: '先记一下',
     meta: {},
-    sourceTable: 'wish_coins',
-    sourceId: 'coin-1',
-    dedupeKey: 'wish_coin_cast:coin-1',
+    sourceTable: 'wish_comments',
+    sourceId: 'comment-1',
+    dedupeKey: 'comment:comment-1',
     images: [],
     reactions: [],
     createdAt: '2026-06-07T00:00:00.000Z',
@@ -30,7 +30,7 @@ describe('toggleThreadReactionWrite', () => {
             single: async () => ({
               data: null,
               error: {
-                message: 'invalid input syntax for type uuid: "thread-wish-coin-1c3e1b1d-1d03-4d5a-a074-8795dab5ba84"',
+                message: 'invalid input syntax for type uuid: "thread-comment-1c3e1b1d-1d03-4d5a-a074-8795dab5ba84"',
               },
             }),
           }),
@@ -43,7 +43,7 @@ describe('toggleThreadReactionWrite', () => {
       isUsingCloudWishes: true,
       currentSpaceId: 'space-1',
       thread: createThread() as never,
-      threadId: 'thread-wish-coin-1c3e1b1d-1d03-4d5a-a074-8795dab5ba84',
+      threadId: 'thread-comment-1c3e1b1d-1d03-4d5a-a074-8795dab5ba84',
       memberId: 'member-1',
       normalizedEmoji: '赞',
       existingReaction: undefined,

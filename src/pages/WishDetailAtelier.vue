@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { DRAGON_BALL_COIN_TARGET, type WishImage } from '../stores/wishes'
+import { type WishImage } from '../stores/wishes'
 import { formatBeijingDateTime } from '../utils/datetime'
 import { useWishDetailPageState } from '../composables/useWishDetailPageState'
 
@@ -29,7 +29,6 @@ const {
   clearCommentImageFiles,
   closeImagePreview,
   closeThreadReactionPicker,
-  coinSnapshot,
   commentFeedback,
   commentFeedbackTone,
   commentImageFiles,
@@ -46,7 +45,6 @@ const {
   editingThreadMessage,
   formatFileSize,
   getClaimToneLabel,
-  getCoinStatusLabel,
   getCompletionStarCoinLabel,
   getCommentImageFileKey,
   getCountStarCoinLabel,
@@ -248,9 +246,9 @@ async function confirmDeleteWish() {
 
           <div class="detail-atelier-hero-summary-grid">
             <article class="detail-atelier-summary-card detail-atelier-summary-card-featured">
-              <span>愿望币</span>
-              <strong>{{ coinSnapshot?.total ?? 0 }} / {{ DRAGON_BALL_COIN_TARGET }}</strong>
-              <p>{{ getCoinStatusLabel() }}</p>
+              <span>手账记录</span>
+              <strong>{{ wishJournalEntries.length }} 条</strong>
+              <p>推进、留言和完成都会留在这里</p>
             </article>
             <article class="detail-atelier-summary-card">
               <span>星星币</span>

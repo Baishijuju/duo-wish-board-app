@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   addWishStepWrite,
-  castWishCoinWrite,
   claimCompletedStepRewardWrite,
   claimCountProgressRewardWrite,
   completeWishWithRewardWrite,
@@ -86,24 +85,6 @@ describe('wish.progress.write', () => {
     expect(result && typeof result === 'object' && 'localWish' in result).toBe(true)
   })
 
-  it('casts a local wish coin', async () => {
-    const result = await castWishCoinWrite({
-      supabase: null,
-      isUsingCloudWishes: false,
-      currentSpaceId: null,
-      wish: { id: 'wish-1', status: 'active', starred: false } as never,
-      wishId: 'wish-1',
-      memberId: 'member-a',
-      currentMemberRemainingCoins: 2,
-      currentWishCoinCycleKey: 'cycle-1',
-      onLoadingChange: vi.fn(),
-      onSyncMessage: vi.fn(),
-      syncFromSupabase: vi.fn(),
-    })
-
-    expect(result && typeof result === 'object' && 'localCoin' in result).toBe(true)
-  })
-
   it('updates local count progress', async () => {
     const result = await setWishCountProgressWrite({
       supabase: null,
@@ -132,7 +113,7 @@ describe('wish.progress.write', () => {
     })
 
     expect(result).toBe(true)
-    expect(runCloudMutation).toHaveBeenCalledWith(expect.any(Function), '进度已同步到 Supabase。', { syncAfterWrite: false })
+  expect(runCloudMutation).toHaveBeenCalledWith(expect.any(Function), '进度和星星币已同步到 Supabase。')
   })
 
   it('adds, toggles and deletes local steps', async () => {
@@ -194,6 +175,6 @@ describe('wish.progress.write', () => {
     })
 
     expect(result).toBe(true)
-    expect(runCloudMutation).toHaveBeenCalledWith(expect.any(Function), '已完成一个小步骤。', { syncAfterWrite: false })
+    expect(runCloudMutation).toHaveBeenCalledWith(expect.any(Function), '步骤和星星币已同步到 Supabase。')
   })
 })

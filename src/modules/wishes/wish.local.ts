@@ -3,7 +3,6 @@ import type {
   RewardClaimRecord,
   RewardPoolItem,
   ThreadReactionRecord,
-  WishCoinRecord,
   WishRecord,
 } from '../../stores/wishes'
 import {
@@ -11,10 +10,10 @@ import {
   createThreadReactionRecord,
 } from '../journal/journal.factories'
 import { createRewardClaimRecord, createRewardPoolItem } from '../rewards/reward.factories'
-import { createWishCoinRecord, createWishRecord } from './wish.factories'
+import { createWishRecord } from './wish.factories'
 
-export const STORAGE_KEY = 'duo-wish-board-app:v5'
-export const LEGACY_STORAGE_KEYS = ['duo-wish-board-app:v2', 'duo-wish-board-app:v3', 'duo-wish-board-app:v4'] as const
+export const STORAGE_KEY = 'duo-wish-board-app:v6'
+export const LEGACY_STORAGE_KEYS = ['duo-wish-board-app:v2', 'duo-wish-board-app:v3', 'duo-wish-board-app:v4', 'duo-wish-board-app:v5'] as const
 
 export interface PersistedWishState {
   version: 6
@@ -23,11 +22,9 @@ export interface PersistedWishState {
   rewardPoolItems: RewardPoolItem[]
   threadReactions: ThreadReactionRecord[]
   wishes: WishRecord[]
-  coins: WishCoinRecord[]
 }
 
 export interface SeedWishState {
-  coins: WishCoinRecord[]
   monthlyJournalSnapshots: MonthlyJournalSnapshotRecord[]
   rewardClaims: RewardClaimRecord[]
   rewardPoolItems: RewardPoolItem[]
@@ -69,7 +66,6 @@ export function hydrateWishState(createSeedWishState: () => SeedWishState) {
 
     if (Array.isArray(parsed)) {
       return {
-        coins: [],
         monthlyJournalSnapshots: [],
         rewardClaims: [],
         rewardPoolItems: [],
@@ -85,9 +81,6 @@ export function hydrateWishState(createSeedWishState: () => SeedWishState) {
     const parsedWishes = Array.isArray((parsed as { wishes?: unknown }).wishes)
       ? (parsed as { wishes: WishRecord[] }).wishes.map((wish) => createWishRecord(wish))
       : null
-    const parsedCoins = Array.isArray((parsed as { coins?: unknown }).coins)
-      ? (parsed as { coins: WishCoinRecord[] }).coins.map((coin) => createWishCoinRecord(coin))
-      : []
     const parsedRewardPoolItems = Array.isArray((parsed as { rewardPoolItems?: unknown }).rewardPoolItems)
       ? (parsed as { rewardPoolItems: RewardPoolItem[] }).rewardPoolItems.map((item) => createRewardPoolItem(item))
       : []
@@ -106,7 +99,6 @@ export function hydrateWishState(createSeedWishState: () => SeedWishState) {
     }
 
     return {
-      coins: parsedCoins,
       monthlyJournalSnapshots: parsedMonthlyJournalSnapshots,
       rewardClaims: parsedRewardClaims,
       rewardPoolItems: parsedRewardPoolItems,

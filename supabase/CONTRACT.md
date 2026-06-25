@@ -18,7 +18,6 @@
 - `public.wish_comments`
 - `public.wish_comment_images`
 - `public.wish_images`
-- `public.wish_coins`
 - `public.reward_pool_items`
 - `public.reward_claims`
 - `public.wish_threads`
@@ -46,9 +45,8 @@
 - `set_wish_image_order(uuid, uuid[])`
 - `update_wish_image_note(uuid, uuid, text)`
 
-### 愿望币与奖励
+### 愿望奖励
 
-- `cast_wish_coin(uuid)`
 - `complete_wish_with_reward(uuid, uuid)`
 - `claim_completed_step_reward(uuid, uuid, uuid, boolean)`
 - `claim_count_progress_reward(uuid, uuid, boolean, integer)`
@@ -68,7 +66,6 @@
 - `public.wish_comments`
 - `public.wish_images`
 - `public.wish_thread_images`
-- `public.wish_coins`
 - `public.thread_reactions`
 - `public.reward_pool_items`
 - `public.reward_claims`
@@ -107,10 +104,6 @@
 
 - `202605020002_wish_comment_images.sql`
 
-### 愿望币
-
-- `202605020003_wish_coins.sql`
-
 ### 奖励体系
 
 - `202605030001_reward_pools_and_claims.sql`
@@ -120,6 +113,10 @@
 ### 手账与月刊
 
 - `202605030003_wish_threads_and_monthly_snapshots.sql`
+
+### 已移除能力
+
+- `202606250001_remove_wish_coins.sql` 移除历史愿望币表、RPC、手账事件类型和 capability 字段。历史迁移中仍保留创建记录，用于从空库按顺序迁移后再执行移除迁移。
 
 ## 兼容过渡说明
 

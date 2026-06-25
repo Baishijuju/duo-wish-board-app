@@ -48,7 +48,6 @@ describe('wish.cloud.fetch', () => {
         hasMonthlySnapshots: false,
         hasRewardPools: false,
         hasUnifiedThreads: false,
-        hasWishCoins: false,
         hasWishCommentImages: false,
         hasWishImageCover: false,
         hasWishImageNote: false,

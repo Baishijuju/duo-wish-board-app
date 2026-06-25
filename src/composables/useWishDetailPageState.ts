@@ -5,9 +5,7 @@ export function useWishDetailPageState() {
   const detailState = useWishDetailState()
   const {
     authStore,
-    coinSnapshot,
     currentMemberStarCoins,
-    getCoinStatusLabel,
     progressSnapshot,
     selectedWish,
     wishJournalEntries,
@@ -28,18 +26,13 @@ export function useWishDetailPageState() {
     return [
       {
         label: '手账记录',
-        note: '留言、投币和完成痕迹，都会顺着这一页留下。',
+        note: '留言、推进和完成痕迹，都会顺着这一页留下。',
         value: `${wishJournalEntries.value.length} 条`,
       },
       {
         label: '图片与纪念',
         note: coverImageUrl.value ? '首图会先替这一页把记忆翻开。' : '还没上传图片，也可以先把过程写下来。',
         value: `${selectedWish.value?.images.length ?? 0} 张`,
-      },
-      {
-        label: '愿望币',
-        note: getCoinStatusLabel(),
-        value: `${coinSnapshot.value?.total ?? 0} 枚`,
       },
       {
         label: '星星币',
@@ -59,28 +52,16 @@ export function useWishDetailPageState() {
 
     return '步骤进度适合那些要一件件推进的靠近，每做完一步，这一页都会替你记住。'
   })
-  const coinLead = computed(() => {
-    if (!coinSnapshot.value) {
-      return '愿望币会在这里慢慢把偏爱、鼓励和推进感攒起来。'
-    }
-
-    return coinSnapshot.value.isDragonBallReady
-      ? '七龙珠已经集齐，这条愿望会继续留在更该先靠近的位置。'
-      : `再投 ${coinSnapshot.value.remainingToDragonBall} 枚，这条愿望就能把七龙珠集齐，也会更靠近最前面。`
-  })
   const rewardHeadline = computed(() => {
     if (wishRewardClaim.value) {
       return `这条愿望完成时，已经把「${wishRewardClaim.value.titleSnapshot}」好好接住了`
     }
 
-    return wishStore.currentMemberRemainingCoins > 0
-      ? '推进、投币、留言和领奖，会在这里慢慢长成同一页手账。'
-      : '这周的愿望币已经投完，但这一页还会继续替你收住过程。'
+    return '推进、留言和领奖，会在这里慢慢长成同一页手账。'
   })
 
   return {
     ...detailState,
-    coinLead,
     coverImageUrl,
     dueDateLabel,
     progressLead,

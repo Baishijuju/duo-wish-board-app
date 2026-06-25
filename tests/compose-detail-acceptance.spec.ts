@@ -74,7 +74,7 @@ test.describe('compose and detail visual acceptance', () => {
       await expect(page.locator('.detail-atelier-action-row')).toHaveCount(0)
       await expect(page.locator('.detail-atelier-overview-card.is-warm')).toHaveCount(0)
       await expect(page.locator('.detail-atelier-image-card')).toHaveCount(0)
-      await expect(page.locator('.detail-atelier-story-card .detail-atelier-hero-summary-grid')).toContainText('愿望币')
+      await expect(page.locator('.detail-atelier-story-card .detail-atelier-hero-summary-grid')).toContainText('手账记录')
       await expect(page.locator('.detail-atelier-story-card .detail-atelier-hero-summary-grid')).toContainText('星星币')
       await expect(page.getByRole('button', { name: '完成并领奖' })).toHaveCount(0)
       await expect(page.locator('.detail-atelier-danger-summary')).toBeVisible()

@@ -15,7 +15,7 @@ type AccessPanel = 'invite' | 'email' | 'fixedEmail'
 type RewardKeywordKind = 'personal' | 'shared' | 'assist'
 type RewardKeywordSortMode = 'default' | 'cost' | 'deposited' | 'remaining' | 'popular' | 'newest'
 type RewardKeywordOwnerFilter = 'all' | RewardKeywordKind
-type RewardKeywordStatusFilter = 'all' | 'claimable' | 'saving' | 'depositable'
+type RewardKeywordStatusFilter = 'all' | 'claimable' | 'depositable'
 type RewardKeywordEntry = {
   item: RewardPoolItem
   kind: RewardKeywordKind
@@ -56,7 +56,6 @@ const rewardKeywordOwnerTabs: { label: string; value: RewardKeywordOwnerFilter }
 const rewardKeywordStatusTabs: { label: string; value: RewardKeywordStatusFilter }[] = [
   { label: '全部状态', value: 'all' },
   { label: '可领取', value: 'claimable' },
-  { label: '未存满', value: 'saving' },
   { label: '我能存', value: 'depositable' },
 ]
 
@@ -130,22 +129,6 @@ const activeRewardHubLead = computed(() => {
   }
 
   return '先写下一条会让自己开心的奖励。'
-})
-
-const activeRewardHubPills = computed(() => {
-  if (rewardHubTab.value === 'claim') {
-    return [
-      `星币 ${space.currentMemberStarCoins}`,
-      `奖池 ${rewardKeywordEntries.value.length}`,
-      `可领 ${space.claimableRewardEntries.length}`,
-      `记录 ${space.recentRewardClaims.length}`,
-    ]
-  }
-
-  return [
-    `奖励 ${space.currentMemberPremiumRewards.length}`,
-    `星币 ${space.currentMemberStarCoins}`,
-  ]
 })
 
 function createRewardDisplayEntries(rewards: RewardPoolItem[], tier: RewardEditorTier) {
@@ -302,10 +285,6 @@ const visibleRewardKeywordEntries = computed(() => {
     }
 
     if (rewardKeywordStatusFilter.value === 'claimable' && !isRewardEntryClaimable(entry)) {
-      return false
-    }
-
-    if (rewardKeywordStatusFilter.value === 'saving' && getRewardRemainingAmount(entry) <= 0) {
       return false
     }
 
@@ -508,17 +487,6 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
               <h1 class="section-title space-hero-title">把两个人的日常收在同一页</h1>
               <p class="section-copy space-main-summary-lead">成员、邀请、奖励和照片，都从这里往后翻。</p>
             </div>
-
-            <aside class="space-main-summary-side space-main-summary-side-compact" aria-label="空间摘要">
-              <div class="pill-row space-hero-pill-row">
-                <span v-for="badge in space.heroBadges" :key="badge" class="pill">{{ badge }}</span>
-              </div>
-
-              <div class="space-main-summary-digest">
-                <strong>{{ space.memberNamesLabel }}</strong>
-                <p>{{ space.currentRoleLabel }} · 本周 {{ space.wishStore.currentMemberRemainingCoins }} 枚愿望币 · 奖励 {{ space.currentMemberRewardCount }} 条 · 星币 {{ space.currentMemberStarCoins }} 枚</p>
-              </div>
-            </aside>
           </div>
         </div>
       </article>
@@ -531,9 +499,6 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
             <p class="space-reward-hub-lead">{{ activeRewardHubLead }}</p>
           </div>
 
-          <div class="space-reward-hub-pills">
-            <span v-for="pill in activeRewardHubPills" :key="pill" class="badge">{{ pill }}</span>
-          </div>
         </div>
 
         <div class="space-reward-hub-tabs" role="tablist" aria-label="奖励中心切换">
@@ -569,9 +534,8 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
               </article>
             </div>
 
-            <div class="reward-command-actions">
-              <button class="button-subtle" type="button" @click="openRewardManager">管理奖励</button>
-              <button v-if="!rewardKeywordEntries.length" class="button-solid" type="button" @click="openRewardManager">写一条奖励</button>
+            <div v-if="!rewardKeywordEntries.length" class="reward-command-actions">
+              <button class="button-solid" type="button" @click="openRewardManager">写一条奖励</button>
             </div>
           </section>
 
@@ -623,14 +587,15 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
                 >
                   {{ tab.label }}
                 </button>
+                <span class="reward-keyword-inline-divider" aria-hidden="true"></span>
+                <button class="reward-filter-pill reward-range-toggle" type="button" :class="{ active: isRewardRangeFilterOpen }" @click="isRewardRangeFilterOpen = !isRewardRangeFilterOpen">
+                  区间
+                </button>
               </div>
             </div>
 
-            <div class="reward-keyword-control-actions">
-              <button class="reward-filter-pill reward-range-toggle" type="button" :class="{ active: isRewardRangeFilterOpen }" @click="isRewardRangeFilterOpen = !isRewardRangeFilterOpen">
-                区间
-              </button>
-              <button v-if="hasRewardKeywordFilters" class="reward-filter-pill" type="button" @click="clearRewardKeywordFilters">清空</button>
+            <div v-if="hasRewardKeywordFilters" class="reward-keyword-control-actions">
+              <button class="reward-filter-pill" type="button" @click="clearRewardKeywordFilters">清空</button>
             </div>
 
             <div v-if="isRewardRangeFilterOpen" class="reward-range-panel">
@@ -1266,7 +1231,6 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 .space-member-grid,
 .space-member-card,
 .space-main-summary-shell,
-.space-main-summary-side,
 .space-reward-editor-head,
 .space-reward-story-head,
 .space-reward-heading-copy,
@@ -1712,82 +1676,8 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
   line-height: 1.6;
 }
 
-.space-main-summary-side {
-  justify-items: start;
-  align-content: start;
-}
-
-.space-main-summary-side-compact {
-  gap: 0.62rem;
-  padding: 0.88rem 0.94rem;
-  border-radius: 22px;
-  border: 1px solid rgba(95, 74, 55, 0.08);
-  background: rgba(255, 255, 255, 0.54);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.58);
-}
-
-.space-main-summary-digest {
-  display: grid;
-  gap: 0.28rem;
-}
-
-.space-main-summary-digest strong {
-  color: var(--text-main);
-  font-family: var(--font-heading);
-  font-size: var(--type-l5-size);
-  font-weight: 600;
-  line-height: 1.3;
-  letter-spacing: 0.01em;
-}
-
-.space-main-summary-digest p {
-  margin: 0;
-  color: var(--text-soft);
-  font-family: var(--font-body);
-  font-size: var(--type-supporting-size);
-  line-height: var(--type-supporting-line);
-  letter-spacing: var(--type-supporting-spacing);
-}
-
-.space-hero-copy,
-.space-fold-copy,
-.space-member-summary,
-.space-member-supporting,
-.space-fact-card p,
-.space-inline-panel p,
-.space-empty-card p,
-.reward-card p,
-.reward-claim-card p,
-.reward-shelf-card p,
-.feedback-message,
-.space-access-card p {
-  margin: 0;
-  line-height: var(--type-supporting-line);
-}
-
-.space-hero-copy,
-.space-member-summary {
-  line-height: var(--type-body-line);
-}
-
-.space-fold-copy,
-.space-member-supporting,
-.space-fact-card p,
-.space-inline-panel p,
-.space-empty-card p,
-.reward-card p,
-.reward-claim-card p,
-.reward-shelf-card p,
-.feedback-message,
-.space-access-card p {
-  color: var(--text-soft);
-  font-size: var(--type-supporting-size);
-  letter-spacing: var(--type-supporting-spacing);
-}
-
-.space-card-intro,
-.space-access-form-note,
-.space-meta-line {
+.space-hero-copy p,
+.space-fold-copy p {
   margin: 0;
   font-family: var(--font-body);
   color: var(--text-soft);
@@ -2805,45 +2695,46 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 
 .reward-command-panel {
   display: grid;
-  gap: 0.78rem;
-  padding: 0.9rem;
-  border: 1px solid rgba(95, 74, 55, 0.1);
-  border-radius: 20px;
+  gap: 0.38rem;
+  padding: 0.42rem;
+  border: 1px solid rgba(95, 74, 55, 0.08);
+  border-radius: 14px;
   background:
-    linear-gradient(135deg, rgba(255, 252, 247, 0.86), rgba(245, 238, 229, 0.72)),
-    radial-gradient(circle at 92% 18%, var(--sage-glow), transparent 28%);
+    linear-gradient(135deg, rgba(255, 252, 247, 0.68), rgba(245, 238, 229, 0.5)),
+    radial-gradient(circle at 92% 18%, color-mix(in srgb, var(--sage-glow) 68%, transparent), transparent 28%);
 }
 
 .reward-command-summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.58rem;
+  gap: 0.3rem;
 }
 
 .reward-command-stat {
   display: grid;
-  gap: 0.22rem;
-  min-height: 4.4rem;
+  gap: 0.08rem;
+  min-height: 2.72rem;
   align-content: center;
-  padding: 0.7rem 0.76rem;
-  border: 1px solid rgba(95, 74, 55, 0.08);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.58);
+  padding: 0.38rem 0.42rem;
+  border: 1px solid rgba(95, 74, 55, 0.07);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.42);
 }
 
 .reward-command-stat span,
 .reward-recent-item small {
   color: var(--text-soft);
   font-family: var(--font-body);
-  font-size: var(--type-meta-size);
-  line-height: var(--type-meta-line);
+  font-size: 0.68rem;
+  line-height: 1.18;
 }
 
 .reward-command-stat strong {
   color: var(--text-main);
-  font-family: var(--font-heading);
-  font-size: var(--type-card-title-size);
-  line-height: var(--type-card-title-line);
+  font-family: var(--font-body);
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.16;
 }
 
 .reward-command-stat-primary strong {
@@ -2884,8 +2775,16 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 .reward-keyword-pill-row,
 .reward-keyword-control-actions {
   display: flex;
+  align-items: center;
   gap: 0.34rem;
   flex-wrap: wrap;
+}
+
+.reward-keyword-inline-divider {
+  width: 1px;
+  height: 1.28rem;
+  margin-inline: 0.08rem;
+  background: rgba(95, 74, 55, 0.18);
 }
 
 .reward-keyword-control-actions {
@@ -3835,10 +3734,6 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
     justify-items: start;
   }
 
-  .space-main-summary-side {
-    gap: 0.7rem;
-  }
-
   .space-meta-line {
     flex-direction: column;
     gap: 0.16rem;
@@ -3955,11 +3850,12 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
   }
 
   .reward-command-summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.26rem;
   }
 
   .reward-command-stat-wide {
-    grid-column: 1 / -1;
+    grid-column: auto;
   }
 
   .reward-command-actions,
@@ -4080,7 +3976,6 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
     justify-content: flex-start;
   }
 
-  .space-hero-pill-row,
   .space-page .badge-row {
     gap: 0.5rem;
   }
