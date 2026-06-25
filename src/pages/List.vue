@@ -11,7 +11,6 @@ const {
   filteredWishes,
   getWishSortContext,
   listWorkbenchStats,
-  wishStore,
 } = useListWishBoardState()
 
 const sortLabels = {

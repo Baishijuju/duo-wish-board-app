@@ -10,7 +10,6 @@ export function useWishDetailPageState() {
     selectedWish,
     wishJournalEntries,
     wishRewardClaim,
-    wishStore,
   } = detailState
 
   const viewerName = computed(() => authStore.currentMember?.displayName ?? '我们')

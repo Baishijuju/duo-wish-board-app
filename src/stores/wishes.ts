@@ -123,7 +123,6 @@ const WISH_IMAGE_COMPRESS_TARGET_BYTES = 1800 * 1024
 const DUE_SOON_WINDOW_DAYS = 14
 const RECENTLY_COMPLETED_WINDOW_DAYS = 30
 const SUPABASE_FREE_FILE_STORAGE_BYTES = 1024 * 1024 * 1024
-const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000
 const BEIJING_TIME_OFFSET_MS = 8 * 60 * 60 * 1000
 const WISH_IMAGE_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 const WISH_IMAGE_COMPRESSIBLE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])

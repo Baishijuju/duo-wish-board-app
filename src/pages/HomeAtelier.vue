@@ -370,7 +370,11 @@ function getWishProgressHint(wish: WishRecord) {
       : '它先安静住在这里，等你准备好时再往前走也不迟。'
   }
 
-  return `已经推进到 ${progressSnapshot.current}/${progressSnapshot.target}${progressSnapshot.unit ? ` ${progressSnapshot.unit}` : ''}，继续一点点往前就好。`
+  if (progressSnapshot.mode === 'steps') {
+    return `已经完成 ${progressSnapshot.current}/${progressSnapshot.target} 个步骤，继续一点点往前就好。`
+  }
+
+  return `已经推进到 ${progressSnapshot.label}，继续一点点往前就好。`
 }
 
 function getWishBottleRevealHeight() {
