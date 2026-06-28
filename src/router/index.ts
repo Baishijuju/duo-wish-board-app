@@ -49,6 +49,11 @@ if (import.meta.env.DEV) {
     name: 'dev-colors',
     component: () => import('../pages/ColorTokenDashboard.vue'),
   })
+  routes.push({
+    path: '/dev/wish-bottle-stars',
+    name: 'dev-wish-bottle-stars',
+    component: () => import('../pages/WishBottleStarDemo.vue'),
+  })
 }
 
 const router = createRouter({

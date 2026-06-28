@@ -1,15 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import WishCompletionFireworks from '../components/WishCompletionFireworks.vue'
+import WishBottleStarDrop from '../components/WishBottleStarDrop.vue'
 import { type WishImage } from '../stores/wishes'
 import { formatBeijingDateTime } from '../utils/datetime'
 import { useWishDetailPageState } from '../composables/useWishDetailPageState'
-
-const priorityLabels = {
-  high: '很想靠近',
-  medium: '慢慢靠近',
-  low: '先放在这里',
-} as const
 
 const MOBILE_THREAD_PREVIEW_COUNT = 3
 
@@ -35,13 +31,12 @@ const {
   commentImageInputVersion,
   countProgressDraft,
   coverImageUrl,
-  currentMemberStarCoins,
+  currentWishStarCoinSummary,
   deleteImage,
   deleteThreadComment,
   deleteWish,
   deletingThreadId,
   draftMessage,
-  dueDateLabel,
   editingThreadMessage,
   formatFileSize,
   getClaimToneLabel,
@@ -122,9 +117,7 @@ const detailTags = computed(() => {
   return [
     selectedWish.value.scope === 'shared' ? '我们一起' : '只属于我',
     selectedWish.value.category || '还没有分类',
-    priorityLabels[selectedWish.value.priority],
     selectedWish.value.status === 'done' ? '已完成' : '进行中',
-    dueDateLabel.value,
   ]
 })
 
@@ -171,6 +164,13 @@ const canShowProgressCompletionAction = computed(() => {
       ),
   )
 })
+const wishBottleAnimationSnapshot = computed(() => wishStore.wishBottleSnapshot)
+const wishBottleAnimationStarCount = computed(() => {
+  const snapshot = wishBottleAnimationSnapshot.value
+  return snapshot.completedStepStarCount + snapshot.completedCountUnits
+})
+const isCompletionFireworksActive = ref(false)
+const isStepStarDropActive = ref(false)
 const isDeleteWishConfirming = ref(false)
 const isDeletingWish = ref(false)
 const deleteWishFeedback = ref('')
@@ -221,16 +221,74 @@ async function confirmDeleteWish() {
     isDeletingWish.value = false
   }
 }
+
+async function runWishCompletionAction() {
+  const wasIncomplete = selectedWish.value?.status !== 'done'
+  const completed = await handleWishCompletionAction()
+
+  if (!wasIncomplete || !completed) {
+    return
+  }
+
+  await nextTick()
+
+  if (selectedWish.value?.status === 'done') {
+    isCompletionFireworksActive.value = false
+    await nextTick()
+    isCompletionFireworksActive.value = true
+  }
+}
+
+async function runWishStepToggle(stepId: string) {
+  const completedStep = await toggleWishStep(stepId)
+
+  if (!completedStep) {
+    return
+  }
+
+  isStepStarDropActive.value = false
+  await nextTick()
+  isStepStarDropActive.value = true
+}
+
+async function runCountProgressAdjustment(delta: number) {
+  const gainedProgress = await adjustCountProgress(delta)
+
+  if (gainedProgress) {
+    await triggerStepStarDrop()
+  }
+}
+
+async function runCountProgressSave() {
+  const gainedProgress = await saveCountProgress()
+
+  if (gainedProgress) {
+    await triggerStepStarDrop()
+  }
+}
+
+async function triggerStepStarDrop() {
+  isStepStarDropActive.value = false
+  await nextTick()
+  isStepStarDropActive.value = true
+}
 </script>
 
 <template>
   <section class="detail-atelier-page">
+    <WishCompletionFireworks :active="isCompletionFireworksActive" @finished="isCompletionFireworksActive = false" />
+    <WishBottleStarDrop
+      :active="isStepStarDropActive"
+      :color-tier="wishBottleAnimationSnapshot.colorTier"
+      :is-rainbow-glow="wishBottleAnimationSnapshot.isRainbowGlow"
+      :total-stars="wishBottleAnimationStarCount"
+      @finished="isStepStarDropActive = false"
+    />
     <template v-if="selectedWish">
       <section class="detail-atelier-hero">
         <article class="page-card detail-atelier-story-card">
           <div class="detail-atelier-hero-top">
             <p class="detail-atelier-kicker">这一页愿望</p>
-            <RouterLink class="detail-atelier-mini-link" :to="{ name: 'list' }">回清单继续推进</RouterLink>
           </div>
 
           <div class="detail-atelier-story-copy">
@@ -238,10 +296,6 @@ async function confirmDeleteWish() {
             <p class="detail-atelier-lead">
               {{ selectedWish.note || '先留一个短标题也没关系，后面还可以在这里补充动机、背景和下一步。' }}
             </p>
-          </div>
-
-          <div class="detail-atelier-chip-row detail-atelier-chip-row-primary">
-            <span v-for="chip in detailTags.slice(0, 3)" :key="chip" class="detail-atelier-chip">{{ chip }}</span>
           </div>
 
           <div class="detail-atelier-hero-summary-grid">
@@ -252,8 +306,8 @@ async function confirmDeleteWish() {
             </article>
             <article class="detail-atelier-summary-card">
               <span>星星币</span>
-              <strong>{{ currentMemberStarCoins }} 枚</strong>
-              <p>攒着，去空间页接住大奖励</p>
+              <strong>已领 {{ currentWishStarCoinSummary.earned }} 枚</strong>
+              <p>待领 {{ currentWishStarCoinSummary.pending }} 枚 · 还能获得 {{ currentWishStarCoinSummary.remaining }} 枚</p>
             </article>
           </div>
 
@@ -287,9 +341,9 @@ async function confirmDeleteWish() {
               <span class="detail-atelier-meta-label">写下的人</span>
               <strong>{{ getMemberName(selectedWish.ownerId) }}</strong>
             </div>
-            <div v-if="detailTags.length > 3" class="detail-atelier-meta-item">
+            <div v-if="detailTags.length" class="detail-atelier-meta-item">
               <span class="detail-atelier-meta-label">当前标签</span>
-              <strong>{{ detailTags.slice(3).join(' · ') }}</strong>
+              <strong>{{ detailTags.join(' · ') }}</strong>
             </div>
             <div class="detail-atelier-meta-item">
               <span class="detail-atelier-meta-label">这页进展</span>
@@ -307,9 +361,9 @@ async function confirmDeleteWish() {
                 <span class="detail-atelier-meta-label">写下的人</span>
                 <strong>{{ getMemberName(selectedWish.ownerId) }}</strong>
               </div>
-              <div v-if="detailTags.length > 3" class="detail-atelier-meta-item">
+              <div v-if="detailTags.length" class="detail-atelier-meta-item">
                 <span class="detail-atelier-meta-label">当前标签</span>
-                <strong>{{ detailTags.slice(3).join(' · ') }}</strong>
+                <strong>{{ detailTags.join(' · ') }}</strong>
               </div>
               <div class="detail-atelier-meta-item">
                 <span class="detail-atelier-meta-label">这页进展</span>
@@ -396,7 +450,7 @@ async function confirmDeleteWish() {
                 <strong>先让它继续往前一点</strong>
                 <p>{{ canProgressSelectedWish ? getCountStarCoinLabel() : '你可以评论和打气，进度由愿望归属人推进。' }}</p>
               </div>
-              <button v-if="canProgressSelectedWish" class="detail-atelier-primary detail-atelier-progress-primary" type="button" @click="void adjustCountProgress(1)">
+              <button v-if="canProgressSelectedWish" class="detail-atelier-primary detail-atelier-progress-primary" type="button" @click="void runCountProgressAdjustment(1)">
                 +1{{ selectedWish.progressUnit ? ` ${selectedWish.progressUnit}` : '' }}
               </button>
               <p v-if="rewardFeedback && isCountProgressFeedback" :class="['detail-atelier-feedback', 'detail-atelier-step-feedback', 'detail-atelier-progress-feedback', rewardFeedbackTone]" role="status" aria-live="polite">{{ rewardFeedback }}</p>
@@ -406,7 +460,7 @@ async function confirmDeleteWish() {
           <div v-else-if="progressSnapshot?.mode === 'steps'" class="detail-atelier-progress-stack">
             <div v-if="selectedWish.steps.length" class="detail-atelier-step-list detail-atelier-desktop-only">
               <article v-for="step in selectedWish.steps" :key="step.id" :class="['detail-atelier-step-card', { done: step.isDone }]">
-                <button v-if="canProgressSelectedWish" class="detail-atelier-secondary detail-atelier-step-toggle" type="button" @click="void toggleWishStep(step.id)">{{ getStepActionLabel(step.id, step.isDone) }}</button>
+                <button v-if="canProgressSelectedWish" class="detail-atelier-secondary detail-atelier-step-toggle" type="button" @click="void runWishStepToggle(step.id)">{{ getStepActionLabel(step.id, step.isDone) }}</button>
                 <div class="detail-atelier-step-copy">
                   <strong>{{ step.title }}</strong>
                   <div class="detail-atelier-chip-row compact">
@@ -446,7 +500,7 @@ async function confirmDeleteWish() {
                 <strong>{{ selectedWish.steps.length ? '先完成眼前这一步' : '先写下第一步' }}</strong>
                 <p>{{ canProgressSelectedWish ? (selectedWish.steps.length ? '走完下一步时，星星币会自动到账。' : '有了第一步，这条愿望会更容易继续往前。') : '你可以在下面评论和打气，步骤由愿望归属人推进。' }}</p>
               </div>
-              <button v-if="canProgressSelectedWish" class="detail-atelier-primary detail-atelier-progress-primary" type="button" @click="mobilePrimaryStep ? void toggleWishStep(mobilePrimaryStep.id) : undefined" :disabled="!mobilePrimaryStep || mobilePrimaryStep.isDone">
+              <button v-if="canProgressSelectedWish" class="detail-atelier-primary detail-atelier-progress-primary" type="button" @click="mobilePrimaryStep ? void runWishStepToggle(mobilePrimaryStep.id) : undefined" :disabled="!mobilePrimaryStep || mobilePrimaryStep.isDone">
                 {{ selectedWish.steps.length ? '完成这一步' : '先去下面补一步' }}
               </button>
               <p v-if="rewardFeedback && stepRewardFeedbackTargetId" :class="['detail-atelier-feedback', 'detail-atelier-step-feedback', rewardFeedbackTone]" role="status" aria-live="polite">{{ rewardFeedback }}</p>
@@ -460,7 +514,7 @@ async function confirmDeleteWish() {
 
               <div class="detail-atelier-step-list">
                 <article v-for="step in selectedWish.steps" :key="`mobile-step-${step.id}`" :class="['detail-atelier-step-card', { done: step.isDone }]">
-                  <button v-if="canProgressSelectedWish" class="detail-atelier-secondary detail-atelier-step-toggle" type="button" @click="void toggleWishStep(step.id)">{{ getStepActionLabel(step.id, step.isDone) }}</button>
+                  <button v-if="canProgressSelectedWish" class="detail-atelier-secondary detail-atelier-step-toggle" type="button" @click="void runWishStepToggle(step.id)">{{ getStepActionLabel(step.id, step.isDone) }}</button>
                   <div class="detail-atelier-step-copy">
                     <strong>{{ step.title }}</strong>
                     <div class="detail-atelier-chip-row compact">
@@ -485,7 +539,7 @@ async function confirmDeleteWish() {
           </div>
 
           <div v-if="canShowProgressCompletionAction && canProgressSelectedWish" class="detail-atelier-inline-buttons detail-atelier-progress-completion-row">
-            <button class="detail-atelier-secondary detail-atelier-secondary-action detail-atelier-progress-completion" type="button" @click="void handleWishCompletionAction()">完成并获得 {{ getCompletionStarCoinLabel() }}</button>
+            <button class="detail-atelier-secondary detail-atelier-secondary-action detail-atelier-progress-completion" type="button" @click="void runWishCompletionAction()">完成并获得 {{ getCompletionStarCoinLabel() }}</button>
           </div>
         </article>
       </section>
@@ -979,8 +1033,8 @@ async function confirmDeleteWish() {
                 <input v-model.number="countProgressDraft" type="number" min="0" :max="Math.max(1, selectedWish.progressTarget)" />
               </label>
               <div class="detail-atelier-inline-buttons detail-atelier-tools-actions">
-                <button class="detail-atelier-secondary" type="button" @click="void adjustCountProgress(-1)">往回调 1 点</button>
-                <button class="detail-atelier-secondary" type="button" @click="void saveCountProgress()">保存现在的位置</button>
+                <button class="detail-atelier-secondary" type="button" @click="void runCountProgressAdjustment(-1)">往回调 1 点</button>
+                <button class="detail-atelier-secondary" type="button" @click="void runCountProgressSave()">保存现在的位置</button>
               </div>
             </div>
           </div>
@@ -1737,10 +1791,6 @@ async function confirmDeleteWish() {
   font-weight: 600;
   line-height: var(--type-l6-line);
   letter-spacing: var(--type-l6-spacing);
-}
-
-.detail-atelier-chip-row-primary {
-  padding-bottom: 0.1rem;
 }
 
 .detail-atelier-danger-copy {

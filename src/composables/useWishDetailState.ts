@@ -79,6 +79,57 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     return currentMemberId.value ? wishStore.getRewardPoolItems(currentMemberId.value, 'premium') : []
   })
   const currentMemberStarCoins = computed(() => wishStore.currentMemberStarCoinBalance)
+  const currentWishStarCoinSummary = computed(() => {
+    const wish = selectedWish.value
+
+    if (!wish) {
+      return {
+        earned: '0',
+        pending: '0',
+        remaining: '0',
+      }
+    }
+
+    const starCoinClaimKinds = new Set(['step_star_coin', 'count_star_coin', 'wish_completion_bonus'])
+    const earned = wishStore.rewardClaims
+      .filter((claim) => claim.sourceWishId === wish.id && starCoinClaimKinds.has(claim.claimKind))
+      .reduce((total, claim) => total + Math.max(0, claim.starCoinDelta), 0)
+
+    const pendingStepCoins = wishStore.pendingStepRewards
+      .filter((reward) => reward.wishId === wish.id)
+      .reduce((total, reward) => {
+        const step = wish.steps.find((item) => item.id === reward.stepId)
+        return total + Math.max(0, step?.starCoinValue ?? 0)
+      }, 0)
+    const pendingCountCoins = wishStore.pendingCountRewardSummaries
+      .filter((summary) => summary.wishId === wish.id)
+      .reduce((total, summary) => total + summary.pendingUnits * Math.max(0, wish.progressStarCoinValue), 0)
+    const pending = pendingStepCoins + pendingCountCoins
+
+    let remaining = 0
+
+    if (wish.status !== 'done') {
+      if (wish.progressMode === 'count') {
+        const target = Math.max(1, wish.progressTarget)
+        const current = Math.min(Math.max(0, wish.progressCurrent), target)
+        remaining = Math.max(target - current, 0) * Math.max(0, wish.progressStarCoinValue)
+      }
+
+      if (wish.progressMode === 'steps') {
+        remaining = wish.steps
+          .filter((step) => !step.isDone)
+          .reduce((total, step) => total + Math.max(0, step.starCoinValue), 0)
+      }
+
+      remaining += Math.max(0, wish.completionStarCoinBonus)
+    }
+
+    return {
+      earned: formatStarCoinAmount(earned),
+      pending: formatStarCoinAmount(pending),
+      remaining: formatStarCoinAmount(remaining),
+    }
+  })
   const activeThreadReactionKey = computed(() => pendingThreadReactionKeys.value[0] ?? '')
   const wishRewardClaim = computed(() => {
     return selectedWish.value ? wishStore.getWishRewardClaim(selectedWish.value) : null
@@ -747,12 +798,12 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
 
   async function adjustCountProgress(delta: number) {
     if (!selectedWish.value || selectedWish.value.progressMode !== 'count') {
-      return
+      return false
     }
 
     if (!canProgressSelectedWish.value) {
       setRewardFeedback('只有这条愿望的归属人可以推进它。', 'danger', '', 'count')
-      return
+      return false
     }
 
     const previousCurrent = selectedWish.value.progressCurrent
@@ -760,7 +811,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
 
     if (!updated) {
       setRewardFeedback(wishStore.syncMessage || '数字进度暂时没有更新。', 'danger', '', 'count')
-      return
+      return false
     }
 
     const nextCurrent = selectedWish.value?.progressCurrent ?? previousCurrent
@@ -787,16 +838,17 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
       '',
       'count',
     )
+    return gainedUnits > 0
   }
 
   async function saveCountProgress() {
     if (!selectedWish.value || selectedWish.value.progressMode !== 'count') {
-      return
+      return false
     }
 
     if (!canProgressSelectedWish.value) {
       setRewardFeedback('只有这条愿望的归属人可以推进它。', 'danger', '', 'count')
-      return
+      return false
     }
 
     const previousCurrent = selectedWish.value.progressCurrent
@@ -804,7 +856,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
 
     if (!updated) {
       setRewardFeedback(wishStore.syncMessage || '数字进度暂时没有更新。', 'danger', '', 'count')
-      return
+      return false
     }
 
     const nextCurrent = selectedWish.value?.progressCurrent ?? previousCurrent
@@ -831,6 +883,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
       '',
       'count',
     )
+    return gainedUnits > 0
   }
 
   async function submitWishStep() {
@@ -863,17 +916,17 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
 
   async function handleWishCompletionAction() {
     if (!selectedWish.value) {
-      return
+      return false
     }
 
     if (!canProgressSelectedWish.value) {
       setRewardFeedback('只有这条愿望的归属人可以完成它。', 'danger')
-      return
+      return false
     }
 
     if (selectedWish.value.status === 'done' || wishStore.hasWishRewardClaim(selectedWish.value)) {
       await wishStore.toggleDone(selectedWish.value.id)
-      return
+      return false
     }
 
     isSubmittingReward.value = true
@@ -881,6 +934,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     try {
       const result = await wishStore.completeWishWithReward(selectedWish.value.id, '')
       setRewardFeedback(result.message, result.ok ? 'success' : 'danger')
+      return result.ok
     } finally {
       isSubmittingReward.value = false
     }
@@ -892,18 +946,18 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
 
   async function toggleWishStep(stepId: string) {
     if (!selectedWish.value) {
-      return
+      return false
     }
 
     if (!canProgressSelectedWish.value) {
       setRewardFeedback('只有这条愿望的归属人可以推进它。', 'danger', stepId)
-      return
+      return false
     }
 
     const step = selectedWish.value.steps.find((item) => item.id === stepId)
 
     if (!step) {
-      return
+      return false
     }
 
     const wasDone = step.isDone
@@ -911,7 +965,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     const updated = await wishStore.toggleWishStep(selectedWish.value.id, stepId)
 
     if (!updated) {
-      return
+      return false
     }
 
     if (!wasDone) {
@@ -922,7 +976,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
         'success',
         stepId,
       )
-      return
+      return true
     }
 
     setRewardFeedback(
@@ -932,6 +986,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
       'success',
       stepId,
     )
+    return false
   }
 
   async function removeWishStep(stepId: string) {
@@ -1210,6 +1265,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     countProgressDraft,
     currentMemberPremiumRewards,
     currentMemberStarCoins,
+    currentWishStarCoinSummary,
     deleteImage,
     deleteSelectedImages,
     deleteThreadComment,

@@ -10,9 +10,8 @@ const wishStore = useWishStore()
 
 const WISH_BOTTLE_STAR_PATH = 'M0,-10 L2.9,-3.2 L10,-3.1 L4.2,1.4 L6.1,8.8 L0,4.7 L-6.1,8.8 L-4.2,1.4 L-10,-3.1 L-2.9,-3.2 Z'
 const WISH_BOTTLE_MAX_DISPLAY_STARS = 30
-const WISH_BOTTLE_TEN_STAR_VALUE = 10
 
-type WishBottleDisplayStarKind = 'single' | 'tenfold'
+type WishBottleDisplayStarKind = 'single' | 'ten' | 'hundred' | 'thousand' | 'myriad'
 
 type WishBottleDisplayStar = {
   delay: string
@@ -25,137 +24,125 @@ type WishBottleDisplayStar = {
   y: number
 }
 
-function buildWishBottleStarKinds(tenfoldCount: number, singleCount: number) {
-  const totalCount = tenfoldCount + singleCount
-
-  if (!totalCount) {
-    return [] as WishBottleDisplayStarKind[]
-  }
-
-  const kinds: WishBottleDisplayStarKind[] = []
-  let flowCarry = 0
-  let remainingSingleCount = singleCount
-  let remainingTenfoldCount = tenfoldCount
-
-  for (let index = 0; index < totalCount; index += 1) {
-    if (!remainingSingleCount) {
-      kinds.push('tenfold')
-      remainingTenfoldCount -= 1
-      continue
-    }
-
-    if (!remainingTenfoldCount) {
-      kinds.push('single')
-      remainingSingleCount -= 1
-      continue
-    }
-
-    flowCarry += tenfoldCount
-
-    if (flowCarry >= totalCount) {
-      kinds.push('tenfold')
-      flowCarry -= totalCount
-      remainingTenfoldCount -= 1
-      continue
-    }
-
-    kinds.push('single')
-    remainingSingleCount -= 1
-  }
-
-  return kinds
-}
-
 function compactWishBottleStarKinds(totalStars: number) {
+  const values: Array<{ kind: WishBottleDisplayStarKind; representedStars: number }> = [
+    { kind: 'myriad', representedStars: 10000 },
+    { kind: 'thousand', representedStars: 1000 },
+    { kind: 'hundred', representedStars: 100 },
+    { kind: 'ten', representedStars: 10 },
+    { kind: 'single', representedStars: 1 },
+  ]
+
   if (totalStars <= 0) {
     return {
       hiddenStars: 0,
-      kinds: [] as WishBottleDisplayStarKind[],
+      stars: [] as Array<{ kind: WishBottleDisplayStarKind; representedStars: number }>,
     }
   }
 
-  if (totalStars <= WISH_BOTTLE_MAX_DISPLAY_STARS) {
-    return {
-      hiddenStars: 0,
-      kinds: Array.from({ length: totalStars }, () => 'single' as const),
+  const stars: Array<{ kind: WishBottleDisplayStarKind; representedStars: number }> = []
+  let remainingStars = totalStars
+
+  for (const item of values) {
+    const count = Math.floor(remainingStars / item.representedStars)
+
+    for (let index = 0; index < count; index += 1) {
+      stars.push(item)
+    }
+
+    remainingStars %= item.representedStars
+  }
+
+  while (stars.length > WISH_BOTTLE_MAX_DISPLAY_STARS) {
+    const lastStar = stars.pop()
+    if (!lastStar) {
+      break
     }
   }
 
-  const maxTenfoldCount = Math.min(Math.floor(totalStars / WISH_BOTTLE_TEN_STAR_VALUE), WISH_BOTTLE_MAX_DISPLAY_STARS)
-
-  for (let tenfoldCount = maxTenfoldCount; tenfoldCount >= 1; tenfoldCount -= 1) {
-    const singleCount = totalStars - tenfoldCount * WISH_BOTTLE_TEN_STAR_VALUE
-
-    if (singleCount >= 0 && tenfoldCount + singleCount <= WISH_BOTTLE_MAX_DISPLAY_STARS) {
-      return {
-        hiddenStars: 0,
-        kinds: buildWishBottleStarKinds(tenfoldCount, singleCount),
-      }
-    }
-  }
-
-  const representedTenfoldCount = Math.min(WISH_BOTTLE_MAX_DISPLAY_STARS, Math.floor(totalStars / WISH_BOTTLE_TEN_STAR_VALUE))
-  const representedStars = representedTenfoldCount * WISH_BOTTLE_TEN_STAR_VALUE
+  const representedStars = stars.reduce((total, star) => total + star.representedStars, 0)
 
   return {
     hiddenStars: Math.max(0, totalStars - representedStars),
-    kinds: Array.from({ length: representedTenfoldCount }, () => 'tenfold' as const),
+    stars,
   }
 }
 
-function buildWishBottleStarLayout(displayStarCount: number) {
-  if (displayStarCount <= 0) {
+function buildWishBottleStarLayout(stars: Array<{ kind: WishBottleDisplayStarKind; representedStars: number }>) {
+  if (!stars.length) {
     return []
   }
 
-  const columns = displayStarCount > 20 ? 6 : 5
-  const rows = Math.ceil(displayStarCount / columns)
-  const minX = 45
-  const maxX = 171
-  const minY = 174
-  const maxY = 350
-  const columnGap = columns > 1 ? (maxX - minX) / (columns - 1) : 0
-  const rowGap = rows > 1 ? Math.min(28, (maxY - minY) / Math.max(1, rows - 1)) : 0
-  const densityScale = Math.max(0.46, Math.min(1, rows > 1 ? 7 / rows : 1))
+  const gradeBands: Record<WishBottleDisplayStarKind, { minY: number; maxY: number; minX: number; maxX: number }> = {
+    myriad: { minX: 82, maxX: 134, minY: 175, maxY: 215 },
+    thousand: { minX: 58, maxX: 158, minY: 205, maxY: 255 },
+    hundred: { minX: 48, maxX: 168, minY: 245, maxY: 298 },
+    ten: { minX: 42, maxX: 174, minY: 288, maxY: 338 },
+    single: { minX: 45, maxX: 171, minY: 320, maxY: 356 },
+  }
 
-  return Array.from({ length: displayStarCount }, (_, index) => {
-    const row = Math.floor(index / columns)
-    const column = index % columns
-    const x = minX + column * columnGap + (row % 2 ? Math.min(10, columnGap * 0.42) : 0) + Math.sin(index * 1.83) * Math.min(4, columnGap * 0.16)
-    const y = maxY - row * rowGap + Math.cos(index * 1.42) * Math.min(5, rowGap ? rowGap * 0.24 : 4)
+  const groupedStars = stars.reduce<Record<WishBottleDisplayStarKind, Array<{ kind: WishBottleDisplayStarKind; representedStars: number }>>>((groups, star) => {
+    groups[star.kind].push(star)
+    return groups
+  }, { single: [], ten: [], hundred: [], thousand: [], myriad: [] })
 
-    return {
-      delay: `${index * 42}ms`,
-      duration: `${4.8 + (index % 5) * 0.36}s`,
-      rotate: (index * 43 + 12) % 360,
-      scale: Number((densityScale * (0.82 + ((index * 17) % 38) / 100)).toFixed(2)),
-      x: Math.max(minX, Math.min(maxX, x)),
-      y: Math.max(minY, Math.min(maxY, y)),
-    }
+  const orderedKinds: WishBottleDisplayStarKind[] = ['myriad', 'thousand', 'hundred', 'ten', 'single']
+  const result: Array<{ kind: WishBottleDisplayStarKind; representedStars: number; delay: string; duration: string; rotate: number; scale: number; x: number; y: number }> = []
+
+  orderedKinds.forEach((kind) => {
+    const kindStars = groupedStars[kind]
+    const band = gradeBands[kind]
+    const columns = Math.min(kindStars.length, kind === 'single' || kind === 'ten' ? 6 : 4)
+    const rows = Math.max(1, Math.ceil(kindStars.length / Math.max(1, columns)))
+    const columnGap = columns > 1 ? (band.maxX - band.minX) / (columns - 1) : 0
+    const rowGap = rows > 1 ? (band.maxY - band.minY) / (rows - 1) : 0
+
+    kindStars.forEach((star, index) => {
+      const row = Math.floor(index / Math.max(1, columns))
+      const column = index % Math.max(1, columns)
+      const jitterX = Math.sin(index * 1.9 + star.representedStars) * 3
+      const jitterY = Math.cos(index * 1.4 + star.representedStars) * 3
+
+      result.push({
+        ...star,
+        delay: `${result.length * 42}ms`,
+        duration: `${getWishBottleStarMotionDuration(star.kind) + (result.length % 3) * 0.4}s`,
+        rotate: (index * 47 + star.representedStars) % 360,
+        scale: getWishBottleStarScale(star.kind),
+        x: band.minX + column * columnGap + (row % 2 ? Math.min(8, columnGap * 0.4) : 0) + jitterX,
+        y: band.maxY - row * rowGap + jitterY,
+      })
+    })
   })
+
+  return result
+}
+
+function getWishBottleStarScale(kind: WishBottleDisplayStarKind) {
+  if (kind === 'myriad') return 1.34
+  if (kind === 'thousand') return 1.24
+  if (kind === 'hundred') return 1.08
+  if (kind === 'ten') return 0.98
+  return 0.82
+}
+
+function getWishBottleStarMotionDuration(kind: WishBottleDisplayStarKind) {
+  if (kind === 'myriad') return 14
+  if (kind === 'thousand') return 12
+  if (kind === 'hundred') return 10
+  if (kind === 'ten') return 8
+  return 5.6
 }
 
 function buildWishBottleDisplayedStars(totalStars: number) {
   const compactedStars = compactWishBottleStarKinds(totalStars)
-  const positionedStars = buildWishBottleStarLayout(compactedStars.kinds.length)
-
-  const stars: WishBottleDisplayStar[] = positionedStars.map((star, index) => {
-    const kind = compactedStars.kinds[index]
-    const representedStars = kind === 'tenfold' ? WISH_BOTTLE_TEN_STAR_VALUE : 1
-    const scaleMultiplier = kind === 'tenfold' ? 1.22 : 1
-
-    return {
-      ...star,
-      kind,
-      representedStars,
-      scale: Number((star.scale * scaleMultiplier).toFixed(2)),
-    }
-  })
+  const positionedStars = buildWishBottleStarLayout(compactedStars.stars)
+  const stars: WishBottleDisplayStar[] = positionedStars.map((star) => ({ ...star }))
 
   return {
     hiddenStars: compactedStars.hiddenStars,
     stars,
-    usesTenfoldStars: compactedStars.kinds.includes('tenfold'),
+    usesCompoundStars: compactedStars.stars.some((star) => star.kind !== 'single'),
   }
 }
 
@@ -169,7 +156,6 @@ type HomeThreadSummary = {
 }
 
 const viewerName = computed(() => authStore.currentMember?.displayName ?? '我们')
-const nearestDueWishes = computed(() => wishStore.nearestDueWishes.slice(0, 3))
 const recentlyUpdatedWishes = computed(() => wishStore.sortedWishes.filter((wish) => wish.status === 'active').slice(0, 3))
 const wishBottleSnapshot = computed(() => wishStore.wishBottleSnapshot)
 const wishBottleCountStarCount = computed(() => {
@@ -185,8 +171,8 @@ const visibleWishBottleStars = computed(() => {
   return wishBottleDisplayedStarsPlan.value.stars
 })
 const RECENT_THREAD_WINDOW_DAYS = 14
-const wishBottleUsesTenfoldStars = computed(() => {
-  return wishBottleDisplayedStarsPlan.value.usesTenfoldStars
+const wishBottleUsesCompoundStars = computed(() => {
+  return wishBottleDisplayedStarsPlan.value.usesCompoundStars
 })
 const wishBottleHiddenStarCount = computed(() => {
   return wishBottleDisplayedStarsPlan.value.hiddenStars
@@ -234,15 +220,11 @@ const recentMemberCards = computed(() => {
 })
 const sharedLatestMoment = computed(() => latestHomeThreads.value.find((thread) => thread.actorId === null) ?? null)
 const heroPrimaryWish = computed(() => {
-  return nearestDueWishes.value[0] ?? recentlyUpdatedWishes.value[0] ?? wishStore.wishes[0] ?? null
+  return recentlyUpdatedWishes.value[0] ?? wishStore.wishes[0] ?? null
 })
 const heroPrimaryWishCaption = computed(() => {
   if (!heroPrimaryWish.value) {
     return '先写下一条愿望，让今天先有一件值得关心的事。'
-  }
-
-  if (nearestDueWishes.value[0]?.id === heroPrimaryWish.value.id) {
-    return getRelativeDueLabel(heroPrimaryWish.value.dueDate)
   }
 
   return getWishProgressHint(heroPrimaryWish.value)
@@ -266,9 +248,9 @@ const stageMetrics = computed(() => {
   const snapshot = wishBottleSnapshot.value
   const displayStarCount = wishBottleDisplayStarCount.value
   const starNote = wishBottleHiddenStarCount.value
-    ? `金描边大星按 10 颗计，另有 ${wishBottleHiddenStarCount.value} 颗收起`
-    : wishBottleUsesTenfoldStars.value
-      ? '金描边大星按 10 颗计'
+    ? `高阶星等已折叠显示，另有 ${wishBottleHiddenStarCount.value} 颗收起`
+    : wishBottleUsesCompoundStars.value
+      ? '星星会按 10 / 100 / 1000 / 10000 合成高阶星等'
       : '数字推进和完成步骤都会落成星星'
 
   return [
@@ -314,52 +296,6 @@ const bottleMoodChips = computed(() => {
 
   return chips
 })
-
-function getLocalDateTimestamp(dateValue: string) {
-  const trimmedValue = dateValue.trim()
-
-  if (!trimmedValue) {
-    return null
-  }
-
-  const [yearText, monthText, dayText] = trimmedValue.split('-')
-  const year = Number(yearText)
-  const month = Number(monthText)
-  const day = Number(dayText)
-
-  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
-    return null
-  }
-
-  const timestamp = new Date(year, month - 1, day).getTime()
-  return Number.isNaN(timestamp) ? null : timestamp
-}
-
-function getRelativeDueLabel(dueDate: string) {
-  const dueTimestamp = getLocalDateTimestamp(dueDate)
-
-  if (dueTimestamp === null) {
-    return '没有设定日期，慢慢来'
-  }
-
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const dayDifference = Math.round((dueTimestamp - today.getTime()) / (24 * 60 * 60 * 1000))
-
-  if (dayDifference < 0) {
-    return `已经过了约定的日子 ${Math.abs(dayDifference)} 天`
-  }
-
-  if (dayDifference === 0) {
-    return '就是今天'
-  }
-
-  if (dayDifference === 1) {
-    return '明天就到约定的日子'
-  }
-
-  return `离希望完成的日子还有 ${dayDifference} 天`
-}
 
 function getWishProgressHint(wish: WishRecord) {
   const progressSnapshot = wishStore.getWishProgressSnapshot(wish)
@@ -642,8 +578,8 @@ function formatRecentThreadTime(timestamp: string) {
           </span>
         </h1>
 
-        <article class="priority-card is-primary-focus">
-          <div class="priority-head">
+        <article class="focus-card is-primary-focus">
+          <div class="focus-head">
             <div class="section-icon is-quill" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none">
                 <path d="M14 4l6 6" />
@@ -652,13 +588,13 @@ function formatRecentThreadTime(timestamp: string) {
             </div>
           </div>
 
-          <div class="priority-body">
+          <div class="focus-body">
             <h2>{{ heroPrimaryWish?.title ?? '先写下一条愿望' }}</h2>
-            <p class="priority-copy">{{ heroPrimaryWishCaption }}</p>
+            <p class="focus-copy">{{ heroPrimaryWishCaption }}</p>
           </div>
 
-          <div class="priority-footer">
-            <RouterLink class="priority-link" :to="heroPrimaryActionTo">
+          <div class="focus-footer">
+            <RouterLink class="focus-link" :to="heroPrimaryActionTo">
               {{ heroPrimaryActionLabel }}
             </RouterLink>
           </div>
@@ -744,6 +680,13 @@ function formatRecentThreadTime(timestamp: string) {
                     <stop offset=".68" stop-color="#ffb83f" />
                     <stop offset="1" stop-color="#fff2bf" />
                   </linearGradient>
+                  <linearGradient id="wish-bottle-platinum-star-fill-duet" x1="-12" y1="-12" x2="14" y2="16" gradientUnits="userSpaceOnUse">
+                    <stop offset="0" stop-color="#ffffff" />
+                    <stop offset=".26" stop-color="#f2f6fb" />
+                    <stop offset=".52" stop-color="#b8c4cf" />
+                    <stop offset=".74" stop-color="#fffdf7" />
+                    <stop offset="1" stop-color="#8fa0ae" />
+                  </linearGradient>
                   <filter id="wish-bottle-glass-blur-duet" x="-30%" y="-30%" width="160%" height="160%">
                     <feGaussianBlur stdDeviation="0.45" />
                   </filter>
@@ -827,7 +770,7 @@ function formatRecentThreadTime(timestamp: string) {
                     >
                       <g
                         class="wish-bottle-svg-star"
-                        :class="{ 'is-tenfold-star': star.kind === 'tenfold' }"
+                        :class="`is-${star.kind}-star`"
                         :style="{
                           '--wish-star-delay': star.delay,
                           '--wish-star-duration': star.duration,
@@ -835,9 +778,35 @@ function formatRecentThreadTime(timestamp: string) {
                           '--wish-star-scale': star.scale,
                         }"
                       >
-                        <template v-if="star.kind === 'tenfold'">
+                        <template v-if="star.kind === 'myriad'">
+                          <ellipse class="wish-bottle-star-orbit is-platinum-outer" cx="0" cy="0" rx="17" ry="9" />
+                          <ellipse class="wish-bottle-star-orbit is-platinum-inner" cx="0" cy="0" rx="11" ry="6" />
+                          <circle class="wish-bottle-star-orbit-dot" cx="15" cy="0" r="1.45" />
+                          <path :d="WISH_BOTTLE_STAR_PATH" fill="url(#wish-bottle-platinum-star-fill-duet)" filter="url(#wish-bottle-ten-star-glow-duet)" />
+                          <path :d="WISH_BOTTLE_STAR_PATH" class="wish-bottle-star-material-shine" />
+                        </template>
+                        <template v-else-if="star.kind === 'thousand'">
+                          <ellipse class="wish-bottle-star-orbit is-gold-outer" cx="0" cy="0" rx="16" ry="8" />
+                          <ellipse class="wish-bottle-star-orbit is-gold-inner" cx="0" cy="0" rx="10" ry="5.4" />
+                          <circle class="wish-bottle-star-orbit-dot" cx="16" cy="0" r="1.2" />
                           <path :d="WISH_BOTTLE_STAR_PATH" fill="url(#wish-bottle-ten-star-fill-duet)" filter="url(#wish-bottle-ten-star-glow-duet)" />
-                          <path :d="WISH_BOTTLE_STAR_PATH" class="wish-bottle-ten-star-outline" />
+                          <path :d="WISH_BOTTLE_STAR_PATH" class="wish-bottle-star-material-shine" />
+                        </template>
+                        <template v-else-if="star.kind === 'hundred'">
+                          <path :d="WISH_BOTTLE_STAR_PATH" fill="url(#wish-bottle-platinum-star-fill-duet)" filter="url(#wish-bottle-ten-star-glow-duet)" />
+                          <path :d="WISH_BOTTLE_STAR_PATH" class="wish-bottle-star-material-shine" />
+                          <path :d="WISH_BOTTLE_STAR_PATH" class="wish-bottle-tier-star-outline" />
+                          <circle class="wish-bottle-tier-star-particle" r="1.15">
+                            <animateMotion :path="WISH_BOTTLE_STAR_PATH" dur="4.4s" repeatCount="indefinite" />
+                          </circle>
+                        </template>
+                        <template v-else-if="star.kind === 'ten'">
+                          <path :d="WISH_BOTTLE_STAR_PATH" fill="url(#wish-bottle-ten-star-fill-duet)" filter="url(#wish-bottle-ten-star-glow-duet)" />
+                          <path :d="WISH_BOTTLE_STAR_PATH" class="wish-bottle-star-material-shine" />
+                          <path :d="WISH_BOTTLE_STAR_PATH" class="wish-bottle-tier-star-outline" />
+                          <circle class="wish-bottle-tier-star-particle" r="1">
+                            <animateMotion :path="WISH_BOTTLE_STAR_PATH" dur="3.8s" repeatCount="indefinite" />
+                          </circle>
                         </template>
                         <template v-else>
                           <path :d="WISH_BOTTLE_STAR_PATH" fill="url(#wish-bottle-star-grad-duet)" filter="url(#wish-bottle-star-glow-duet)" />
@@ -980,16 +949,16 @@ function formatRecentThreadTime(timestamp: string) {
                 </svg>
               </div>
               <div class="lane-head-copy">
-                <h3>离约定最近</h3>
-                <p>先把最靠近日期的几条挑出来。</p>
+                <h3>最近推进</h3>
+                <p>先回到刚有动静的几条愿望。</p>
               </div>
             </div>
 
-            <div v-if="nearestDueWishes.length" class="lane-list">
-              <article v-for="wish in nearestDueWishes" :key="wish.id" class="lane-row">
+            <div v-if="recentlyUpdatedWishes.length" class="lane-list">
+              <article v-for="wish in recentlyUpdatedWishes" :key="wish.id" class="lane-row">
                 <div class="lane-row-copy">
                   <strong>{{ wish.title }}</strong>
-                  <p>{{ getRelativeDueLabel(wish.dueDate) }}</p>
+                  <p>{{ getWishProgressHint(wish) }}</p>
                 </div>
                 <RouterLink class="lane-link" :to="{ name: 'wish-detail', params: { id: wish.id } }">
                   查看
@@ -998,8 +967,8 @@ function formatRecentThreadTime(timestamp: string) {
             </div>
 
             <div v-else class="lane-empty">
-              <h3>这里还没有靠近日期的愿望</h3>
-              <p>等你给愿望设下日期，这里就会先放出来。</p>
+              <h3>这里还没有推进中的愿望</h3>
+              <p>写下一条愿望，或给已有愿望添一步进展。</p>
             </div>
           </section>
 
@@ -1190,7 +1159,7 @@ function formatRecentThreadTime(timestamp: string) {
   font-weight: 400;
 }
 
-.priority-card h2,
+.focus-card h2,
 .section-head h2,
 .journal-feature h3,
 .lane-head h3,
@@ -1200,7 +1169,7 @@ function formatRecentThreadTime(timestamp: string) {
   font-weight: 600;
 }
 
-.priority-card h2 {
+.focus-card h2 {
   font-size: var(--type-card-title-size);
   line-height: var(--type-card-title-line);
   letter-spacing: var(--type-card-title-tracking);
@@ -1253,7 +1222,7 @@ function formatRecentThreadTime(timestamp: string) {
 
 .atelier-stage-copy,
 .atelier-stage-hint,
-.priority-copy,
+.focus-copy,
 .lane-head p,
 .lane-row p,
 .lane-empty p,
@@ -1280,7 +1249,7 @@ function formatRecentThreadTime(timestamp: string) {
   letter-spacing: var(--type-supporting-spacing);
 }
 
-.priority-link,
+.focus-link,
 .lane-link {
   display: inline-flex;
   align-items: center;
@@ -1298,14 +1267,14 @@ function formatRecentThreadTime(timestamp: string) {
     box-shadow 180ms ease;
 }
 
-.priority-link,
+.focus-link,
 .lane-link {
   background: var(--warm-panel);
   color: var(--atelier-ink);
   border: 1px solid var(--atelier-line);
 }
 
-.priority-card,
+.focus-card,
 .atelier-lane,
 .journal-feature,
 .atelier-metric-card {
@@ -1314,14 +1283,14 @@ function formatRecentThreadTime(timestamp: string) {
   box-shadow: var(--shadow-card);
 }
 
-.priority-card {
+.focus-card {
   display: grid;
   gap: 0.9rem;
   padding: 1rem 1rem 1.04rem;
   border-radius: var(--radius-xl);
 }
 
-.priority-card.is-primary-focus {
+.focus-card.is-primary-focus {
   gap: 1rem;
   padding: 1.18rem;
   border-color: var(--accent-border);
@@ -1331,8 +1300,8 @@ function formatRecentThreadTime(timestamp: string) {
   box-shadow: var(--shadow-raised);
 }
 
-.priority-head,
-.priority-footer,
+.focus-head,
+.focus-footer,
 .lane-row,
 .section-head,
 .lane-head {
@@ -1348,17 +1317,17 @@ function formatRecentThreadTime(timestamp: string) {
   gap: 0.2rem;
 }
 
-.priority-head {
+.focus-head {
   align-items: center;
 }
 
-.priority-body {
+.focus-body {
   display: grid;
   gap: 0.46rem;
   max-width: 32ch;
 }
 
-.priority-card h2 {
+.focus-card h2 {
   max-width: 16ch;
   font-size: var(--type-card-title-size);
   line-height: var(--type-card-title-line);
@@ -1366,7 +1335,7 @@ function formatRecentThreadTime(timestamp: string) {
   text-wrap: balance;
 }
 
-.priority-copy {
+.focus-copy {
   max-width: 34ch;
   color: var(--text-muted);
   font-size: var(--type-l6-size);
@@ -1383,7 +1352,7 @@ function formatRecentThreadTime(timestamp: string) {
   color: var(--atelier-ink);
 }
 
-.priority-footer {
+.focus-footer {
   display: grid;
   gap: 0.48rem;
   justify-items: start;
@@ -1392,14 +1361,14 @@ function formatRecentThreadTime(timestamp: string) {
   border-top: 1px solid var(--warm-border-soft);
 }
 
-.priority-link,
+.focus-link,
 .lane-link {
   flex-shrink: 0;
   min-height: 44px;
   padding: 0.64rem 0.96rem;
 }
 
-.priority-link {
+.focus-link {
   min-height: 40px;
   padding: 0.62rem 1rem;
   background: linear-gradient(135deg, var(--atelier-rose), var(--atelier-rose-deep));
@@ -1868,6 +1837,10 @@ function formatRecentThreadTime(timestamp: string) {
   --wish-star-2: #8fdcff;
   --wish-star-3: #2b8fe3;
   --wish-star-glow: rgba(70, 165, 235, 0.55);
+  --wish-star-outline: rgba(73, 150, 220, 0.9);
+  --wish-orbit-strong: rgba(73, 150, 220, 0.88);
+  --wish-orbit-soft: rgba(143, 220, 255, 0.62);
+  --wish-orbit-dot: #d8f4ff;
   --wish-ribbon-1: #f7a8c4;
   --wish-ribbon-2: #d85f93;
   --wish-ribbon-3: #fff2f7;
@@ -1894,6 +1867,10 @@ function formatRecentThreadTime(timestamp: string) {
   --wish-star-2: #64d994;
   --wish-star-3: #158c5d;
   --wish-star-glow: rgba(51, 177, 112, 0.52);
+  --wish-star-outline: rgba(51, 177, 112, 0.9);
+  --wish-orbit-strong: rgba(51, 177, 112, 0.88);
+  --wish-orbit-soft: rgba(155, 231, 180, 0.64);
+  --wish-orbit-dot: #effff6;
   --wish-ribbon-1: #9be7b4;
   --wish-ribbon-2: #2aa56a;
   --wish-ribbon-3: #f1fff6;
@@ -1908,6 +1885,10 @@ function formatRecentThreadTime(timestamp: string) {
   --wish-star-2: #ff9b4a;
   --wish-star-3: #cf5520;
   --wish-star-glow: rgba(236, 119, 55, 0.56);
+  --wish-star-outline: rgba(236, 119, 55, 0.9);
+  --wish-orbit-strong: rgba(236, 119, 55, 0.88);
+  --wish-orbit-soft: rgba(255, 189, 154, 0.66);
+  --wish-orbit-dot: #fff1df;
   --wish-ribbon-1: #ffbd9a;
   --wish-ribbon-2: #d9673d;
   --wish-ribbon-3: #fff1df;
@@ -1922,6 +1903,10 @@ function formatRecentThreadTime(timestamp: string) {
   --wish-star-2: #f4c64f;
   --wish-star-3: #c9791f;
   --wish-star-glow: rgba(234, 179, 64, 0.62);
+  --wish-star-outline: rgba(234, 179, 64, 0.94);
+  --wish-orbit-strong: rgba(234, 179, 64, 0.92);
+  --wish-orbit-soft: rgba(255, 223, 122, 0.68);
+  --wish-orbit-dot: #fff3c4;
   --wish-ribbon-1: #f9c773;
   --wish-ribbon-2: #c97a25;
   --wish-ribbon-3: #fff3c4;
@@ -1936,6 +1921,10 @@ function formatRecentThreadTime(timestamp: string) {
   --wish-star-2: #ff9ec1;
   --wish-star-3: #50d7e9;
   --wish-star-glow: rgba(255, 211, 94, 0.78);
+  --wish-star-outline: rgba(195, 123, 255, 0.9);
+  --wish-orbit-strong: rgba(255, 158, 193, 0.9);
+  --wish-orbit-soft: rgba(80, 215, 233, 0.72);
+  --wish-orbit-dot: #fff6bf;
   --wish-ribbon-1: #ffd1dc;
   --wish-ribbon-2: #c37bff;
   --wish-ribbon-3: #fff6bf;
@@ -1950,6 +1939,10 @@ function formatRecentThreadTime(timestamp: string) {
   --wish-star-2: #dce7f3;
   --wish-star-3: #b0c1d6;
   --wish-star-glow: rgba(133, 162, 203, 0.18);
+  --wish-star-outline: rgba(141, 170, 211, 0.52);
+  --wish-orbit-strong: rgba(141, 170, 211, 0.48);
+  --wish-orbit-soft: rgba(207, 221, 239, 0.42);
+  --wish-orbit-dot: #f6f9fd;
   --wish-ribbon-1: #ecd7df;
   --wish-ribbon-2: #c39bab;
   --wish-ribbon-3: #fff6f8;
@@ -2101,21 +2094,75 @@ function formatRecentThreadTime(timestamp: string) {
 
 .wish-bottle-star-highlight {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.24);
-  stroke-width: 0.92;
+  stroke: var(--wish-star-outline);
+  stroke-width: 1.05;
   stroke-linejoin: round;
-  opacity: 0.6;
+  opacity: 0.52;
+}
+
+.wish-bottle-star-material-shine,
+.wish-bottle-tier-star-outline {
+  fill: none;
+  stroke-linejoin: round;
+}
+
+.wish-bottle-star-material-shine {
+  stroke: rgba(255, 255, 255, 0.62);
+  stroke-width: 0.9;
+  opacity: 0.66;
+}
+
+.wish-bottle-tier-star-outline {
+  stroke: var(--wish-star-outline);
+  stroke-width: 1.08;
+  opacity: 0.84;
+  filter: drop-shadow(0 0 4px var(--wish-orbit-soft));
+}
+
+.wish-bottle-tier-star-particle {
+  fill: var(--wish-orbit-dot);
+  filter: drop-shadow(0 0 4px var(--wish-orbit-strong)) drop-shadow(0 0 7px var(--wish-orbit-soft));
+  opacity: 0.96;
+}
+
+.wish-bottle-star-orbit {
+  fill: none;
+  stroke-linecap: round;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.wish-bottle-star-orbit.is-platinum-outer,
+.wish-bottle-star-orbit.is-gold-outer {
+  stroke: var(--wish-orbit-strong);
+  stroke-width: 1.05;
+  stroke-dasharray: 15 10;
+  animation: bottle-star-orbit-flow 12s linear infinite;
+}
+
+.wish-bottle-star-orbit.is-platinum-inner,
+.wish-bottle-star-orbit.is-gold-inner {
+  stroke: var(--wish-orbit-soft);
+  stroke-width: 0.86;
+  stroke-dasharray: 5 8;
+  animation: bottle-star-orbit-flow 9s linear infinite reverse;
+}
+
+.wish-bottle-star-orbit-dot {
+  fill: var(--wish-orbit-dot);
+  filter: drop-shadow(0 0 4px var(--wish-orbit-soft));
+  opacity: 0.9;
 }
 
 .wish-bottle-ten-star-outline {
   fill: none;
-  stroke: url(#wish-bottle-ten-star-outline-duet);
-  stroke-width: 1.4;
+  stroke: var(--wish-star-outline);
+  stroke-width: 1.08;
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-dasharray: 12 8;
-  opacity: 0.94;
-  filter: url(#wish-bottle-ten-star-glow-duet);
+  opacity: 0.84;
+  filter: drop-shadow(0 0 4px var(--wish-orbit-soft));
   animation: bottle-ten-star-outline-flow 3.2s linear infinite;
 }
 
@@ -2255,10 +2302,22 @@ function formatRecentThreadTime(timestamp: string) {
     opacity: 0.62;
     transform: scale(1.02) rotate(12deg);
   }
+
+@keyframes bottle-star-orbit-flow {
+  0% {
+    stroke-dashoffset: 0;
+    transform: rotate(0deg);
+  }
+
+  100% {
+    stroke-dashoffset: -54;
+    transform: rotate(360deg);
+  }
+}
 }
 
 @media (hover: hover) {
-  .priority-link:hover,
+  .focus-link:hover,
   .lane-link:hover,
   .atelier-mini-link:hover {
     transform: translateY(-1px);
@@ -2306,8 +2365,8 @@ function formatRecentThreadTime(timestamp: string) {
 
   .atelier-marquee,
   .section-head,
-  .priority-head,
-  .priority-footer,
+  .focus-head,
+  .focus-footer,
   .lane-row,
   .lane-head {
     flex-direction: column;
@@ -2331,7 +2390,7 @@ function formatRecentThreadTime(timestamp: string) {
     min-height: clamp(260px, 72vw, 330px);
   }
 
-  .priority-card,
+  .focus-card,
   .atelier-lane,
   .journal-member-card,
   .atelier-progress-hero {
@@ -2354,19 +2413,19 @@ function formatRecentThreadTime(timestamp: string) {
   }
 
   .atelier-mini-pill,
-  .priority-link {
+  .focus-link {
     width: 100%;
   }
 
-  .priority-card {
+  .focus-card {
     gap: 0.82rem;
   }
 
-  .priority-body {
+  .focus-body {
     gap: 0.34rem;
   }
 
-  .priority-footer {
+  .focus-footer {
     gap: 0.6rem;
     padding-top: 0.24rem;
   }
@@ -2469,7 +2528,7 @@ function formatRecentThreadTime(timestamp: string) {
     animation: none !important;
   }
 
-  .priority-link,
+  .focus-link,
   .lane-link,
   .atelier-mini-link {
     transition: none;
