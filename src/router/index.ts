@@ -2,7 +2,7 @@ import { createRouter, createWebHashHistory, createWebHistory, type RouteRecordR
 import HomePage from '../pages/HomeAtelier.vue'
 import ListPage from '../pages/List.vue'
 import ComposePage from '../pages/ComposeAtelier.vue'
-import StatsPage from '../pages/Stats.vue'
+import ReviewPage from '../pages/MonthlyReviewPreview.vue'
 import WishDetailPage from '../pages/WishDetailAtelier.vue'
 import SettingsPage from '../pages/Settings.vue'
 
@@ -33,7 +33,7 @@ const routes: RouteRecordRaw[] = [
     path: '/review',
     alias: '/stats',
     name: 'review',
-    component: StatsPage,
+    component: ReviewPage,
   },
   {
     path: '/space',
@@ -53,6 +53,11 @@ if (import.meta.env.DEV) {
     path: '/dev/wish-bottle-stars',
     name: 'dev-wish-bottle-stars',
     component: () => import('../pages/WishBottleStarDemo.vue'),
+  })
+  routes.push({
+    path: '/dev/monthly-review-preview',
+    name: 'dev-monthly-review-preview',
+    component: () => import('../pages/MonthlyReviewPreview.vue'),
   })
 }
 
