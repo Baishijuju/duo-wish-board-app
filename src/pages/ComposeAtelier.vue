@@ -1,16 +1,14 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useComposePreviewState } from '../composables/useComposePreviewState'
 
 const {
   addInitialStepField,
   applyCategory,
-  authStore,
   cancelEditing,
   categorySuggestions,
   composerHeadline,
-  composerLead,
   draft,
   draftNotePreview,
   draftTitlePreview,
@@ -19,11 +17,11 @@ const {
   feedbackTone,
   initialStepCount,
   initialStepDrafts,
+  lastSavedWishId,
   progressOptions,
   progressSummary,
   removeInitialStepField,
   starCoinTotalSummary,
-  selectedOwnerLabel,
   submitWish,
   viewerName,
 } = useComposePreviewState({ allowEditing: true })
@@ -32,43 +30,17 @@ const feedbackToneClass = computed(() => {
   return `compose-preview-feedback-${feedbackTone.value}`
 })
 
-const isSupplementaryOpen = ref(false)
-
-watch(
-  () => editingWish.value?.id ?? '',
-  (wishId) => {
-    isSupplementaryOpen.value = !!wishId
-  },
-  { immediate: true },
-)
-
 const stepPreview = computed(() => {
   return initialStepDrafts.value.map((step) => step.title.trim()).filter(Boolean).slice(0, 4)
 })
 
-const shouldShowSummaryStage = computed(() => {
-  return isSupplementaryOpen.value || !!editingWish.value
-})
-
-const supplementaryToggleLabel = computed(() => {
-  return isSupplementaryOpen.value ? '先写到这里' : '再补一些细节'
-})
-
 const submitButtonLabel = computed(() => {
-  return editingWish.value ? '保存这次整理' : '先写下这条愿望'
+  return editingWish.value ? '保存这次整理' : '保存这条完整愿望'
 })
 
 const previewStageTitle = computed(() => {
-  return editingWish.value ? '这页整理后会变成这样' : '补充之后，这页会慢慢变成这样'
+  return editingWish.value ? '这页整理后会变成这样' : '写完整之后，这页会先变成这样'
 })
-
-function toggleSupplementaryFields() {
-  if (editingWish.value) {
-    return
-  }
-
-  isSupplementaryOpen.value = !isSupplementaryOpen.value
-}
 </script>
 
 <template>
@@ -81,13 +53,18 @@ function toggleSupplementaryFields() {
             <span class="compose-atelier-hero-name">{{ viewerName }}</span>
             <span class="compose-atelier-hero-headline">{{ composerHeadline }}</span>
           </h1>
-          <p class="compose-preview-hero-copy-note">{{ composerLead }}</p>
         </div>
       </header>
 
-      <div class="compose-preview-grid" :class="{ 'is-single-stage': !shouldShowSummaryStage }">
+      <div class="compose-preview-grid">
         <form id="compose-atelier-form" class="compose-preview-form-stage" @submit.prevent="submitWish">
-          <section class="compose-preview-core-stage">
+          <section class="compose-preview-core-stage compose-form-block compose-form-block-main">
+            <header class="compose-form-block-head">
+              <div>
+                <h2>它叫什么，为什么现在想实现？</h2>
+              </div>
+            </header>
+
             <label class="compose-field compose-field-title">
               <span>愿望名字</span>
               <input v-model="draft.title" type="text" maxlength="36" placeholder="例如：一起去看海边的日出" />
@@ -99,87 +76,48 @@ function toggleSupplementaryFields() {
                 v-model="draft.note"
                 rows="3"
                 maxlength="180"
-                placeholder="先留一句就够，比如为什么现在想把它写下来。"
+                placeholder="认真写一句为什么现在想实现它，之后回看会更有力量。"
               />
             </label>
 
-            <div class="compose-preview-primary-actions">
-              <button type="submit" class="compose-primary-button compose-primary-button-inline">
-                {{ submitButtonLabel }}
-              </button>
-              <button
-                v-if="!editingWish"
-                type="button"
-                class="compose-secondary-button"
-                @click="toggleSupplementaryFields()"
-              >
-                {{ supplementaryToggleLabel }}
-              </button>
-              <button v-else type="button" class="compose-secondary-button" @click="cancelEditing()">
+            <div v-if="editingWish" class="compose-preview-primary-actions">
+              <button type="button" class="compose-secondary-button" @click="cancelEditing()">
                 回详情页
               </button>
             </div>
-
-            <p v-if="feedbackMessage" class="compose-preview-feedback" :class="feedbackToneClass" role="status" aria-live="polite">{{ feedbackMessage }}</p>
           </section>
 
-          <section v-if="isSupplementaryOpen || editingWish" class="compose-preview-supplementary-stage">
-            <header class="compose-preview-supplementary-head">
-              <div>
-                <p class="eyebrow">补充这条愿望</p>
-                <h2>这些都可以慢一点再决定</h2>
-              </div>
-              <button v-if="!editingWish" type="button" class="compose-inline-action" @click="toggleSupplementaryFields()">
-                先写到这里
-              </button>
-            </header>
-
-            <div class="compose-preview-chip-row" aria-label="分类建议">
-              <button
-                v-for="category in categorySuggestions"
-                :key="category"
-                type="button"
-                class="compose-chip"
-                :class="{ active: draft.category === category }"
-                @click="applyCategory(category)"
-              >
-                {{ category }}
-              </button>
-            </div>
-
-            <label class="compose-field compact">
-              <span>分类</span>
-              <input v-model="draft.category" type="text" maxlength="20" placeholder="旅行 / 生活 / 成长" />
-            </label>
-
-            <section class="compose-preview-section">
-              <header class="compose-preview-section-head">
+          <section class="compose-preview-supplementary-stage">
+            <section class="compose-form-block compose-form-block-compact">
+              <header class="compose-form-block-head">
                 <div>
-                  <p class="eyebrow">这是谁的愿望</p>
-                  <h2>星星币会进入归属人的余额</h2>
+                  <h2>以后要找它时，一眼就能认出来。</h2>
                 </div>
-                <span>{{ selectedOwnerLabel }}</span>
               </header>
 
-              <div class="compose-preview-member-row">
+              <label class="compose-field compact">
+                <span>分类</span>
+                <input v-model="draft.category" type="text" maxlength="20" placeholder="旅行 / 生活 / 成长" />
+              </label>
+
+              <div class="compose-preview-chip-row" aria-label="分类建议">
                 <button
-                  v-for="member in authStore.members"
-                  :key="member.id"
+                  v-for="category in categorySuggestions"
+                  :key="category"
                   type="button"
-                  class="compose-member-chip"
-                  :class="{ active: draft.ownerId === member.id }"
-                  @click="draft.ownerId = member.id"
+                  class="compose-chip"
+                  :class="{ active: draft.category === category }"
+                  @click="applyCategory(category)"
                 >
-                  {{ member.displayName }}
+                  {{ category }}
                 </button>
               </div>
             </section>
 
-            <section class="compose-preview-section">
-              <header class="compose-preview-section-head">
+            <section class="compose-form-block compose-form-block-progress">
+              <header class="compose-form-block-head">
                 <div>
-                  <p class="eyebrow">慢慢靠近的方式</p>
-                  <h2>等你愿意时，再决定怎么记进度</h2>
+                  <h2>选一种推进方式，再写下第一步。</h2>
                 </div>
               </header>
 
@@ -260,37 +198,43 @@ function toggleSupplementaryFields() {
               </div>
             </section>
 
-            <div class="compose-preview-bottom-row">
-              <label class="compose-field compact">
-                <span>最终完成额外星星币</span>
-                <input v-model.number="draft.completionStarCoinBonus" type="number" min="0" step="0.5" />
-              </label>
+            <section class="compose-form-block compose-form-block-finish">
+              <header class="compose-form-block-head">
+                <div>
+                  <h2>给未来那个做到的人留一点甜。</h2>
+                </div>
+              </header>
 
-              <div class="compose-preview-actions">
-                <button v-if="editingWish" type="button" class="compose-secondary-button" @click="cancelEditing()">
-                  回详情页
-                </button>
-                <button v-else type="button" class="compose-secondary-button" @click="toggleSupplementaryFields()">
-                  先写到这里
-                </button>
-                <button type="submit" class="compose-primary-button compose-mobile-submit">
-                  {{ submitButtonLabel }}
-                </button>
+              <div class="compose-preview-bottom-row compose-form-finish-row">
+                <label class="compose-field compact">
+                  <span>最终完成额外星星币</span>
+                  <input v-model.number="draft.completionStarCoinBonus" type="number" min="0" step="0.5" />
+                </label>
+
+                <div class="compose-preview-actions">
+                  <button v-if="editingWish" type="button" class="compose-secondary-button" @click="cancelEditing()">
+                    回详情页
+                  </button>
+                  <button type="submit" class="compose-primary-button compose-mobile-submit">
+                    {{ submitButtonLabel }}
+                  </button>
+                  <div v-if="feedbackMessage && feedbackTone === 'success' && lastSavedWishId" class="compose-preview-feedback compose-preview-feedback-mobile" :class="feedbackToneClass" role="status" aria-live="polite">
+                    <span>{{ feedbackMessage }}</span>
+                    <RouterLink class="compose-preview-feedback-link" :to="{ name: 'wish-detail', params: { id: lastSavedWishId } }">去愿望详情</RouterLink>
+                  </div>
+                  <p v-else-if="feedbackMessage" class="compose-preview-feedback compose-preview-feedback-mobile" :class="feedbackToneClass" role="status" aria-live="polite">{{ feedbackMessage }}</p>
+                </div>
               </div>
-            </div>
+            </section>
           </section>
         </form>
 
-        <aside v-if="shouldShowSummaryStage" class="compose-preview-summary-stage">
+        <aside class="compose-preview-summary-stage">
           <p class="compose-preview-summary-kicker">{{ previewStageTitle }}</p>
           <h2>{{ draftTitlePreview }}</h2>
           <p class="compose-preview-summary-note">{{ draftNotePreview }}</p>
 
           <dl class="compose-preview-meta-list">
-            <div>
-              <dt>归属</dt>
-              <dd>{{ selectedOwnerLabel }}</dd>
-            </div>
             <div>
               <dt>进度</dt>
               <dd>{{ progressSummary }}</dd>
@@ -320,6 +264,11 @@ function toggleSupplementaryFields() {
           <button type="submit" form="compose-atelier-form" class="compose-primary-button compose-preview-submit">
             {{ submitButtonLabel }}
           </button>
+          <div v-if="feedbackMessage && feedbackTone === 'success' && lastSavedWishId" class="compose-preview-feedback compose-preview-feedback-desktop" :class="feedbackToneClass" role="status" aria-live="polite">
+            <span>{{ feedbackMessage }}</span>
+            <RouterLink class="compose-preview-feedback-link" :to="{ name: 'wish-detail', params: { id: lastSavedWishId } }">去愿望详情</RouterLink>
+          </div>
+          <p v-else-if="feedbackMessage" class="compose-preview-feedback compose-preview-feedback-desktop" :class="feedbackToneClass" role="status" aria-live="polite">{{ feedbackMessage }}</p>
         </aside>
       </div>
     </article>
@@ -384,14 +333,6 @@ function toggleSupplementaryFields() {
   font-family: var(--font-display);
 }
 
-.compose-preview-hero-copy-note {
-  margin: 0;
-  max-width: 33ch;
-  color: var(--text-muted);
-  font-size: var(--type-lead-size);
-  line-height: var(--type-lead-line);
-}
-
 .compose-preview-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.34fr) minmax(18rem, 0.66fr);
@@ -409,36 +350,93 @@ function toggleSupplementaryFields() {
 }
 
 .compose-preview-form-stage {
-  padding: 0.88rem;
+  padding: clamp(0.92rem, 2vw, 1.18rem) clamp(0.92rem, 2.4vw, 1.32rem);
   border: 1px solid var(--line-soft);
-  border-radius: 22px;
-  background: var(--warm-panel);
+  border-radius: 28px;
+  background:
+    linear-gradient(180deg, rgba(255, 253, 249, 0.78), rgba(255, 250, 244, 0.42)),
+    var(--surface-card);
 }
 
 .compose-preview-core-stage,
 .compose-preview-supplementary-stage {
   display: grid;
-  gap: 0.82rem;
+  gap: 0;
 }
 
 .compose-preview-supplementary-stage {
-  padding-top: 0.8rem;
-  border-top: 1px solid var(--line-soft);
+  padding-top: 0;
+  border-top: 0;
 }
 
+.compose-form-block {
+  display: grid;
+  grid-template-columns: minmax(8.2rem, 0.28fr) minmax(0, 1fr);
+  column-gap: clamp(0.88rem, 2.4vw, 1.36rem);
+  row-gap: 0.68rem;
+  padding: clamp(0.9rem, 1.8vw, 1.12rem) 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.compose-form-block + .compose-form-block,
+.compose-preview-supplementary-stage .compose-form-block {
+  border-top: 1px solid rgba(126, 96, 76, 0.1);
+}
+
+.compose-form-block:first-child {
+  padding-top: 0;
+}
+
+.compose-form-block > :not(.compose-form-block-head) {
+  grid-column: 2;
+}
+
+.compose-form-block-main {
+  row-gap: 0.52rem;
+}
+
+.compose-form-block-compact {
+  row-gap: 0.58rem;
+}
+
+.compose-form-block-finish {
+  padding-bottom: 0.1rem;
+}
+
+.compose-form-block-head,
 .compose-preview-supplementary-head {
+  grid-row: 1 / -1;
   display: flex;
-  justify-content: space-between;
-  gap: 0.75rem;
-  align-items: end;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.5rem;
+  align-items: stretch;
+  align-self: center;
+  max-width: 12rem;
 }
 
+.compose-form-block-head h2,
 .compose-preview-supplementary-head h2 {
-  margin: 0.1rem 0 0;
+  margin: 0;
   font-family: var(--font-heading);
-  font-size: var(--type-card-title-size);
-  line-height: var(--type-card-title-line);
-  letter-spacing: var(--type-card-title-tracking);
+  font-size: var(--type-l5-size);
+  line-height: var(--type-l5-line);
+  letter-spacing: 0;
+  color: var(--text-muted);
+}
+
+.compose-form-block-head > span {
+  width: fit-content;
+  min-height: 28px;
+  padding: 0.2rem 0.58rem;
+  border: 1px solid rgba(126, 96, 76, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 252, 247, 0.64);
+  color: var(--text-soft);
+  font-size: var(--type-l7-size);
+  line-height: var(--type-l7-line);
 }
 
 .compose-preview-primary-actions {
@@ -448,13 +446,9 @@ function toggleSupplementaryFields() {
   align-items: center;
 }
 
-.compose-primary-button-inline {
-  min-width: 11rem;
-}
-
 .compose-field {
   display: grid;
-  gap: 0.34rem;
+  gap: 0.24rem;
 }
 
 .compose-field span,
@@ -477,13 +471,14 @@ function toggleSupplementaryFields() {
   color: var(--text-main);
   font: inherit;
   font-size: var(--type-l5-size);
-  padding: 0.72rem 0.84rem;
+  padding: 0.58rem 0.72rem;
   transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
 }
 
 .compose-field textarea {
-  min-height: 5.6rem;
-  line-height: 1.6;
+  min-height: 4.35rem;
+  font-size: var(--type-l6-size);
+  line-height: 1.5;
 }
 
 .compose-field input:focus,
@@ -501,20 +496,13 @@ function toggleSupplementaryFields() {
   letter-spacing: var(--type-card-title-tracking);
 }
 
-.compose-preview-chip-row,
-.compose-preview-member-row {
+.compose-preview-chip-row {
   display: flex;
   flex-wrap: wrap;
   gap: 0.46rem;
 }
 
-.compose-preview-member-row.priority-row {
-  flex-wrap: nowrap;
-  gap: 0.4rem;
-}
-
 .compose-chip,
-.compose-member-chip,
 .compose-inline-action,
 .compose-secondary-button,
 .compose-primary-button,
@@ -524,7 +512,6 @@ function toggleSupplementaryFields() {
 }
 
 .compose-chip,
-.compose-member-chip,
 .compose-inline-action,
 .compose-secondary-button,
 .compose-primary-button {
@@ -540,8 +527,7 @@ function toggleSupplementaryFields() {
   text-decoration: none;
 }
 
-.compose-chip.active,
-.compose-member-chip.active {
+.compose-chip.active {
   border-color: var(--accent-border);
   background: var(--accent-panel);
   color: var(--accent-dark);
@@ -627,6 +613,10 @@ function toggleSupplementaryFields() {
 .compose-preview-bottom-row {
   grid-template-columns: minmax(10rem, 0.65fr) minmax(0, 1fr) auto;
   align-items: end;
+}
+
+.compose-form-finish-row {
+  grid-template-columns: minmax(10rem, 0.55fr) minmax(0, 1fr);
 }
 
 .compose-field.compact input {
@@ -824,6 +814,8 @@ function toggleSupplementaryFields() {
 
 .compose-preview-feedback {
   margin: 0;
+  display: grid;
+  gap: 0.46rem;
   padding: 0.62rem 0.76rem;
   border-radius: var(--radius-lg);
   border: 1px solid var(--line-soft);
@@ -832,6 +824,29 @@ function toggleSupplementaryFields() {
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
   letter-spacing: var(--type-supporting-spacing);
+  text-decoration: none;
+}
+
+.compose-preview-feedback-link {
+  justify-self: start;
+  min-height: 1.85rem;
+  padding: 0.28rem 0.66rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  background: rgba(255, 255, 255, 0.58);
+  color: inherit;
+  font-size: var(--type-l7-size);
+  font-weight: 700;
+  line-height: var(--type-l7-line);
+  text-decoration: none;
+}
+
+.compose-preview-feedback-mobile {
+  display: none;
+}
+
+.compose-preview-feedback-desktop {
+  margin-top: 0.62rem;
 }
 
 .compose-preview-feedback-success {
@@ -858,15 +873,6 @@ function toggleSupplementaryFields() {
   background: var(--warning-panel);
 }
 
-.priority-row .compose-member-chip {
-  flex: 1 1 0;
-  min-width: 0;
-  padding: 0.38rem 0.46rem;
-  font-size: var(--type-l7-size);
-  line-height: var(--type-l7-line);
-  text-align: center;
-}
-
 @media (max-width: 960px) {
   .compose-preview-hero,
   .compose-preview-grid {
@@ -879,6 +885,23 @@ function toggleSupplementaryFields() {
 }
 
 @media (max-width: 720px) {
+  .compose-form-block {
+    grid-template-columns: 1fr;
+    padding: 0.9rem 0;
+  }
+
+  .compose-form-block-head {
+    grid-row: auto;
+  }
+
+  .compose-form-block > :not(.compose-form-block-head) {
+    grid-column: 1;
+  }
+
+  .compose-form-block-head {
+    max-width: none;
+  }
+
   .compose-preview-count-grid,
   .compose-preview-bottom-row {
     grid-template-columns: 1fr;
@@ -891,8 +914,23 @@ function toggleSupplementaryFields() {
   }
 
   .compose-preview-step-field {
-    flex-direction: column;
-    align-items: stretch;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .compose-preview-step-field input:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .compose-preview-step-coin-input {
+    flex: none;
+    width: 6.8rem;
+  }
+
+  .compose-preview-step-field .compose-inline-action.subtle {
+    min-height: 35px;
+    padding-inline: 0.82rem;
   }
 
   .compose-preview-actions {
@@ -904,6 +942,14 @@ function toggleSupplementaryFields() {
   }
 
   .compose-preview-submit {
+    display: none;
+  }
+
+  .compose-preview-feedback-mobile {
+    display: block;
+  }
+
+  .compose-preview-feedback-desktop {
     display: none;
   }
 
@@ -928,8 +974,7 @@ function toggleSupplementaryFields() {
     padding: 0.9rem;
   }
 
-  .compose-preview-option-grid,
-  .compose-preview-member-row.priority-row {
+  .compose-preview-option-grid {
     display: grid;
     grid-auto-flow: column;
     grid-auto-columns: max-content;
@@ -939,13 +984,11 @@ function toggleSupplementaryFields() {
     scrollbar-width: none;
   }
 
-  .compose-preview-option-grid::-webkit-scrollbar,
-  .compose-preview-member-row.priority-row::-webkit-scrollbar {
+  .compose-preview-option-grid::-webkit-scrollbar {
     display: none;
   }
 
-  .compose-preview-option-grid > *,
-  .priority-row .compose-member-chip {
+  .compose-preview-option-grid > * {
     width: auto;
     min-width: 4.8rem;
     flex: 0 0 auto;

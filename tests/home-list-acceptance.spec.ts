@@ -37,7 +37,7 @@ test.describe('home and list visual acceptance', () => {
       await expectNoHorizontalOverflow(page)
 
       const title = page.locator('.atelier-hero-copy h1')
-      const primaryFocus = page.locator('.priority-card.is-primary-focus')
+      const primaryFocus = page.locator('.focus-card.is-primary-focus')
       const bottleCard = page.locator('.wish-bottle-card').first()
 
       await expect(title).toBeVisible()
@@ -47,7 +47,7 @@ test.describe('home and list visual acceptance', () => {
       if (viewport.width <= 430) {
         const metrics = await page.evaluate(() => {
           const titleBox = document.querySelector('.atelier-hero-copy h1')?.getBoundingClientRect()
-          const primaryBox = document.querySelector('.priority-card.is-primary-focus')?.getBoundingClientRect()
+          const primaryBox = document.querySelector('.focus-card.is-primary-focus')?.getBoundingClientRect()
           const bottleBox = document.querySelector('.wish-bottle-card')?.getBoundingClientRect()
 
           return {

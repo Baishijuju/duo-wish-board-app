@@ -2420,7 +2420,7 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 }
 
 .space-field-block {
-  gap: 0.52rem;
+  gap: 0.44rem;
 }
 
 .space-page .button-row {
@@ -2429,9 +2429,9 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 
 .reward-form-card {
   display: grid;
-  gap: 0.78rem;
+  gap: 0.66rem;
   align-content: start;
-  padding: 0.98rem;
+  padding: 0.9rem;
   background: linear-gradient(180deg, var(--panel-bg-strong), var(--card-bg-soft));
 }
 
@@ -2465,21 +2465,26 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 }
 
 .reward-form-fields-premium {
-  gap: 0.68rem;
+  gap: 0.56rem;
+}
+
+.reward-editor-card .space-field-block > .muted {
+  font-size: var(--type-l4-size);
+  line-height: var(--type-l4-line);
 }
 
 .reward-form-card input,
 .reward-form-card select {
-  min-height: 2.68rem;
-  padding: 0.56rem 0.78rem;
+  min-height: 2.42rem;
+  padding: 0.48rem 0.72rem;
   font-size: var(--type-meta-size);
   line-height: var(--type-meta-line);
 }
 
 .reward-form-card textarea {
-  min-height: 4.2rem;
-  height: 4.2rem;
-  padding: 0.64rem 0.82rem;
+  min-height: 3.72rem;
+  height: 3.72rem;
+  padding: 0.52rem 0.74rem;
   font-size: var(--type-meta-size);
   line-height: var(--type-meta-line);
 }
@@ -2489,8 +2494,8 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 }
 
 .reward-form-submit-row {
-  gap: 0.62rem;
-  padding-top: 0.68rem;
+  gap: 0.5rem;
+  padding-top: 0.56rem;
   border-top: 1px dashed var(--card-border-soft);
 }
 
@@ -2501,7 +2506,10 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 
 .reward-form-card .button-solid,
 .reward-form-card .button-subtle {
-  min-height: 2.52rem;
+  min-height: 2.36rem;
+  padding: 0.68rem 0.94rem;
+  font-size: var(--type-l4-size);
+  line-height: var(--type-l4-line);
 }
 
 .space-reward-feedback {

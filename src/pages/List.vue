@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { WishRecord } from '../stores/wishes'
 import { useListWishBoardState } from '../composables/useListWishBoardState'
@@ -24,46 +24,67 @@ const viewerName = computed(() => authStore.currentMember?.displayName ?? '我�
 const selectedSortDirectionLabel = computed(() => filterStore.sortDirection === 'desc' ? '倒序' : '正序')
 const isFilterPanelOpen = ref(false)
 const filterPanelId = 'list-board-filter-panel'
+const visibilityTabRefs = ref<HTMLElement[]>([])
+const statusTabRefs = ref<HTMLElement[]>([])
+const visibilityPillRef = ref<HTMLElement | null>(null)
+const statusPillRef = ref<HTMLElement | null>(null)
+const visibilityValues = ['all', 'mine', 'others'] as const
+const statusValues = ['active', 'done', 'all'] as const
+type SlidingTabGroup = 'visibility' | 'status'
+const boardKicker = computed(() => filterStore.status === 'done' ? '已经亮起来的事' : '今天先靠近哪一个')
 const boardHeading = computed(() => {
   const query = filterStore.search.trim()
 
   if (query) {
-    return `和「${query}」有关的愿望`
+    return `和「${query}」有关的小愿望，先在这里聚一聚。`
   }
 
   if (filterStore.status === 'done') {
     if (filterStore.visibility === 'mine') {
-      return `${viewerName.value} 已经实现的愿望`
+      return '你已经做到的这些，真的可以小小得意一下。'
     }
 
     if (filterStore.visibility === 'others') {
-      return '对方已经实现的愿望'
+      return '对方做到的那些，也值得被好好看见。'
     }
 
-    return '已经实现的愿望'
+    return '已经实现的小愿望，都是日子给我们的回信。'
   }
 
   if (filterStore.status === 'all') {
     if (filterStore.visibility === 'mine') {
-      return `${viewerName.value} 的全部愿望`
+      return '这些小愿望，都是你认真收好的念头。'
     }
 
     if (filterStore.visibility === 'others') {
-      return '对方的全部愿望'
+      return '对方心里放着的好日子，也在慢慢长大。'
     }
 
-    return '这一阵子的全部愿望'
+    return '这些小小的梦，正在陪我们把日子过好。'
   }
 
   if (filterStore.visibility === 'mine') {
-    return `${viewerName.value} 今天能亲自推进的愿望`
+    return '今天先照顾一个小愿望，让日子偷偷亮一点。'
   }
 
   if (filterStore.visibility === 'others') {
-    return '可以评论和打气的对方愿望'
+    return '看看对方的小愿望，也给这段日子添点光。'
   }
 
-  return '今天继续往前的愿望'
+  return '慢慢来，我们还在把日子往喜欢的方向推。'
+})
+const boardSummary = computed(() => {
+  const stats = listWorkbenchStats.value
+
+  if (filterStore.status === 'done') {
+    return `${filteredWishes.value.length} 个已经实现 · 也值得重新夸一遍`
+  }
+
+  if (filterStore.visibility === 'mine') {
+    return `${stats.currentMemberActiveCount} 个还在路上 · ${stats.remainingStarCoins} 枚星星币等你慢慢拿`
+  }
+
+  return `${stats.activeCount} 个还在路上 · ${stats.remainingStarCoins} 枚星星币等你慢慢拿`
 })
 function getWishOwnerClass(wish: WishRecord) {
   return canCurrentMemberProgressWish(wish) ? 'is-personal-owner' : 'is-assist-owner'
@@ -77,6 +98,78 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
   return `${sortLabels[sortMode]}${selectedSortDirectionLabel.value}`
 }
 
+function setSlidingTabRef(group: SlidingTabGroup, index: number, element: HTMLElement | null) {
+  const refs = group === 'visibility' ? visibilityTabRefs.value : statusTabRefs.value
+
+  if (element) {
+    refs[index] = element
+  } else {
+    delete refs[index]
+  }
+}
+
+function syncSlidingPill(group: SlidingTabGroup, animate = true) {
+  const refs = group === 'visibility' ? visibilityTabRefs.value : statusTabRefs.value
+  const pill = group === 'visibility' ? visibilityPillRef.value : statusPillRef.value
+  const activeIndex = group === 'visibility'
+    ? visibilityValues.indexOf(filterStore.visibility)
+    : statusValues.indexOf(filterStore.status)
+  const activeTab = refs[activeIndex]
+
+  if (!pill || !activeTab) {
+    return
+  }
+
+  if (!animate) {
+    pill.style.transition = 'none'
+  }
+
+  pill.style.transform = `translateX(${activeTab.offsetLeft}px)`
+  pill.style.width = `${activeTab.offsetWidth}px`
+
+  if (!animate) {
+    void pill.offsetHeight
+    pill.style.transition = ''
+  }
+}
+
+async function syncAllSlidingPills(animate = true) {
+  if (!isFilterPanelOpen.value) {
+    return
+  }
+
+  await nextTick()
+  syncSlidingPill('visibility', animate)
+  syncSlidingPill('status', animate)
+}
+
+function handleSlidingTabsResize() {
+  void syncAllSlidingPills(false)
+}
+
+watch(() => filterStore.visibility, () => {
+  void syncAllSlidingPills(true)
+})
+
+watch(() => filterStore.status, () => {
+  void syncAllSlidingPills(true)
+})
+
+watch(isFilterPanelOpen, (isOpen) => {
+  if (isOpen) {
+    void syncAllSlidingPills(false)
+  }
+})
+
+onMounted(() => {
+  window.addEventListener('resize', handleSlidingTabsResize)
+  void syncAllSlidingPills(false)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleSlidingTabsResize)
+})
+
 </script>
 
 <template>
@@ -86,11 +179,6 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
         <p class="list-board-kicker">今日清单</p>
         <h1>{{ viewerName }}，挑一件继续</h1>
         <p>{{ listWorkbenchStats.activeCount }} 条正在推进 · {{ listWorkbenchStats.currentMemberActiveCount }} 条归我 · 还能获得 {{ listWorkbenchStats.remainingStarCoins }} 星星币</p>
-      </div>
-
-      <div class="list-board-hero-actions list-board-workbench-actions">
-        <RouterLink class="list-board-button is-solid" :to="{ name: 'compose' }">写下新愿望</RouterLink>
-        <RouterLink class="list-board-button is-ghost" :to="{ name: 'review' }">打开回顾页</RouterLink>
       </div>
     </article>
 
@@ -109,10 +197,16 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
           :class="{ 'is-active': isFilterPanelOpen }"
           @click="isFilterPanelOpen = !isFilterPanelOpen"
         >
-          <span class="list-board-filter-toggle-icon" aria-hidden="true">
-            <i></i>
-            <i></i>
-            <i></i>
+          <span class="list-board-filter-toggle-icon-swap" :data-state="isFilterPanelOpen ? 'close' : 'filter'" aria-hidden="true">
+            <span class="list-board-filter-toggle-icon" data-icon="filter">
+              <i></i>
+              <i></i>
+              <i></i>
+            </span>
+            <span class="list-board-filter-toggle-close" data-icon="close">
+              <i></i>
+              <i></i>
+            </span>
           </span>
         </button>
       </div>
@@ -121,10 +215,14 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
         <div class="list-board-filter-stack">
           <div class="list-board-filter-group">
             <span class="list-board-filter-label">先看哪一类</span>
-            <div class="list-board-filter-row">
+            <div class="list-board-filter-row is-sliding-tabs" role="tablist" aria-label="愿望归属筛选">
+              <span ref="visibilityPillRef" class="list-board-filter-slider" aria-hidden="true"></span>
               <button
                 class="list-board-filter-pill"
+                :ref="(element) => setSlidingTabRef('visibility', 0, element as HTMLElement | null)"
+                role="tab"
                 type="button"
+                :aria-selected="filterStore.visibility === 'all'"
                 :class="{ 'is-active': filterStore.visibility === 'all' }"
                 @click="filterStore.visibility = 'all'"
               >
@@ -132,7 +230,10 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
               </button>
               <button
                 class="list-board-filter-pill"
+                :ref="(element) => setSlidingTabRef('visibility', 1, element as HTMLElement | null)"
+                role="tab"
                 type="button"
+                :aria-selected="filterStore.visibility === 'mine'"
                 :class="{ 'is-active': filterStore.visibility === 'mine' }"
                 @click="filterStore.visibility = 'mine'"
               >
@@ -140,7 +241,10 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
               </button>
               <button
                 class="list-board-filter-pill"
+                :ref="(element) => setSlidingTabRef('visibility', 2, element as HTMLElement | null)"
+                role="tab"
                 type="button"
+                :aria-selected="filterStore.visibility === 'others'"
                 :class="{ 'is-active': filterStore.visibility === 'others' }"
                 @click="filterStore.visibility = 'others'"
               >
@@ -151,10 +255,14 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
 
           <div class="list-board-filter-group">
             <span class="list-board-filter-label">现在是什么状态</span>
-            <div class="list-board-filter-row">
+            <div class="list-board-filter-row is-sliding-tabs" role="tablist" aria-label="愿望状态筛选">
+              <span ref="statusPillRef" class="list-board-filter-slider" aria-hidden="true"></span>
               <button
                 class="list-board-filter-pill"
+                :ref="(element) => setSlidingTabRef('status', 0, element as HTMLElement | null)"
+                role="tab"
                 type="button"
+                :aria-selected="filterStore.status === 'active'"
                 :class="{ 'is-active': filterStore.status === 'active' }"
                 @click="filterStore.status = 'active'"
               >
@@ -162,7 +270,10 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
               </button>
               <button
                 class="list-board-filter-pill"
+                :ref="(element) => setSlidingTabRef('status', 1, element as HTMLElement | null)"
+                role="tab"
                 type="button"
+                :aria-selected="filterStore.status === 'done'"
                 :class="{ 'is-active': filterStore.status === 'done' }"
                 @click="filterStore.status = 'done'"
               >
@@ -170,7 +281,10 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
               </button>
               <button
                 class="list-board-filter-pill"
+                :ref="(element) => setSlidingTabRef('status', 2, element as HTMLElement | null)"
+                role="tab"
                 type="button"
+                :aria-selected="filterStore.status === 'all'"
                 :class="{ 'is-active': filterStore.status === 'all' }"
                 @click="filterStore.status = 'all'"
               >
@@ -224,12 +338,12 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
     <article class="page-card list-board-card">
       <div class="list-board-head">
         <div>
-          <p class="list-board-kicker">今天这批</p>
+          <p class="list-board-kicker">{{ boardKicker }}</p>
           <h2>{{ boardHeading }}</h2>
         </div>
 
         <p class="list-board-head-summary">
-          {{ listWorkbenchStats.activeCount }} 条正在推进 · {{ listWorkbenchStats.currentMemberActiveCount }} 条归我 · 还能获得 {{ listWorkbenchStats.remainingStarCoins }} 星星币
+          {{ boardSummary }}
         </p>
       </div>
 
@@ -258,8 +372,8 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
       </div>
 
       <div v-else class="list-board-empty">
-        <h3>这次筛选后还没有结果</h3>
-        <p>可以先清空筛选，或者写下一条新愿望。</p>
+        <h3>这里先空着，等一个新的小梦慢慢落下来。</h3>
+        <p>换个筛选看看，或者写下一件还想好好对待的事。</p>
         <div class="list-board-inline-actions">
           <button class="list-board-button is-ghost" type="button" @click="filterStore.reset()">清空筛选</button>
           <RouterLink class="list-board-button is-solid" :to="{ name: 'compose' }">写下新愿望</RouterLink>
@@ -640,6 +754,15 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
   letter-spacing: 0;
 }
 
+.list-board-head h2 {
+  max-width: 25ch;
+  color: rgba(36, 27, 22, 0.86);
+  font-family: var(--list-heading-font);
+  font-size: 1.45rem;
+  font-weight: 500;
+  line-height: 1.42;
+}
+
 .list-board-item h3,
 .list-board-empty h3 {
   font-size: var(--type-card-title-size);
@@ -900,10 +1023,36 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
   background: linear-gradient(135deg, var(--active-item-bg), var(--card-bg-popover));
 }
 
+.list-board-filter-toggle-icon-swap {
+  --icon-swap-dur: 250ms;
+  --icon-swap-blur: 2px;
+  --icon-swap-start-scale: 0.25;
+  --icon-swap-ease: ease-in-out;
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+}
+
+.list-board-filter-toggle-icon,
+.list-board-filter-toggle-close {
+  grid-area: 1 / 1;
+  transition: opacity var(--icon-swap-dur) var(--icon-swap-ease), filter var(--icon-swap-dur) var(--icon-swap-ease), transform var(--icon-swap-dur) var(--icon-swap-ease);
+  will-change: opacity, filter, transform;
+}
+
 .list-board-filter-toggle-icon {
   display: grid;
   gap: 3px;
   width: 18px;
+}
+
+.list-board-filter-toggle-close {
+  position: relative;
+  display: block;
+  width: 17px;
+  height: 17px;
 }
 
 .list-board-filter-toggle-icon i {
@@ -911,6 +1060,39 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
   height: 2px;
   border-radius: 999px;
   background: currentColor;
+}
+
+.list-board-filter-toggle-close i {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: block;
+  width: 17px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.list-board-filter-toggle-close i:first-child {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.list-board-filter-toggle-close i:last-child {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.list-board-filter-toggle-icon-swap[data-state="filter"] [data-icon="filter"],
+.list-board-filter-toggle-icon-swap[data-state="close"] [data-icon="close"] {
+  opacity: 1;
+  filter: blur(0);
+  transform: scale(1);
+}
+
+.list-board-filter-toggle-icon-swap[data-state="filter"] [data-icon="close"],
+.list-board-filter-toggle-icon-swap[data-state="close"] [data-icon="filter"] {
+  opacity: 0;
+  filter: blur(var(--icon-swap-blur));
+  transform: scale(var(--icon-swap-start-scale));
 }
 
 .list-board-filter-toggle-icon i:nth-child(1) {
@@ -924,6 +1106,13 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
 
 .list-board-filter-toggle-icon i:nth-child(3) {
   width: 14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .list-board-filter-toggle-icon,
+  .list-board-filter-toggle-close {
+    transition: none !important;
+  }
 }
 
 .list-board-toolbar-copy p {
@@ -973,6 +1162,62 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
   gap: 0.3rem;
 }
 
+.list-board-filter-row.is-sliding-tabs {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid rgba(126, 96, 76, 0.08);
+  border-radius: 999px;
+  background: rgba(120, 94, 74, 0.1);
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.list-board-filter-slider {
+  position: absolute;
+  top: 3px;
+  left: 0;
+  z-index: 0;
+  width: 0;
+  height: calc(100% - 6px);
+  border: 1px solid rgba(126, 96, 76, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 251, 244, 0.92);
+  box-shadow: 0 8px 18px rgba(74, 50, 33, 0.08);
+  pointer-events: none;
+  transform: translateX(0);
+  transition: transform 250ms cubic-bezier(0.22, 1, 0.36, 1), width 250ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform, width;
+}
+
+.list-board-filter-row.is-sliding-tabs .list-board-filter-pill {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  min-height: 30px;
+  padding: 0.28rem 0.42rem;
+  border: 0;
+  background: transparent;
+  color: rgba(61, 46, 40, 0.66);
+  box-shadow: none;
+  transition: color 250ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.list-board-filter-row.is-sliding-tabs .list-board-filter-pill:hover,
+.list-board-filter-row.is-sliding-tabs .list-board-filter-pill:active {
+  transform: none;
+}
+
+.list-board-filter-row.is-sliding-tabs .list-board-filter-pill.is-active,
+.list-board-filter-row.is-sliding-tabs .list-board-filter-pill:hover {
+  border-color: transparent;
+  background: transparent;
+  color: rgba(36, 27, 22, 0.92);
+  box-shadow: none;
+}
+
 .list-board-filter-row.is-sort-row {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1015,6 +1260,13 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
   border-color: var(--active-item-border);
   color: var(--text-main);
   box-shadow: 0 4px 10px var(--accent-shadow-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .list-board-filter-slider,
+  .list-board-filter-row.is-sliding-tabs .list-board-filter-pill {
+    transition: none !important;
+  }
 }
 
 .list-board-card {

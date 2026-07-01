@@ -1,15 +1,9 @@
 import { computed } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useFilterStore, type SortFilter } from '../stores/filters'
-import type { WishPriority, WishRecord } from '../stores/wishes'
+import type { WishRecord } from '../stores/wishes'
 import { useWishStore } from '../stores/wishes'
 import { formatBeijingDate } from '../utils/datetime'
-
-const priorityLabels: Record<WishPriority, string> = {
-  high: '很想靠近',
-  medium: '慢慢靠近',
-  low: '先放在这里',
-}
 
 const wishStarCoinClaimKinds = new Set(['step_star_coin', 'count_star_coin', 'wish_completion_bonus'])
 
@@ -134,52 +128,6 @@ export function useListWishBoardState() {
     return wish.images[0]?.url ?? ''
   }
 
-  function getLocalDateTimestamp(dateValue: string) {
-    const trimmedValue = dateValue.trim()
-
-    if (!trimmedValue) {
-      return null
-    }
-
-    const [yearText, monthText, dayText] = trimmedValue.split('-')
-    const year = Number(yearText)
-    const month = Number(monthText)
-    const day = Number(dayText)
-
-    if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
-      return null
-    }
-
-    const timestamp = new Date(year, month - 1, day).getTime()
-    return Number.isNaN(timestamp) ? null : timestamp
-  }
-
-  function getRelativeDueLabel(dueDate: string) {
-    const dueTimestamp = getLocalDateTimestamp(dueDate)
-
-    if (dueTimestamp === null) {
-      return '没有设定日期，慢慢来'
-    }
-
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const dayDifference = Math.round((dueTimestamp - today.getTime()) / (24 * 60 * 60 * 1000))
-
-    if (dayDifference < 0) {
-        return `这个愿望已经在这里等了我们 ${Math.abs(dayDifference)} 天。`
-    }
-
-    if (dayDifference === 0) {
-      return '就是今天'
-    }
-
-    if (dayDifference === 1) {
-      return '明天就到约定的日子'
-    }
-
-    return `还剩 ${dayDifference} 天`
-  }
-
   function formatDateLabel(dateValue: string) {
     return formatBeijingDate(dateValue)
   }
@@ -187,18 +135,6 @@ export function useListWishBoardState() {
   function getWishMood(wish: WishRecord) {
     if (wish.status === 'done') {
       return '已经实现'
-    }
-
-    const dueTimestamp = getLocalDateTimestamp(wish.dueDate)
-
-    if (dueTimestamp !== null) {
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      const daysLeft = Math.round((dueTimestamp - today.getTime()) / (24 * 60 * 60 * 1000))
-
-      if (daysLeft >= 0 && daysLeft <= 3) {
-        return '快要靠近了'
-      }
     }
 
     if (wish.images.length) {
@@ -331,7 +267,6 @@ export function useListWishBoardState() {
     canCurrentMemberProgressWish,
     getCoverImageUrl,
     getMemberName,
-    getRelativeDueLabel,
     getWishMood,
     getWishAgeLabel,
     getWishEarnedStarCoinLabel,
@@ -342,7 +277,6 @@ export function useListWishBoardState() {
     getWishSortContext,
     getWishUpdatedLabel,
     listWorkbenchStats,
-    priorityLabels,
     wishStore,
   }
 }
