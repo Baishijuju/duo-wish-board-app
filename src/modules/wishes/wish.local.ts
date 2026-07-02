@@ -12,11 +12,11 @@ import {
 import { createRewardClaimRecord, createRewardPoolItem } from '../rewards/reward.factories'
 import { createWishRecord } from './wish.factories'
 
-export const STORAGE_KEY = 'duo-wish-board-app:v6'
-export const LEGACY_STORAGE_KEYS = ['duo-wish-board-app:v2', 'duo-wish-board-app:v3', 'duo-wish-board-app:v4', 'duo-wish-board-app:v5'] as const
+export const STORAGE_KEY = 'duo-wish-board-app:v7'
+export const LEGACY_STORAGE_KEYS = ['duo-wish-board-app:v2', 'duo-wish-board-app:v3', 'duo-wish-board-app:v4', 'duo-wish-board-app:v5', 'duo-wish-board-app:v6'] as const
 
 export interface PersistedWishState {
-  version: 6
+  version: 7
   monthlyJournalSnapshots: MonthlyJournalSnapshotRecord[]
   rewardClaims: RewardClaimRecord[]
   rewardPoolItems: RewardPoolItem[]

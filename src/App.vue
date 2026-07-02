@@ -2,7 +2,6 @@
 import { computed } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { applyStoredAppearanceTheme } from './composables/useAppearanceTheme'
-import { applyStoredColorTokenDraft } from './composables/useColorTokenDashboard'
 import { useAuthStore } from './stores/auth'
 import { useWishStore } from './stores/wishes'
 
@@ -19,7 +18,6 @@ type NavItem = {
 
 void authStore.initializeAuthSession()
 applyStoredAppearanceTheme()
-applyStoredColorTokenDraft()
 
 const navItems: NavItem[] = [
   { label: '首页', to: '/' },

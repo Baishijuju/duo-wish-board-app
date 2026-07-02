@@ -96,7 +96,6 @@ import { createId as createIdModule } from '../shared/ids'
 import { useAuthStore } from './auth'
 
 export type WishStatus = 'active' | 'done'
-export type WishPriority = 'high' | 'medium' | 'low'
 export type WishScope = 'shared' | 'private'
 export type WishProgressMode = 'none' | 'count' | 'steps'
 export type RewardTier = 'daily' | 'premium'
@@ -120,7 +119,6 @@ const WISH_IMAGE_MAX_BYTES = 10 * 1024 * 1024
 const WISH_IMAGE_SOURCE_MAX_BYTES = 25 * 1024 * 1024
 const WISH_IMAGE_COMPRESS_MAX_EDGE = 2048
 const WISH_IMAGE_COMPRESS_TARGET_BYTES = 1800 * 1024
-const DUE_SOON_WINDOW_DAYS = 14
 const RECENTLY_COMPLETED_WINDOW_DAYS = 30
 const SUPABASE_FREE_FILE_STORAGE_BYTES = 1024 * 1024 * 1024
 const BEIJING_TIME_OFFSET_MS = 8 * 60 * 60 * 1000
@@ -142,8 +140,6 @@ export const STEP_COMPLETION_STAR_COIN_REWARD = 1
 export interface WishDraft {
   title: string
   category: string
-  priority: WishPriority
-  dueDate: string
   note: string
   ownerId: string
   scope: WishScope
@@ -301,8 +297,6 @@ export interface WishRecord {
   id: string
   title: string
   category: string
-  priority: WishPriority
-  dueDate: string
   note: string
   ownerId: string
   scope: WishScope
@@ -579,32 +573,6 @@ async function prepareWishImageUpload(file: File) {
   }
 }
 
-function getLocalDateTimestamp(dateValue: string) {
-  const trimmedValue = dateValue.trim()
-
-  if (!trimmedValue) {
-    return null
-  }
-
-  const [yearText, monthText, dayText] = trimmedValue.split('-')
-  const year = Number(yearText)
-  const month = Number(monthText)
-  const day = Number(dayText)
-
-  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
-    return null
-  }
-
-  const timestamp = new Date(year, month - 1, day).getTime()
-  return Number.isNaN(timestamp) ? null : timestamp
-}
-
-function getTodayStartTimestamp() {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  return today.getTime()
-}
-
 function normalizeProgressNumber(value: number | null | undefined) {
   return normalizeProgressNumberModule(value)
 }
@@ -630,8 +598,6 @@ const seedWishes: WishRecord[] = [
     id: 'wish-shared-trip',
     title: '一起完成一次 10 天长途旅行',
     category: '旅行',
-    priority: 'high',
-    dueDate: '2026-10-01',
     note: '先把预算、时间窗和三个候选目的地列出来，再决定路线。',
     ownerId: 'member-a',
     scope: 'shared',
@@ -683,8 +649,6 @@ const seedWishes: WishRecord[] = [
     id: 'wish-cert',
     title: '拿下数据分析证书',
     category: '成长',
-    priority: 'medium',
-    dueDate: '2026-08-15',
     note: '每周完成两个模块，月底做一次模拟题回顾。',
     ownerId: 'member-a',
     scope: 'private',
@@ -711,8 +675,6 @@ const seedWishes: WishRecord[] = [
     id: 'wish-health-run',
     title: '在夏天前累计完成 12 次慢跑',
     category: '健康',
-    priority: 'medium',
-    dueDate: '2026-07-20',
     note: '每周至少跑两次，先把出门频率养稳，再慢慢拉长距离。',
     ownerId: 'member-b',
     scope: 'shared',
@@ -739,8 +701,6 @@ const seedWishes: WishRecord[] = [
     id: 'wish-home-corner',
     title: '把客厅整理成周末电影角',
     category: '居家',
-    priority: 'low',
-    dueDate: '2026-06-18',
     note: '先挑一盏落地灯和一条薄毯，再把零散线材、边桌和投影位收顺。',
     ownerId: 'member-b',
     scope: 'shared',
@@ -767,8 +727,6 @@ const seedWishes: WishRecord[] = [
     id: 'wish-dinner',
     title: '学会做三道拿手宴客菜',
     category: '生活',
-    priority: 'low',
-    dueDate: '2026-06-30',
     note: '糖醋排骨、烤鸡和一道甜点，先完成菜单和食材清单。',
     ownerId: 'member-b',
     scope: 'private',
@@ -1195,12 +1153,6 @@ export const useWishStore = defineStore('wishes', () => {
 
   const realtimeSyncController = createRealtimeSyncControllerState()
 
-  const priorityScore: Record<WishPriority, number> = {
-    high: 0,
-    medium: 1,
-    low: 2,
-  }
-
   const rewardClaimCountsByItem = computed(() => {
     return buildRewardClaimCountsByItem(rewardClaims.value)
   })
@@ -1284,26 +1236,9 @@ export const useWishStore = defineStore('wishes', () => {
       .slice(0, 8)
   })
 
-  const nearestDueWishes = computed(() => {
-    return [...wishes.value]
-      .filter((wish) => wish.status === 'active' && getLocalDateTimestamp(wish.dueDate) !== null)
-      .sort((left, right) => {
-        const leftDate = getLocalDateTimestamp(left.dueDate) ?? Number.MAX_SAFE_INTEGER
-        const rightDate = getLocalDateTimestamp(right.dueDate) ?? Number.MAX_SAFE_INTEGER
-
-        if (leftDate !== rightDate) {
-          return leftDate - rightDate
-        }
-
-        return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
-      })
-  })
-
   const stats = computed(() => {
     const activeWishes = wishes.value.filter((wish) => wish.status === 'active')
     const doneWishes = wishes.value.filter((wish) => wish.status === 'done')
-    const todayStart = getTodayStartTimestamp()
-    const dueSoonEnd = todayStart + DUE_SOON_WINDOW_DAYS * 24 * 60 * 60 * 1000
     const total = wishes.value.length
     const done = doneWishes.length
     const active = activeWishes.length
@@ -1320,14 +1255,6 @@ export const useWishStore = defineStore('wishes', () => {
       (count, wish) => count + (wish.progressMode === 'count' ? Math.min(wish.progressCurrent, Math.max(1, wish.progressTarget)) : 0),
       0,
     )
-    const overdue = activeWishes.filter((wish) => {
-      const dueTimestamp = getLocalDateTimestamp(wish.dueDate)
-      return dueTimestamp !== null && dueTimestamp < todayStart
-    }).length
-    const dueSoon = activeWishes.filter((wish) => {
-      const dueTimestamp = getLocalDateTimestamp(wish.dueDate)
-      return dueTimestamp !== null && dueTimestamp >= todayStart && dueTimestamp <= dueSoonEnd
-    }).length
     const totalImages = wishes.value.reduce(
       (count, wish) => count + wish.images.length + wish.comments.reduce((commentCount, comment) => commentCount + comment.images.length, 0),
       0,
@@ -1350,8 +1277,8 @@ export const useWishStore = defineStore('wishes', () => {
       completedCountValue,
       completedStepCount,
       done,
-      dueSoon,
-      overdue,
+      dueSoon: 0,
+      overdue: 0,
       shared,
       starred: wishes.value.filter((wish) => wish.starred).length,
       totalCountTarget,
@@ -1456,29 +1383,6 @@ export const useWishStore = defineStore('wishes', () => {
     }
   })
 
-  const overdueWishes = computed(() => {
-    const todayStart = getTodayStartTimestamp()
-
-    return [...wishes.value]
-      .filter((wish) => {
-        const dueTimestamp = getLocalDateTimestamp(wish.dueDate)
-        return wish.status === 'active' && dueTimestamp !== null && dueTimestamp < todayStart
-      })
-      .sort((left, right) => (getLocalDateTimestamp(left.dueDate) ?? 0) - (getLocalDateTimestamp(right.dueDate) ?? 0))
-  })
-
-  const dueSoonWishes = computed(() => {
-    const todayStart = getTodayStartTimestamp()
-    const dueSoonEnd = todayStart + DUE_SOON_WINDOW_DAYS * 24 * 60 * 60 * 1000
-
-    return [...wishes.value]
-      .filter((wish) => {
-        const dueTimestamp = getLocalDateTimestamp(wish.dueDate)
-        return wish.status === 'active' && dueTimestamp !== null && dueTimestamp >= todayStart && dueTimestamp <= dueSoonEnd
-      })
-      .sort((left, right) => (getLocalDateTimestamp(left.dueDate) ?? Number.MAX_SAFE_INTEGER) - (getLocalDateTimestamp(right.dueDate) ?? Number.MAX_SAFE_INTEGER))
-  })
-
   const recentlyCompletedWishes = computed(() => {
     const completedAfter = Date.now() - RECENTLY_COMPLETED_WINDOW_DAYS * 24 * 60 * 60 * 1000
 
@@ -1493,20 +1397,7 @@ export const useWishStore = defineStore('wishes', () => {
   const upcomingWishes = computed(() => {
     return [...wishes.value]
       .filter((wish) => wish.status === 'active')
-      .sort((left, right) => {
-        const leftDate = getLocalDateTimestamp(left.dueDate) ?? Number.MAX_SAFE_INTEGER
-        const rightDate = getLocalDateTimestamp(right.dueDate) ?? Number.MAX_SAFE_INTEGER
-
-        if (leftDate !== rightDate) {
-          return leftDate - rightDate
-        }
-
-        if (priorityScore[left.priority] !== priorityScore[right.priority]) {
-          return priorityScore[left.priority] - priorityScore[right.priority]
-        }
-
-        return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
-      })
+      .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
   })
 
   const sortedWishes = computed(() => {
@@ -1515,14 +1406,7 @@ export const useWishStore = defineStore('wishes', () => {
         return left.status === 'done' ? 1 : -1
       }
 
-      if (priorityScore[left.priority] !== priorityScore[right.priority]) {
-        return priorityScore[left.priority] - priorityScore[right.priority]
-      }
-
-      const leftDate = left.dueDate ? new Date(left.dueDate).getTime() : Number.MAX_SAFE_INTEGER
-      const rightDate = right.dueDate ? new Date(right.dueDate).getTime() : Number.MAX_SAFE_INTEGER
-
-      return leftDate - rightDate
+      return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
     })
   })
 
@@ -2241,10 +2125,8 @@ export const useWishStore = defineStore('wishes', () => {
       const client = supabase
       const updatePayload = {
         category: draft.category.trim(),
-        due_date: draft.dueDate || null,
         note: draft.note.trim(),
         owner_id: existingWish.ownerId,
-        priority: draft.priority,
         scope: draft.scope,
         title: draft.title.trim(),
         ...(!isCapabilityKnownMissing('hasWishProgress')
@@ -3472,7 +3354,6 @@ export const useWishStore = defineStore('wishes', () => {
     deleteWish,
     depositRewardStarCoins,
     deleteWishStep,
-    dueSoonWishes,
     findById,
     getMemberStarCoinBalance,
     getRewardItemClaimCount,
@@ -3494,9 +3375,7 @@ export const useWishStore = defineStore('wishes', () => {
     isUsingCloudWishes,
     latestComments,
     latestRewardClaims,
-    nearestDueWishes,
     monthlyJournalSnapshots,
-    overdueWishes,
     pendingCountRewardSummaries,
     pendingSmallRewardCount,
     pendingStepRewards,

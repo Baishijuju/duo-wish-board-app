@@ -139,12 +139,12 @@ export async function fetchWishCloudRows(
   const wishRowsResult = !options.capabilities || options.capabilities.hasWishProgress
     ? await supabase
       .from('wishes')
-      .select('id, space_id, owner_id, title, category, note, priority, scope, status, is_starred, due_date, progress_mode, progress_current, progress_target, progress_unit, completed_at, created_at, updated_at')
+      .select('id, space_id, owner_id, title, category, note, scope, status, is_starred, progress_mode, progress_current, progress_target, progress_unit, completed_at, created_at, updated_at')
       .eq('space_id', spaceId)
       .order('updated_at', { ascending: false })
     : await supabase
       .from('wishes')
-      .select('id, space_id, owner_id, title, category, note, priority, scope, status, is_starred, due_date, completed_at, created_at, updated_at')
+      .select('id, space_id, owner_id, title, category, note, scope, status, is_starred, completed_at, created_at, updated_at')
       .eq('space_id', spaceId)
       .order('updated_at', { ascending: false })
 

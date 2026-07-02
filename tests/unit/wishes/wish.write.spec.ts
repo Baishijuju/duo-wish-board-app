@@ -7,8 +7,6 @@ describe('wish.write', () => {
       {
         title: '旅行',
         category: '生活',
-        priority: 'high',
-        dueDate: '',
         note: '记一下',
         ownerId: 'member-a',
         scope: 'shared',
@@ -17,7 +15,10 @@ describe('wish.write', () => {
         progressTarget: 0,
         progressUnit: '',
       },
-      ['先订票', '先排时间'],
+      [
+        { title: '先订票', starCoinValue: 1 },
+        { title: '先排时间', starCoinValue: 1 },
+      ],
     )
 
     expect(result.wish.steps).toHaveLength(2)
@@ -30,8 +31,6 @@ describe('wish.write', () => {
         id: 'wish-1',
         title: '旧标题',
         category: '',
-        priority: 'medium',
-        dueDate: '',
         note: '',
         ownerId: 'member-a',
         scope: 'shared',
@@ -51,8 +50,6 @@ describe('wish.write', () => {
       {
         title: '新标题',
         category: '',
-        priority: 'medium',
-        dueDate: '',
         note: '',
         ownerId: 'member-a',
         scope: 'shared',
@@ -140,8 +137,6 @@ describe('wish.write', () => {
       draft: {
         title: '旅行',
         category: '生活',
-        priority: 'high',
-        dueDate: '',
         note: '记一下',
         ownerId: 'member-a',
         scope: 'shared',
@@ -150,7 +145,7 @@ describe('wish.write', () => {
         progressTarget: 3,
         progressUnit: '次',
       },
-      initialStepTitles: [],
+      initialSteps: [],
       onLoadingChange: vi.fn(),
       onSyncMessage: vi.fn(),
       syncFromSupabase: vi.fn().mockResolvedValue(true),

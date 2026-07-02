@@ -171,6 +171,36 @@ export function useListWishBoardState() {
     return `${days} 天前更新`
   }
 
+  function getWishCompactMeta(wish: WishRecord) {
+    const progress = getWishProgress(wish)
+
+    if (filterStore.sortMode === 'progress') {
+      return progress.label
+    }
+
+    if (filterStore.sortMode === 'starCoins') {
+      return getWishRemainingStarCoinLabel(wish)
+    }
+
+    if (filterStore.sortMode === 'age') {
+      return `写下于 ${formatDateLabel(wish.createdAt)}`
+    }
+
+    if (progress.isReady) {
+      return '已经可完成'
+    }
+
+    if (progress.mode === 'steps') {
+      return progress.pendingStepTitles[0] || '下一步'
+    }
+
+    if (progress.mode === 'count') {
+      return progress.label
+    }
+
+    return wish.note.trim() ? '已写下' : '待开始'
+  }
+
   function getWishRemainingStarCoinLabel(wish: WishRecord) {
     const amount = getWishRemainingStarCoins(wish)
     return amount > 0 ? `还可拿 ${formatStarCoinAmount(amount)} 星星币` : '星星币已拿完'
@@ -180,13 +210,29 @@ export function useListWishBoardState() {
     return `已获得 ${formatStarCoinAmount(getWishEarnedStarCoins(wish))} 星星币`
   }
 
+  function getWishStarCoinRing(wish: WishRecord) {
+    const earned = getWishEarnedStarCoins(wish)
+    const remaining = getWishRemainingStarCoins(wish)
+    const total = earned + remaining
+    const claimedPercent = total > 0
+      ? Math.min(Math.max(Math.round((earned / total) * 1000) / 10, 0), 100)
+      : 0
+
+    return {
+      claimedPercent,
+      earned,
+      remaining,
+      total,
+    }
+  }
+
   function getWishSortContext(wish: WishRecord) {
     const progress = getWishProgress(wish)
 
     if (filterStore.sortMode === 'progress') {
       return {
         label: '当前进度',
-        meta: progress.label,
+        meta: getWishCompactMeta(wish),
         progressPercent: progress.percent,
         tone: 'progress',
         value: `${progress.percent}%`,
@@ -196,17 +242,17 @@ export function useListWishBoardState() {
     if (filterStore.sortMode === 'starCoins') {
       return {
         label: '星星币',
-        meta: getWishRemainingStarCoinLabel(wish),
+        meta: getWishEarnedStarCoinLabel(wish),
         progressPercent: null,
         tone: 'starCoins',
-        value: getWishEarnedStarCoinLabel(wish),
+        value: getWishRemainingStarCoinLabel(wish),
       } as const
     }
 
     if (filterStore.sortMode === 'age') {
       return {
         label: '存在时间',
-        meta: `写下于 ${formatDateLabel(wish.createdAt)}`,
+        meta: getWishCompactMeta(wish),
         progressPercent: null,
         tone: 'age',
         value: getWishAgeLabel(wish),
@@ -215,7 +261,7 @@ export function useListWishBoardState() {
 
     return {
       label: '最近更新',
-      meta: progress.isReady ? '已经可以确认完成' : getWishProgressHint(wish),
+      meta: getWishCompactMeta(wish),
       progressPercent: null,
       tone: 'updated',
       value: getWishUpdatedLabel(wish),
@@ -271,9 +317,11 @@ export function useListWishBoardState() {
     getWishAgeLabel,
     getWishEarnedStarCoinLabel,
     getWishProgress,
+    getWishCompactMeta,
     getWishProgressHint,
     getWishProgressPercentLabel,
     getWishRemainingStarCoinLabel,
+    getWishStarCoinRing,
     getWishSortContext,
     getWishUpdatedLabel,
     listWorkbenchStats,

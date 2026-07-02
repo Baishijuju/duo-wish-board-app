@@ -208,9 +208,6 @@ export function useSpaceState() {
   })
 
   const perMemberStats = computed(() => {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
     return authStore.members.map((member) => {
       const mine = wishStore.wishes.filter((wish) => wish.ownerId === member.id)
       const imageCount = mine.reduce((count, wish) => count + wish.images.length, 0)
@@ -223,10 +220,7 @@ export function useSpaceState() {
         imageBytes,
         imageCount,
         member,
-        overdue: mine.filter((wish) => {
-          const dueTimestamp = getLocalDateTimestamp(wish.dueDate)
-          return wish.status === 'active' && dueTimestamp !== null && dueTimestamp < today.getTime()
-        }).length,
+        overdue: 0,
         privateCount: mine.filter((wish) => wish.scope === 'private').length,
         sharedCount: mine.filter((wish) => wish.scope === 'shared').length,
         starCoins: wishStore.getMemberStarCoinBalance(member.id),
@@ -323,26 +317,6 @@ export function useSpaceState() {
     } finally {
       isBindingEmail.value = false
     }
-  }
-
-  function getLocalDateTimestamp(dateValue: string) {
-    const trimmedValue = dateValue.trim()
-
-    if (!trimmedValue) {
-      return null
-    }
-
-    const [yearText, monthText, dayText] = trimmedValue.split('-')
-    const year = Number(yearText)
-    const month = Number(monthText)
-    const day = Number(dayText)
-
-    if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
-      return null
-    }
-
-    const timestamp = new Date(year, month - 1, day).getTime()
-    return Number.isNaN(timestamp) ? null : timestamp
   }
 
   function formatStorageBytes(sizeBytes: number) {

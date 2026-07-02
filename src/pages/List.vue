@@ -9,7 +9,11 @@ const {
   canCurrentMemberProgressWish,
   filterStore,
   filteredWishes,
+  getWishAgeLabel,
+  getWishProgressPercentLabel,
+  getWishStarCoinRing,
   getWishSortContext,
+  getWishUpdatedLabel,
   listWorkbenchStats,
 } = useListWishBoardState()
 
@@ -96,6 +100,28 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
   }
 
   return `${sortLabels[sortMode]}${selectedSortDirectionLabel.value}`
+}
+
+function getWishSideStatusLabel(wish: WishRecord) {
+  if (filterStore.sortMode === 'progress') {
+    return getWishProgressPercentLabel(wish)
+  }
+
+  if (filterStore.sortMode === 'age') {
+    return getWishAgeLabel(wish)
+      .replace('存在 ', '')
+      .replace(' 天', '天')
+      .replace('今天加入', '今天')
+  }
+
+  if (filterStore.sortMode === 'updated') {
+    return getWishUpdatedLabel(wish)
+      .replace(' 天前更新', '天前')
+      .replace('昨天更新', '昨天')
+      .replace('今天更新', '今天')
+  }
+
+  return ''
 }
 
 function setSlidingTabRef(group: SlidingTabGroup, index: number, element: HTMLElement | null) {
@@ -351,21 +377,33 @@ onBeforeUnmount(() => {
         <article v-for="wish in filteredWishes" :key="wish.id" class="list-board-item" :class="getWishOwnerClass(wish)">
           <span class="list-board-owner-dot" aria-hidden="true"></span>
 
-          <div class="list-board-card-body">
-            <div class="list-board-card-copy">
-              <h3>{{ wish.title }}</h3>
+          <div class="list-board-main">
+            <div class="list-board-card-body">
+              <div class="list-board-card-copy">
+                <h3>{{ wish.title }}</h3>
+              </div>
+            </div>
+
+            <div class="list-board-card-data">
+              <RouterLink class="list-board-data-block list-board-progress-link list-board-sort-context" :to="{ name: 'wish-detail', params: { id: wish.id }, hash: '#progress' }" aria-label="打开详情页进度区域">
+                <strong>{{ getWishSortContext(wish).value }}</strong>
+                <em>{{ getWishSortContext(wish).meta }}</em>
+              </RouterLink>
             </div>
           </div>
 
-          <div class="list-board-card-data">
-            <RouterLink class="list-board-data-block list-board-progress-link list-board-sort-context" :to="{ name: 'wish-detail', params: { id: wish.id }, hash: '#progress' }" aria-label="打开详情页进度区域">
-              <span>{{ getWishSortContext(wish).label }}</span>
-              <strong>{{ getWishSortContext(wish).value }}</strong>
-              <em>{{ getWishSortContext(wish).meta }}</em>
-              <div v-if="getWishSortContext(wish).progressPercent !== null" class="list-board-progress-track" :aria-label="`当前进度 ${getWishSortContext(wish).progressPercent}%`">
-                <span :style="{ width: `${getWishSortContext(wish).progressPercent}%` }"></span>
-              </div>
-            </RouterLink>
+          <div class="list-board-star-ring-shell">
+            <div
+              v-if="filterStore.sortMode === 'starCoins'"
+              class="list-board-star-ring"
+              :aria-label="`星币领取进度：已获得 ${getWishStarCoinRing(wish).claimedPercent}%`"
+              :style="{ '--ring-progress': `${getWishStarCoinRing(wish).claimedPercent}%` }"
+            >
+              <span>{{ Math.round(getWishStarCoinRing(wish).claimedPercent) }}%</span>
+            </div>
+            <div v-else class="list-board-side-stat" :aria-label="`${getWishSortContext(wish).label}：${getWishSideStatusLabel(wish)}`">
+              <strong>{{ getWishSideStatusLabel(wish) }}</strong>
+            </div>
           </div>
 
         </article>
@@ -1302,10 +1340,10 @@ onBeforeUnmount(() => {
   --owner-progress-start: var(--accent-sun);
   --owner-progress-end: var(--accent);
   position: relative;
-  grid-template-columns: 0.5rem minmax(0, 1fr);
+  grid-template-columns: 0.5rem minmax(0, 1fr) 2.9rem;
   column-gap: 0.58rem;
   row-gap: 0.18rem;
-  align-items: baseline;
+  align-items: start;
   padding: 0.64rem 0.66rem 0.66rem 0.62rem;
   border-bottom: 1px solid rgba(126, 96, 76, 0.075);
   background: transparent;
@@ -1339,13 +1377,88 @@ onBeforeUnmount(() => {
 
 .list-board-owner-dot {
   grid-column: 1;
-  grid-row: 1 / span 2;
+  grid-row: 1;
   width: 0.42rem;
   height: 0.42rem;
   margin-top: 0.42rem;
   border-radius: 999px;
   background: var(--owner-accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--owner-accent) 12%, transparent);
+}
+
+.list-board-main {
+  grid-column: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.16rem;
+  min-width: 0;
+}
+
+.list-board-star-ring-shell {
+  grid-column: 3;
+  grid-row: 1;
+  align-self: start;
+  justify-self: end;
+  width: 2.9rem;
+  display: grid;
+  justify-items: end;
+  margin-top: 0.04rem;
+}
+
+.list-board-side-stat {
+  display: grid;
+  place-items: center;
+  width: 2.9rem;
+  min-height: 2.02rem;
+  padding: 0.2rem 0.22rem;
+  border: 1px solid color-mix(in srgb, var(--owner-progress-end) 16%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--owner-row-hover) 68%, white);
+  text-align: center;
+}
+
+.list-board-side-stat strong {
+  color: var(--owner-progress-end);
+  font-family: var(--list-body-font);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: 0;
+}
+
+.list-board-star-ring {
+  --ring-progress: 0%;
+  --ring-size: 2.6rem;
+  --ring-track: color-mix(in srgb, var(--owner-progress-end) 16%, transparent);
+  width: var(--ring-size);
+  height: var(--ring-size);
+  position: relative;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: conic-gradient(
+    from -90deg,
+    var(--owner-progress-end) 0 var(--ring-progress),
+    var(--ring-track) var(--ring-progress) 100%
+  );
+}
+
+.list-board-star-ring::after {
+  content: '';
+  position: absolute;
+  inset: 0.32rem;
+  border-radius: 999px;
+  background: var(--list-paper);
+}
+
+.list-board-star-ring span {
+  position: relative;
+  z-index: 1;
+  color: var(--owner-progress-end);
+  font-family: var(--list-body-font);
+  font-size: var(--type-eyebrow-size);
+  font-weight: 700;
+  line-height: 1;
 }
 
 .list-board-card-top {
@@ -1416,7 +1529,7 @@ onBeforeUnmount(() => {
 }
 
 .list-board-card-body {
-  grid-column: 2;
+  grid-column: auto;
   display: grid;
   gap: 0;
 }
@@ -1445,14 +1558,16 @@ onBeforeUnmount(() => {
 }
 
 .list-board-card-data {
-  grid-column: 2;
+  grid-column: auto;
   grid-template-columns: 1fr;
   gap: 0;
   margin-top: 0;
 }
 
 .list-board-data-block {
-  gap: 0.12rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -1461,51 +1576,39 @@ onBeforeUnmount(() => {
 }
 
 .list-board-sort-context {
-  display: grid;
-  grid-template-columns: auto minmax(0, auto);
+  display: flex;
   align-items: baseline;
-  column-gap: 0.28rem;
-  row-gap: 0.1rem;
+  min-width: 0;
+  gap: 0.22rem;
+  flex-wrap: nowrap;
 }
 
-.list-board-sort-context > span,
+.list-board-sort-context strong,
 .list-board-sort-context em {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.list-board-sort-context > span {
-  color: rgba(76, 59, 50, 0.46);
-  font-family: var(--list-body-font);
-  font-size: 0.75rem;
-  font-weight: 400;
-  line-height: 1.25;
-  letter-spacing: 0;
-}
-
 .list-board-sort-context strong {
+  flex: 0 1 auto;
   font-family: var(--list-body-font);
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 600;
   line-height: 1.25;
   letter-spacing: 0;
 }
 
 .list-board-sort-context em {
-  grid-column: 1 / -1;
-  min-width: 0;
+  flex: 1 1 auto;
   color: rgba(76, 59, 50, 0.5);
   font-family: var(--list-body-font);
-  font-size: 0.75rem;
+  font-size: 0.68rem;
   font-style: normal;
   font-weight: 400;
-  line-height: 1.3;
+  line-height: 1.16;
   letter-spacing: 0;
-}
-
-.list-board-sort-context .list-board-progress-track {
-  grid-column: 1 / -1;
 }
 
 .list-board-starcoin-line {
@@ -1740,6 +1843,15 @@ onBeforeUnmount(() => {
     padding: 0.62rem 0.58rem 0.64rem 0.58rem;
   }
 
+  .list-board-star-ring {
+    --ring-size: 2.05rem;
+  }
+
+  .list-board-star-ring-shell,
+  .list-board-side-stat {
+    width: 2.7rem;
+  }
+
   .list-board-card-top {
     gap: 0.26rem;
   }
@@ -1796,6 +1908,16 @@ onBeforeUnmount(() => {
   .list-board-inline-actions {
     display: grid;
     width: 100%;
+  }
+
+  .list-board-item {
+    grid-template-columns: 0.5rem minmax(0, 1fr) 2.7rem;
+  }
+
+  .list-board-star-ring-shell {
+    grid-column: 3;
+    justify-self: end;
+    margin-top: 0.04rem;
   }
 
   .list-board-inline-actions .list-board-side-button {

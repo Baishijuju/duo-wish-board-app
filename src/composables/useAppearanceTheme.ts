@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 
-export type AppearanceThemeId = 'appearance1' | 'appearance2'
+export type AppearanceThemeId = 'appearance2'
 
 export type AppearanceTheme = {
   id: AppearanceThemeId
@@ -15,14 +15,6 @@ const APPEARANCE_STORAGE_KEY = 'duo-wish-board-appearance:v1'
 const DEFAULT_APPEARANCE_ID: AppearanceThemeId = 'appearance2'
 
 export const appearanceThemes: AppearanceTheme[] = [
-  {
-    id: 'appearance1',
-    label: '外观 1',
-    shortLabel: '原来',
-    description: '原来的暖纸张、橙棕强调和安静卡片。',
-    preview: ['#f5eee5', '#fffaf3', '#c96f4a'],
-    tokens: {},
-  },
   {
     id: 'appearance2',
     label: '外观 2',
@@ -40,6 +32,7 @@ export const appearanceThemes: AppearanceTheme[] = [
       '--card-bg-raised': '#f8f2f8',
       '--accent-sun': '#ff9fb7',
       '--accent-dark': '#be5f86',
+      '--accent-strong': '#be5f86',
       '--accent': '#d9799a',
       '--accent-panel': '#ffe9f1',
       '--active-item-bg': '#ffe9f1',
@@ -47,6 +40,7 @@ export const appearanceThemes: AppearanceTheme[] = [
       '--accent-border': 'rgba(217, 121, 154, 0.38)',
       '--accent-ring': 'rgba(217, 121, 154, 0.14)',
       '--accent-shadow-soft': 'rgba(190, 95, 134, 0.12)',
+      '--sage-strong': '#5d9aa0',
     },
   },
 ]
@@ -58,17 +52,8 @@ function canUseBrowserStorage() {
   return typeof window !== 'undefined' && typeof document !== 'undefined'
 }
 
-function isAppearanceThemeId(value: string | null): value is AppearanceThemeId {
-  return value === 'appearance1' || value === 'appearance2'
-}
-
 function readStoredAppearanceId(): AppearanceThemeId {
-  if (!canUseBrowserStorage()) {
-    return DEFAULT_APPEARANCE_ID
-  }
-
-  const storedValue = window.localStorage.getItem(APPEARANCE_STORAGE_KEY)
-  return isAppearanceThemeId(storedValue) ? storedValue : DEFAULT_APPEARANCE_ID
+  return DEFAULT_APPEARANCE_ID
 }
 
 function persistAppearanceId(id: AppearanceThemeId) {
@@ -98,6 +83,9 @@ function applyAppearanceTokens(id: AppearanceThemeId) {
 
 export function applyStoredAppearanceTheme() {
   selectedAppearanceId.value = readStoredAppearanceId()
+  if (canUseBrowserStorage()) {
+    window.localStorage.removeItem(APPEARANCE_STORAGE_KEY)
+  }
   applyAppearanceTokens(selectedAppearanceId.value)
 }
 

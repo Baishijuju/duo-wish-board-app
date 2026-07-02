@@ -5,10 +5,7 @@ describe('wish.factories', () => {
   it('normalizes count progress and trims fields', () => {
     const wish = createWishRecord({
       title: '  跑步  ',
-      category: ' 健康 ',
-      priority: 'medium',
-      dueDate: '',
-      note: ' 先开始 ',
+      category: ' 健康 ',      note: ' 先开始 ',
       ownerId: 'member-a',
       scope: 'shared',
       progressMode: 'count',
@@ -28,10 +25,7 @@ describe('wish.factories', () => {
   it('keeps none mode as a valid complete mode', () => {
     const wish = createWishRecord({
       title: '先写下来',
-      category: '',
-      priority: 'low',
-      dueDate: '',
-      note: '',
+      category: '',      note: '',
       ownerId: 'member-a',
       scope: 'private',
       progressMode: 'none',
@@ -48,10 +42,7 @@ describe('wish.factories', () => {
   it('filters empty steps and preserves step mode', () => {
     const wish = createWishRecord({
       title: '旅行',
-      category: '生活',
-      priority: 'high',
-      dueDate: '',
-      note: '',
+      category: '生活',      note: '',
       ownerId: 'member-a',
       scope: 'shared',
       progressMode: 'steps',
@@ -72,10 +63,7 @@ describe('wish.factories', () => {
   it('sets completedAt for done wishes', () => {
     const wish = createWishRecord({
       title: '完成事项',
-      category: '',
-      priority: 'medium',
-      dueDate: '',
-      note: '',
+      category: '',      note: '',
       ownerId: 'member-a',
       scope: 'shared',
       progressMode: 'none',

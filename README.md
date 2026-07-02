@@ -130,7 +130,7 @@ Cloudflare Workers 静态站或 Vercel 负责把这套前端公开出去。
 
 如果你后面还想保留 GitHub Pages 作为备用入口，也可以继续保留：
 
-- 当前项目已经补好 [app/.github/workflows/deploy-pages.yml](.github/workflows/deploy-pages.yml)
+- 当前项目已经补好 [.github/workflows/deploy-pages.yml](.github/workflows/deploy-pages.yml)
 - 构建时会自动把静态资源 base 调整到仓库路径
 - 在 `github.io` 域名下会自动切成 hash 路由，避免 Vue history 路由 404
 
@@ -152,11 +152,11 @@ Cloudflare Workers 静态站或 Vercel 负责把这套前端公开出去。
 
 ## 当前仓库里的说明
 
-当前工作区根目录主要承担说明和归档入口；如果后面继续走正式版，请以 `app/` 目录这套工程为准。
+当前工作区根目录主要承担说明和归档入口；如果后面继续走正式版，请以 `repo-sync/` 目录这套工程为准。
 
 ## Supabase 结构文件
 
-数据库骨架在 [app/supabase/migrations/202604260001_initial_schema.sql](supabase/migrations/202604260001_initial_schema.sql)。
+数据库骨架在 [supabase/migrations/202604260001_initial_schema.sql](supabase/migrations/202604260001_initial_schema.sql)。
 
 建议操作顺序：
 

@@ -58,6 +58,6 @@ describe('wish.cloud.fetch', () => {
       onWarningMessage: vi.fn(),
     })
 
-    expect(select).toHaveBeenCalledWith('id, space_id, owner_id, title, category, note, priority, scope, status, is_starred, due_date, completed_at, created_at, updated_at')
+    expect(select).toHaveBeenCalledWith('id, space_id, owner_id, title, category, note, scope, status, is_starred, completed_at, created_at, updated_at')
   })
 })

@@ -108,6 +108,7 @@
   --shadow-raised: 0 16px 34px rgba(78, 55, 39, 0.1);
   --accent: #c96f4a;
   --accent-dark: #b95f3e;
+  --accent-strong: #b95f3e;
   --accent-soft: #f3ded2;
   --accent-sun: #d17a54;
   --accent-coral: #cf7b59;
@@ -123,6 +124,7 @@
   --accent-teal-border: rgba(46, 142, 131, 0.26);
   --accent-gold: #e8d8a6;
   --sage: #d8e7dc;
+  --sage-strong: #6d9778;
   --cream: #f1e8c8;
   --rose: #f1d6ca;
   --mist: #dce9e6;

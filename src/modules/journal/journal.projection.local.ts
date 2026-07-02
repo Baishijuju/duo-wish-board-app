@@ -12,6 +12,17 @@ import {
   createWishThreadEntry,
 } from './journal.factories'
 
+type CountStarCoinClaimGroup = {
+  actorId: string
+  claimIds: string[]
+  createdAt: string
+  quantity: number
+  starCoinDelta: number
+  updatedAt: string
+  wishId: string | null
+  wishTitle: string | null
+}
+
 export function buildDerivedWishThreadEntries(
   wishes: WishRecord[],
   rewardClaims: RewardClaimRecord[],
@@ -21,6 +32,7 @@ export function buildDerivedWishThreadEntries(
   const stepMap = new Map(
     wishes.flatMap((wish) => wish.steps.map((step) => [step.id, { step, wish }] as const)),
   )
+  const countStarCoinClaimGroups = new Map<string, CountStarCoinClaimGroup>()
   const threadEntries: WishThreadEntry[] = []
 
   for (const wish of wishes) {
@@ -32,7 +44,6 @@ export function buildDerivedWishThreadEntries(
         id: `thread-wish-published-${wish.id}`,
         messageText: `认真写下了「${wish.title}」。`,
         meta: {
-          priority: wish.priority,
           scope: wish.scope,
           status: wish.status,
         },
@@ -80,7 +91,7 @@ export function buildDerivedWishThreadEntries(
       )
     }
 
-    for (const comment of wish.comments) {
+    for (const comment of wish.comments.filter((item) => !isAutomaticCountProgressComment(item.message))) {
       threadEntries.push(
         createWishThreadEntry({
           actorId: comment.authorId,
@@ -97,6 +108,11 @@ export function buildDerivedWishThreadEntries(
   }
 
   for (const claim of rewardClaims) {
+    if (claim.claimKind === 'count_star_coin') {
+      mergeCountStarCoinClaim(countStarCoinClaimGroups, claim, wishMap)
+      continue
+    }
+
     const relatedWish = claim.sourceWishId ? wishMap.get(claim.sourceWishId) ?? null : null
     const relatedStep = claim.sourceStepId ? stepMap.get(claim.sourceStepId)?.step ?? null : null
     const eventKind: WishThreadEventKind = claim.claimKind === 'premium_redeem' ? 'premium_redeem' : 'reward_claimed'
@@ -109,9 +125,9 @@ export function buildDerivedWishThreadEntries(
           ? `把「${relatedWish?.title ?? claim.titleSnapshot}」认真完成，也接住了「${claim.titleSnapshot}」。`
           : claim.claimKind === 'star_coin'
             ? claim.sourceStepId
-              ? `完成了小步骤「${relatedStep?.title ?? '这个小步骤'}」，把这次奖励存成了 ${Math.abs(claim.starCoinDelta)} 枚星星币。`
-              : `把「${relatedWish?.title ?? '这个数字愿望'}」往前推进了 ${countUnitLabel}，并存下了 ${Math.abs(claim.starCoinDelta)} 枚星星币。`
-            : `用 ${Math.abs(claim.starCoinDelta)} 枚星星币换来了「${claim.titleSnapshot}」。`
+              ? `完成了小步骤「${relatedStep?.title ?? '这个小步骤'}」，把这次奖励存成了 ${formatStarCoinAmount(Math.abs(claim.starCoinDelta))} 枚星星币。`
+              : `把「${relatedWish?.title ?? '这个数字愿望'}」往前推进了 ${countUnitLabel}，并存下了 ${formatStarCoinAmount(Math.abs(claim.starCoinDelta))} 枚星星币。`
+            : `用 ${formatStarCoinAmount(Math.abs(claim.starCoinDelta))} 枚星星币换来了「${claim.titleSnapshot}」。`
 
     threadEntries.push(
       createWishThreadEntry({
@@ -134,6 +150,28 @@ export function buildDerivedWishThreadEntries(
         },
         updatedAt: claim.createdAt,
         wishId: claim.sourceWishId,
+      }),
+    )
+  }
+
+  for (const [groupKey, group] of countStarCoinClaimGroups) {
+    threadEntries.push(
+      createWishThreadEntry({
+        actorId: group.actorId,
+        createdAt: group.createdAt,
+        eventKind: 'reward_claimed',
+        id: `thread-count-star-coin-${groupKey}`,
+        messageText: `往前推进了 ${group.quantity} 步，并获得了 ${formatStarCoinAmount(group.starCoinDelta)} 颗星星。`,
+        meta: {
+          claimIds: group.claimIds,
+          claimKind: 'count_star_coin',
+          quantity: group.quantity,
+          sourceWishId: group.wishId,
+          starCoinDelta: group.starCoinDelta,
+          wishTitle: group.wishTitle,
+        },
+        updatedAt: group.updatedAt,
+        wishId: group.wishId,
       }),
     )
   }
@@ -212,6 +250,37 @@ export function ensureLocalMonthlySnapshots(
   ].sort((left, right) => right.monthKey.localeCompare(left.monthKey) || compareIsoAscending(right.createdAt, left.createdAt))
 }
 
+function mergeCountStarCoinClaim(
+  groups: Map<string, CountStarCoinClaimGroup>,
+  claim: RewardClaimRecord,
+  wishMap: Map<string, WishRecord>,
+) {
+  const dateKey = getBeijingDateKey(claim.createdAt)
+  const groupKey = `${dateKey}:${claim.sourceWishId ?? 'no-wish'}:${claim.ownerId}`
+  const relatedWish = claim.sourceWishId ? wishMap.get(claim.sourceWishId) ?? null : null
+  const previous = groups.get(groupKey)
+
+  if (previous) {
+    previous.claimIds.push(claim.id)
+    previous.quantity += claim.quantity
+    previous.starCoinDelta += claim.starCoinDelta
+    previous.createdAt = compareIsoAscending(claim.createdAt, previous.createdAt) < 0 ? claim.createdAt : previous.createdAt
+    previous.updatedAt = compareIsoAscending(previous.updatedAt, claim.createdAt) < 0 ? claim.createdAt : previous.updatedAt
+    return
+  }
+
+  groups.set(groupKey, {
+    actorId: claim.ownerId,
+    claimIds: [claim.id],
+    createdAt: claim.createdAt,
+    quantity: claim.quantity,
+    starCoinDelta: claim.starCoinDelta,
+    updatedAt: claim.createdAt,
+    wishId: claim.sourceWishId,
+    wishTitle: relatedWish?.title ?? null,
+  })
+}
+
 function buildThreadReactionSummaryMap(reactions: ThreadReactionRecord[]) {
   const threadMap = new Map<string, Map<string, { emoji: string; count: number; memberIds: string[] }>>()
 
@@ -264,6 +333,27 @@ function getBeijingMonthKey(dateValue: string | Date = new Date()) {
   const month = `${shiftedDate.getUTCMonth() + 1}`.padStart(2, '0')
 
   return `${year}-${month}`
+}
+
+function getBeijingDateKey(dateValue: string | Date = new Date()) {
+  const timestamp = dateValue instanceof Date ? dateValue.getTime() : new Date(dateValue).getTime()
+  const shiftedDate = new Date((Number.isNaN(timestamp) ? Date.now() : timestamp) + 8 * 60 * 60 * 1000)
+  const year = shiftedDate.getUTCFullYear()
+  const month = `${shiftedDate.getUTCMonth() + 1}`.padStart(2, '0')
+  const day = `${shiftedDate.getUTCDate()}`.padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+function formatStarCoinAmount(value: number) {
+  const roundedValue = Math.round(value * 10) / 10
+  return Number.isInteger(roundedValue) ? `${roundedValue}` : roundedValue.toFixed(1)
+}
+
+function isAutomaticCountProgressComment(message: string) {
+  const normalizedMessage = message.trim()
+
+  return normalizedMessage.startsWith('数字进度往前推进了 ') || normalizedMessage.startsWith('数字进度改到了 ')
 }
 
 function formatMonthCoverTitle(monthKey: string) {

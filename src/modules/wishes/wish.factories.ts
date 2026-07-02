@@ -70,8 +70,6 @@ export function createWishRecord(partial: Partial<WishRecord> & WishDraft): Wish
     id: partial.id ?? createId(),
     title: partial.title.trim(),
     category: partial.category.trim(),
-    priority: partial.priority,
-    dueDate: partial.dueDate,
     note: partial.note.trim(),
     ownerId: partial.ownerId,
     scope: partial.scope,

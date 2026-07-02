@@ -34,20 +34,19 @@ test.describe('compose and detail visual acceptance', () => {
 
       await expect(page.locator('.compose-field-title input')).toBeVisible()
       await expect(page.locator('.compose-preview-core-stage')).toBeVisible()
-      await expect(page.locator('.compose-preview-summary-stage')).toHaveCount(0)
-      await expect(page.getByRole('button', { name: '先写下这条愿望' })).toBeVisible()
-      await expect(page.getByRole('button', { name: '再补一些细节' })).toBeVisible()
-
-      await page.getByRole('button', { name: '再补一些细节' }).click()
       await expect(page.locator('.compose-preview-summary-stage')).toBeVisible()
       await expect(page.locator('.compose-preview-supplementary-stage')).toBeVisible()
+      await expect(page.locator('.compose-primary-button-inline')).toHaveCount(0)
+      await expect(page.locator('.compose-preview-submit')).toHaveText('保存这条完整愿望')
+      await expect(page.getByRole('button', { name: '再补一些细节' })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: '先写到这里' })).toHaveCount(0)
 
       if (viewport.width <= 430) {
         await expect(page.locator('.compose-mobile-submit')).toBeVisible()
         const metrics = await page.evaluate(() => {
           const submitBox = document.querySelector('.compose-mobile-submit')?.getBoundingClientRect()
           const optionWidths = Array.from(document.querySelectorAll('.compose-option-card')).map((node) => Math.round(node.getBoundingClientRect().width))
-          const priorityWidths = Array.from(document.querySelectorAll('.priority-row .compose-member-chip')).map((node) => Math.round(node.getBoundingClientRect().width))
+          const priorityWidths = Array.from(document.querySelectorAll('.choice-row .compose-member-chip')).map((node) => Math.round(node.getBoundingClientRect().width))
 
           return {
             submitTop: submitBox?.top ?? Number.POSITIVE_INFINITY,

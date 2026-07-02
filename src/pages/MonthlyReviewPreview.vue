@@ -25,6 +25,7 @@ type SwitchOption<T extends string> = {
 type ReviewEvent = {
   id: string
   kind: ReviewEventKind
+  rewardClaimKind?: RewardClaimKind
   createdAt: string
   dateKey: string
   memberId: string
@@ -52,6 +53,8 @@ type HeatCell = {
   level: number
   messages: number
   progress: number
+  claims: number
+  completed: number
   income: number
   spending: number
   events: ReviewEvent[]
@@ -138,6 +141,7 @@ const activeRange = ref<ReviewRange>('month')
 const anchorDateKey = ref(getBeijingDateKey())
 const bubbleDateKey = ref<string | null>(null)
 const isProgressListExpanded = ref(false)
+const rewardClaimHeatKinds = new Set<RewardClaimKind>(['count_reward', 'step_reward', 'wish_reward', 'premium_redeem'])
 
 const metricOptions: SwitchOption<ReviewMetric>[] = [
   { value: 'messages', label: '留言', note: '看人写下的话' },
@@ -367,19 +371,30 @@ const reviewEvents = computed<ReviewEvent[]>(() => {
 
   wishStore.rewardClaims.forEach((claim) => {
     const amount = Math.abs(claim.starCoinDelta)
-    if (!amount) return
+    const isRewardClaimEvent = rewardClaimHeatKinds.has(claim.claimKind)
+
+    if (!amount && !isRewardClaimEvent) return
 
     events.push({
       id: `coin-${claim.id}`,
       kind: claim.starCoinDelta >= 0 ? 'coin_income' : 'coin_spending',
+      rewardClaimKind: claim.claimKind,
       createdAt: claim.createdAt,
       dateKey: getBeijingDateKey(claim.createdAt),
       memberId: claim.ownerId,
       memberName: getMemberName(claim.ownerId),
       wishId: claim.sourceWishId,
       wishTitle: getWishTitle(claim.sourceWishId),
-      title: claim.starCoinDelta >= 0 ? '获得星币' : '使用星币',
-      detail: `${getRewardClaimKindLabel(claim.claimKind)} ${claim.starCoinDelta >= 0 ? '+' : '-'}${formatNumber(amount)}`,
+      title: claim.claimKind === 'premium_redeem'
+        ? '兑换了奖励'
+        : isRewardClaimEvent
+          ? '接住了奖励'
+          : claim.starCoinDelta >= 0
+            ? '获得星币'
+            : '使用星币',
+      detail: isRewardClaimEvent
+        ? (claim.titleSnapshot.trim() || getRewardClaimKindLabel(claim.claimKind))
+        : `${getRewardClaimKindLabel(claim.claimKind)} ${claim.starCoinDelta >= 0 ? '+' : '-'}${formatNumber(amount)}`,
       messageText: '',
       activityScore: Math.min(5, Math.ceil(amount / 2)),
       messageScore: 0,
@@ -415,6 +430,8 @@ const activeHeatCells = computed<HeatCell[]>(() => {
       level: 0,
       messages: events.reduce((total, event) => total + event.messageScore, 0),
       progress: events.reduce((total, event) => total + event.progressScore, 0),
+      claims: events.reduce((total, event) => total + getEventClaimScore(event), 0),
+      completed: events.reduce((total, event) => total + getEventCompletedScore(event), 0),
       income: events.reduce((total, event) => total + Math.max(0, event.coinDelta), 0),
       spending: events.reduce((total, event) => total + Math.abs(Math.min(0, event.coinDelta)), 0),
       events,
@@ -589,7 +606,6 @@ const completedWishJournals = computed(() => {
     .sort((left, right) => new Date(right.completedAt ?? right.updatedAt).getTime() - new Date(left.completedAt ?? left.updatedAt).getTime())
 })
 const claimStatsRows = computed<ClaimStatRow[]>(() => {
-  const claimKinds = new Set<RewardClaimKind>(['count_reward', 'step_reward', 'wish_reward', 'premium_redeem'])
   const groupedRows = new Map<string, ClaimStatRow>()
 
   for (const claim of currentPeriodRewardClaims.value) {
@@ -603,7 +619,7 @@ const claimStatsRows = computed<ClaimStatRow[]>(() => {
       spending: 0,
     }
 
-    if (claimKinds.has(claim.claimKind)) {
+    if (rewardClaimHeatKinds.has(claim.claimKind)) {
       existingRow.claimCount += 1
     }
 
@@ -736,10 +752,20 @@ function matchesMemberScope(event: ReviewEvent) {
   return true
 }
 
+function getEventClaimScore(event: ReviewEvent) {
+  return event.rewardClaimKind && rewardClaimHeatKinds.has(event.rewardClaimKind) ? 1 : 0
+}
+
+function getEventCompletedScore(event: ReviewEvent) {
+  return event.kind === 'wish_complete' ? 1 : 0
+}
+
 function getEventScore(event: ReviewEvent, metric: ReviewMetric) {
   if (metric === 'messages') return event.messageScore
   if (metric === 'progress') return event.progressScore
-  return event.coinScore
+  if (metric === 'coins') return event.coinScore
+  if (metric === 'claims') return getEventClaimScore(event)
+  return getEventCompletedScore(event)
 }
 
 function showBubble(dateKey: string) {
@@ -767,6 +793,8 @@ function resetPeriod() {
 function getMetricSummary(cell: HeatCell) {
   if (activeMetric.value === 'messages') return `${formatNumber(cell.messages)} 条留言`
   if (activeMetric.value === 'progress') return `${formatNumber(cell.progress)} 份推进`
+  if (activeMetric.value === 'claims') return `${formatNumber(cell.claims)} 次领奖`
+  if (activeMetric.value === 'completed') return `${formatNumber(cell.completed)} 条完结`
   return `收入 ${formatNumber(cell.income)} / 花出 ${formatNumber(cell.spending)}`
 }
 
@@ -813,6 +841,8 @@ function withLeadingWeekdayBlanks(cells: HeatCell[]) {
     level: 0,
     messages: 0,
     progress: 0,
+    claims: 0,
+    completed: 0,
     income: 0,
     spending: 0,
     events: [],
@@ -1299,8 +1329,9 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 
 .monthly-preview-hero-copy h1 {
   max-width: 15ch;
-  font-size: clamp(1.85rem, 7vw, 3.2rem);
-  line-height: 0.95;
+  font-size: var(--type-page-title-size);
+  line-height: var(--type-page-title-line);
+  letter-spacing: var(--type-page-title-tracking);
 }
 
 .monthly-preview-hero-copy p,

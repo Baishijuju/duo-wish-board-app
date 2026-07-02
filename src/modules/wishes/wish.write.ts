@@ -63,10 +63,8 @@ export async function addWishCloud(
   try {
     const insertPayload = {
       category: options.draft.category.trim(),
-      due_date: options.draft.dueDate || null,
       note: options.draft.note.trim(),
       owner_id: options.ownerId,
-      priority: options.draft.priority,
       scope: options.draft.scope,
       space_id: options.currentSpaceId,
       title: options.draft.title.trim(),

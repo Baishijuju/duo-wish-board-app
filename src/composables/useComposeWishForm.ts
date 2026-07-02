@@ -37,8 +37,6 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
     return {
       title: '',
       category: '',
-      priority: 'medium',
-      dueDate: '',
       note: '',
       ownerId: authStore.currentMember?.id ?? authStore.members[0]?.id ?? '',
       scope: 'shared',
@@ -85,8 +83,6 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
       draft.value = {
         title: editingWish.value.title,
         category: editingWish.value.category,
-        priority: editingWish.value.priority,
-        dueDate: editingWish.value.dueDate,
         note: editingWish.value.note,
         ownerId: editingWish.value.ownerId,
         scope: editingWish.value.scope,

@@ -4,7 +4,6 @@ import type {
   RewardPoolItem,
   RewardTier,
   WishProgressMode,
-  WishPriority,
   WishScope,
   WishStatus,
 } from '../../stores/wishes'
@@ -26,11 +25,9 @@ export interface WishRowLike {
   title: string
   category: string
   note: string
-  priority: WishPriority
   scope: WishScope
   status: WishStatus
   is_starred: boolean
-  due_date: string | null
   progress_mode: WishProgressMode | null
   progress_current: number | null
   progress_star_coin_value?: number | null
@@ -130,8 +127,6 @@ export function createWishRecordFromRow(
     id: row.id,
     title: row.title,
     category: row.category,
-    priority: row.priority,
-    dueDate: row.due_date ?? '',
     note: row.note,
     ownerId: row.owner_id,
     scope: row.scope,

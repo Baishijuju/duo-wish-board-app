@@ -1,12 +1,9 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watchEffect } from 'vue'
-import { useAppearanceTheme, type AppearanceThemeId } from '../composables/useAppearanceTheme'
-import { clearStoredColorTokenDraft } from '../composables/useColorTokenDashboard'
 import { useSpacePageState } from '../composables/useSpacePageState'
 import type { RewardPoolItem } from '../stores/wishes'
 
 const space = reactive(useSpacePageState())
-const { appearanceThemes, selectedAppearanceId, selectedTheme, setAppearanceTheme } = useAppearanceTheme()
 
 type RewardHubTab = 'claim' | 'editor'
 type RewardEditorTier = 'daily' | 'premium'
@@ -16,6 +13,7 @@ type RewardKeywordKind = 'personal' | 'shared' | 'assist'
 type RewardKeywordSortMode = 'default' | 'cost' | 'deposited' | 'remaining' | 'popular' | 'newest'
 type RewardKeywordOwnerFilter = 'all' | RewardKeywordKind
 type RewardKeywordStatusFilter = 'all' | 'claimable' | 'depositable'
+type SpaceToolsPanel = 'access' | 'storage' | 'sync'
 type RewardKeywordEntry = {
   item: RewardPoolItem
   kind: RewardKeywordKind
@@ -36,6 +34,7 @@ const rewardDepositedMaxDraft = ref('')
 const isRewardRangeFilterOpen = ref(false)
 const isRewardShelfManaging = ref(false)
 const activeAccessPanel = ref<AccessPanel>('invite')
+const activeSpaceToolsPanel = ref<SpaceToolsPanel>('access')
 
 const rewardKeywordSortTabs: { label: string; value: RewardKeywordSortMode }[] = [
   { label: '默认', value: 'default' },
@@ -106,6 +105,26 @@ const accessPanelTabs = computed(() => {
           },
         ]
       : []),
+  ]
+})
+
+const spaceToolsPanelTabs = computed(() => {
+  return [
+    {
+      label: '进入',
+      note: space.accountSummary,
+      value: 'access' as const,
+    },
+    {
+      label: '备份',
+      note: `已用 ${space.storageSummary.usagePercent}%`,
+      value: 'storage' as const,
+    },
+    {
+      label: '同步',
+      note: space.syncStatusLabel,
+      value: 'sync' as const,
+    },
   ]
 })
 
@@ -261,22 +280,18 @@ function getRewardDepositedAmount(entry: RewardKeywordEntry) {
   return space.getRewardDepositedStarCoins(entry.item)
 }
 
-function getRewardTotalDepositedAmount(entry: RewardKeywordEntry) {
-  return space.wishStore.getRewardItemDepositedStarCoins(entry.item)
-}
-
 function getRewardRemainingAmount(entry: RewardKeywordEntry) {
   return space.getRewardRemainingStarCoins(entry.item)
 }
 
-function getRewardTotalDepositPercent(entry: RewardKeywordEntry) {
+function getRewardDepositPercent(entry: RewardKeywordEntry) {
   const starCoinCost = Math.max(entry.item.starCoinCost, 0)
 
   if (!starCoinCost) {
     return 0
   }
 
-  return Math.min(Math.round((getRewardTotalDepositedAmount(entry) / starCoinCost) * 1000) / 10, 100)
+  return Math.min(Math.round((getRewardDepositedAmount(entry) / starCoinCost) * 1000) / 10, 100)
 }
 
 function isRewardEntryClaimable(entry: RewardKeywordEntry) {
@@ -488,11 +503,6 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
 
   return space.depositRewardStarCoins(entry.item.id, amount)
 }
-
-function chooseAppearanceTheme(id: AppearanceThemeId) {
-  clearStoredColorTokenDraft()
-  setAppearanceTheme(id)
-}
 </script>
 
 <template>
@@ -674,13 +684,12 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
               <span class="badge">{{ selectedRewardEntry.item.starCoinCost }} 星币</span>
             </div>
 
-            <div class="reward-deposit-progress" :aria-label="`累计预存 ${formatStarCoinAmount(getRewardTotalDepositPercent(selectedRewardEntry))}%`">
-              <span :style="{ width: `${getRewardTotalDepositPercent(selectedRewardEntry)}%` }"></span>
+            <div class="reward-deposit-progress" :aria-label="`已预存 ${formatStarCoinAmount(getRewardDepositPercent(selectedRewardEntry))}%`">
+              <span :style="{ width: `${getRewardDepositPercent(selectedRewardEntry)}%` }"></span>
             </div>
 
             <p class="space-meta-line reward-card-meta">
-              <span>累计预存 {{ formatStarCoinAmount(getRewardTotalDepositedAmount(selectedRewardEntry)) }} / {{ formatStarCoinAmount(selectedRewardEntry.item.starCoinCost) }}</span>
-              <span>当前可用 {{ formatStarCoinAmount(space.getRewardDepositedStarCoins(selectedRewardEntry.item)) }} 枚</span>
+              <span>已预存 {{ formatStarCoinAmount(getRewardDepositedAmount(selectedRewardEntry)) }} / {{ formatStarCoinAmount(selectedRewardEntry.item.starCoinCost) }}</span>
               <span>{{ space.getRewardRemainingStarCoins(selectedRewardEntry.item) > 0 ? `还差 ${space.getRewardRemainingStarCoins(selectedRewardEntry.item)} 枚` : '已经存满' }}</span>
               <span>已领 {{ space.wishStore.getRewardItemClaimCount(selectedRewardEntry.item) }} 份</span>
             </p>
@@ -921,214 +930,21 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
     <div class="space-utility-band-head">
       <div>
         <p class="eyebrow">后页工具</p>
-        <h2 class="space-utility-band-title">需要时再往后翻</h2>
       </div>
-      <p class="section-copy">{{ space.utilityBandLead }}</p>
     </div>
 
     <div class="space-utility-grid">
-      <details class="page-card space-shell-card space-fold-card space-utility-card space-utility-card-access">
+      <details class="page-card space-shell-card space-fold-card space-utility-card space-utility-card-tools">
         <summary class="space-fold-summary space-utility-summary">
           <div class="space-fold-copy-block">
-            <p class="eyebrow">进入与邀请</p>
-            <h3>需要时再来处理进入方式</h3>
-            <p class="space-fold-copy">{{ space.accountSummary }}</p>
-          </div>
-
-          <div class="space-fold-meta">
-            <div class="badge-row">
-              <span v-for="badge in space.accountBadges" :key="badge" class="badge">{{ badge }}</span>
-            </div>
-            <div class="space-fold-toggle" aria-hidden="true">
-              <span class="space-fold-arrow"></span>
-            </div>
-          </div>
-        </summary>
-
-        <div class="space-fold-body">
-          <div class="access-compact-panel">
-            <div class="access-panel-tabs" role="tablist" aria-label="进入方式">
-              <button
-                v-for="tab in accessPanelTabs"
-                :key="tab.value"
-                class="access-panel-tab"
-                :class="{ active: activeAccessPanel === tab.value }"
-                type="button"
-                role="tab"
-                :aria-selected="activeAccessPanel === tab.value"
-                @click="activeAccessPanel = tab.value"
-              >
-                <span>{{ tab.label }}</span>
-                <small>{{ tab.note }}</small>
-              </button>
-            </div>
-
-            <section v-if="activeAccessPanel === 'invite'" class="access-panel-body" role="tabpanel">
-              <div class="access-panel-head">
-                <div>
-                  <p class="eyebrow">把对方带进来</p>
-                  <h3>邀请对方</h3>
-                </div>
-                <span class="badge">{{ space.syncStatusLabel }}</span>
-              </div>
-
-              <p class="space-card-intro">{{ space.inviteSummary }}</p>
-
-              <div class="access-code-row">
-                <div class="space-inline-code">
-                  <span class="muted">邀请口令</span>
-                  <strong>{{ space.authStore.inviteCode }}</strong>
-                </div>
-                <button v-if="space.canCopyInviteCode" class="button-subtle" type="button" @click="space.copyInviteCode">复制</button>
-              </div>
-
-              <form class="space-form space-access-form access-inline-form" @submit.prevent="space.joinSpace">
-                <label>
-                  <span class="muted">对方发来的邀请口令</span>
-                  <input v-model="space.inviteDraft" type="text" placeholder="WISH-2026" />
-                </label>
-                <button class="button-solid" :disabled="space.isJoiningSpace" type="submit">
-                  {{ space.isJoiningSpace ? '确认中...' : '确认加入' }}
-                </button>
-              </form>
-              <p class="space-access-form-note">确认后会尝试走进同一间空间，不会盖掉你已经写下的愿望。</p>
-            </section>
-
-            <section v-else-if="activeAccessPanel === 'email'" class="access-panel-body" role="tabpanel">
-              <div class="access-panel-head">
-                <div>
-                  <p class="eyebrow">邮箱走进来</p>
-                  <h3>邮箱进入</h3>
-                </div>
-                <span class="badge">{{ space.authStore.isAuthenticated ? '已进入' : '未进入' }}</span>
-              </div>
-
-              <p class="space-card-intro">把邮箱和这间空间连上，回来就不用每次都靠邀请码。</p>
-
-              <form class="space-form space-access-form access-inline-form" @submit.prevent="space.submitMagicLink">
-                <label>
-                  <span class="muted">邮箱</span>
-                  <input v-model="space.loginEmail" type="email" placeholder="chenguang@example.com" />
-                </label>
-                <button class="button-solid" :disabled="space.isSendingMagicLink" type="submit">
-                  {{ space.isSendingMagicLink ? '发送中...' : '发送验证邮件' }}
-                </button>
-              </form>
-
-              <form v-if="space.showOtpForm" class="space-form space-access-form space-access-form-otp access-inline-form" @submit.prevent="space.submitEmailOtp">
-                <label>
-                  <span class="muted">邮箱验证码</span>
-                  <input v-model="space.loginOtp" type="text" inputmode="numeric" placeholder="输入邮件里的验证码" />
-                </label>
-                <button class="button-subtle" :disabled="space.isVerifyingOtp" type="submit">
-                  {{ space.isVerifyingOtp ? '校验中...' : '确认进入' }}
-                </button>
-              </form>
-              <p v-if="space.otpTargetEmail && space.showOtpForm" class="space-access-form-note">按 {{ space.otpTargetEmail }} 校验；换邮箱后先重发一次。</p>
-
-              <p v-if="space.loginMessage" :class="['feedback-message', space.loginTone]">{{ space.loginMessage }}</p>
-            </section>
-
-            <section v-else-if="space.canBindFixedEmail" class="access-panel-body" role="tabpanel">
-              <div class="access-panel-head">
-                <div>
-                  <p class="eyebrow">记住这个入口</p>
-                  <h3>记住常用邮箱</h3>
-                </div>
-                <span class="badge">仅创建者可用</span>
-              </div>
-
-              <p class="space-card-intro">把常用邮箱记在这间空间上，后面回来会更快。</p>
-
-              <form class="space-form space-access-form access-fixed-form" @submit.prevent="space.bindFixedEmail">
-                <label>
-                  <span class="muted">邮箱</span>
-                  <input v-model="space.fixedEmailDraft" type="email" placeholder="partner@example.com" />
-                </label>
-                <label>
-                  <span class="muted">显示名称（可选）</span>
-                  <input v-model="space.fixedDisplayNameDraft" type="text" maxlength="50" placeholder="例如：晨光 / 星野" />
-                </label>
-                <button class="button-subtle" :disabled="space.isBindingEmail" type="submit">
-                  {{ space.isBindingEmail ? '保存中...' : '记住这个邮箱' }}
-                </button>
-              </form>
-              <p class="space-access-form-note">这里只是把邮箱和显示名称记在这间空间上，不会替你发送邮件。</p>
-            </section>
-          </div>
-
-          <p v-if="space.inviteMessage" :class="['feedback-message', space.inviteTone]">{{ space.inviteMessage }}</p>
-        </div>
-      </details>
-
-      <details class="page-card space-shell-card space-fold-card space-utility-card space-utility-card-memory">
-        <summary class="space-fold-summary space-utility-summary">
-          <div class="space-fold-copy-block">
-            <p class="eyebrow">照片与备份</p>
-            <h3>照片空间和备份都放在这里</h3>
-            <p class="space-fold-copy">{{ space.storageSummaryLabel }}</p>
-          </div>
-
-          <div class="space-fold-meta">
-            <div class="badge-row">
-              <span class="badge">已用 {{ space.storageSummary.usagePercent }}%</span>
-              <span class="badge">{{ space.authStore.usesSupabaseSpace ? '云端空间' : '本地体验空间' }}</span>
-            </div>
-            <div class="space-fold-toggle" aria-hidden="true">
-              <span class="space-fold-arrow"></span>
-            </div>
-          </div>
-        </summary>
-
-        <div class="space-fold-body">
-          <div class="storage-compact-panel">
-            <p class="section-copy storage-lead">{{ space.storageLead }}</p>
-
-            <div class="storage-meter" :aria-label="`照片空间已使用 ${space.storageSummary.usagePercent}%`">
-              <div
-                :class="['storage-meter-fill', { warning: space.storageSummary.nearingLimit, danger: space.storageSummary.overSoftLimit }]"
-                :style="{ width: `${space.storageSummary.usagePercent}%` }"
-              ></div>
-            </div>
-
-            <dl class="storage-stat-list">
-              <div v-for="fact in space.storageFacts" :key="fact.label" class="storage-stat-item">
-                <dt>{{ fact.label }}</dt>
-                <dd>{{ fact.value }}</dd>
-              </div>
-            </dl>
-
-            <div class="storage-backup-row">
-              <div class="storage-backup-copy">
-                <p class="section-copy">
-                  {{ space.estimatedRemainingImageCount === null
-                    ? '再多传几张后，这里会显示还能放多少。'
-                    : `按现在的大小，大约还能放 ${space.estimatedRemainingImageCount} 张。` }}
-                </p>
-                <p class="space-meta-line">
-                        <span>备份会带上清单、星币奖励和记录</span>
-                  <span>两个人最好各自留一份</span>
-                </p>
-              </div>
-              <button class="button-subtle" type="button" @click="space.downloadBackup">备份清单</button>
-            </div>
-          </div>
-
-          <p v-if="space.backupMessage" :class="['feedback-message', space.backupTone]">{{ space.backupMessage }}</p>
-        </div>
-      </details>
-
-      <details class="page-card space-shell-card space-fold-card space-utility-card space-advanced-shell space-utility-card-advanced">
-        <summary class="space-fold-summary space-utility-summary">
-          <div class="space-fold-copy-block">
-            <p class="eyebrow">同步与退出</p>
-            <h3>同步详情和退出</h3>
-            <p class="space-fold-copy">{{ space.advancedSummary }}</p>
+            <h3>进入、备份、同步都收在这里</h3>
+            <p class="space-fold-copy">需要时再展开，处理完再收起。</p>
           </div>
 
           <div class="space-fold-meta">
             <div class="badge-row">
               <span class="badge">{{ space.syncStatusLabel }}</span>
+              <span class="badge">{{ space.authStore.usesSupabaseSpace ? '云端数据' : '本地体验' }}</span>
             </div>
             <div class="space-fold-toggle" aria-hidden="true">
               <span class="space-fold-arrow"></span>
@@ -1136,102 +952,315 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
           </div>
         </summary>
 
-        <div class="space-fold-body">
-          <div class="space-advanced-grid">
-            <article class="space-access-card space-advanced-status-card">
-              <div class="space-subsection-heading">
-                <div>
-                  <p class="eyebrow">同步状态</p>
-                  <h3>{{ space.syncStatusLabel }}</h3>
-                </div>
-                <span class="badge">{{ space.authStore.usesSupabaseSpace ? '云端数据' : '本地体验' }}</span>
-              </div>
-
-              <p class="space-card-intro">{{ space.wishStore.syncMessage }}</p>
-            </article>
-
-            <details class="space-access-card space-fold-card space-debug-fold">
-              <summary class="space-fold-summary space-debug-summary">
-                <div class="space-fold-copy-block">
-                  <p class="eyebrow">同步详情</p>
-                  <h3>连接与数据来源</h3>
-                </div>
-
-                <div class="space-fold-meta">
-                  <span class="badge">{{ space.syncStatusLabel }}</span>
-                  <div class="space-fold-toggle" aria-hidden="true">
-                    <span class="space-fold-arrow"></span>
-                  </div>
-                </div>
-              </summary>
-
-              <div class="space-fold-body space-debug-body">
-                <div class="info-list">
-                  <div v-for="item in space.advancedInfoRows" :key="item.label" class="info-row">
-                    <span class="muted">{{ item.label }}</span>
-                    <strong>{{ item.value }}</strong>
-                  </div>
-                </div>
-              </div>
-            </details>
-
-            <article class="space-access-card danger-card">
-              <div class="space-subsection-heading">
-                <div>
-                  <p class="eyebrow">离开这台设备</p>
-                  <h3>退出登录</h3>
-                </div>
-              </div>
-
-              <p class="space-card-intro">这里只会退出当前设备上的登录状态，不会删掉这间空间或已经写下的内容。</p>
-
-              <div class="button-row">
-                <button v-if="space.authStore.isAuthenticated" class="button-subtle danger-button" type="button" @click="void space.authStore.signOut()">
-                  退出登录
-                </button>
-                <span v-else class="muted">当前还没有登录中的邮箱会话。</span>
-              </div>
-            </article>
-          </div>
-        </div>
-      </details>
-
-      <details class="page-card space-shell-card space-fold-card space-main-card space-appearance-card" aria-labelledby="space-appearance-title">
-        <summary class="space-fold-summary space-utility-summary space-appearance-summary">
-          <div class="space-fold-copy-block">
-            <p class="eyebrow">外观</p>
-            <h3 id="space-appearance-title">选择这台设备的页面颜色</h3>
-          </div>
-          <div class="space-fold-meta">
-            <span class="badge">当前：{{ selectedTheme.label }}</span>
-            <div class="space-fold-toggle" aria-hidden="true">
-              <span class="space-fold-arrow"></span>
-            </div>
-          </div>
-        </summary>
-
-        <div class="space-fold-body space-appearance-body">
-          <p class="space-card-intro">这里会保存到当前浏览器。切换正式外观时，会清掉调色工作台的临时草稿。</p>
-
-          <div class="space-appearance-options" role="group" aria-label="外观切换">
+        <div class="space-fold-body space-tools-fold-body">
+          <div class="space-tools-tabs" role="tablist" aria-label="后页工具切换">
             <button
-              v-for="theme in appearanceThemes"
-              :key="theme.id"
+              v-for="tab in spaceToolsPanelTabs"
+              :key="tab.value"
               type="button"
-              class="space-appearance-option"
-              :class="{ active: selectedAppearanceId === theme.id }"
-              :aria-pressed="selectedAppearanceId === theme.id"
-              @click="chooseAppearanceTheme(theme.id)"
+              class="space-tools-tab"
+              :class="{ active: activeSpaceToolsPanel === tab.value }"
+              :aria-selected="activeSpaceToolsPanel === tab.value"
+              role="tab"
+              @click="activeSpaceToolsPanel = tab.value"
             >
-              <span class="space-appearance-preview" aria-hidden="true">
-                <span v-for="color in theme.preview" :key="`${theme.id}-${color}`" :style="{ background: color }"></span>
-              </span>
-              <span class="space-appearance-copy">
-                <strong>{{ theme.label }}</strong>
-                <small>{{ theme.description }}</small>
-              </span>
+              <span>{{ tab.label }}</span>
+              <small>{{ tab.note }}</small>
             </button>
           </div>
+
+          <section v-if="activeSpaceToolsPanel === 'access'" class="space-tools-section">
+            <div class="space-subsection-heading">
+              <div>
+                <p class="eyebrow">进入与邀请</p>
+                <h3>需要时再来处理进入方式</h3>
+              </div>
+              <div class="badge-row">
+                <span v-for="badge in space.accountBadges" :key="badge" class="badge">{{ badge }}</span>
+              </div>
+            </div>
+
+            <div class="access-compact-panel">
+              <div class="access-panel-tabs" role="tablist" aria-label="进入方式">
+                <button
+                  v-for="tab in accessPanelTabs"
+                  :key="tab.value"
+                  class="access-panel-tab"
+                  :class="{ active: activeAccessPanel === tab.value }"
+                  type="button"
+                  role="tab"
+                  :aria-selected="activeAccessPanel === tab.value"
+                  @click="activeAccessPanel = tab.value"
+                >
+                  <span>{{ tab.label }}</span>
+                  <small>{{ tab.note }}</small>
+                </button>
+              </div>
+
+              <section v-if="activeAccessPanel === 'invite'" class="access-panel-body" role="tabpanel">
+                <div class="access-panel-head">
+                  <div>
+                    <p class="eyebrow">把对方带进来</p>
+                    <h3>邀请对方</h3>
+                  </div>
+                  <span class="badge">{{ space.syncStatusLabel }}</span>
+                </div>
+
+                <p class="space-card-intro">{{ space.inviteSummary }}</p>
+
+                <div class="access-code-row">
+                  <div class="space-inline-code">
+                    <span class="muted">邀请口令</span>
+                    <strong>{{ space.authStore.inviteCode }}</strong>
+                  </div>
+                  <button v-if="space.canCopyInviteCode" class="button-subtle" type="button" @click="space.copyInviteCode">复制</button>
+                </div>
+
+                <details class="space-fold-card tools-mini-fold">
+                  <summary class="space-fold-summary tools-mini-summary">
+                    <div class="space-fold-copy-block">
+                      <p class="eyebrow">需要填写时再展开</p>
+                    </div>
+                    <div class="space-fold-meta">
+                      <div class="space-fold-toggle" aria-hidden="true">
+                        <span class="space-fold-arrow"></span>
+                      </div>
+                    </div>
+                  </summary>
+
+                  <div class="space-fold-body tools-mini-body">
+                    <form class="space-form space-access-form access-inline-form" @submit.prevent="space.joinSpace">
+                      <label>
+                        <span class="muted">对方发来的邀请口令</span>
+                        <input v-model="space.inviteDraft" type="text" placeholder="WISH-2026" />
+                      </label>
+                      <button class="button-solid" :disabled="space.isJoiningSpace" type="submit">
+                        {{ space.isJoiningSpace ? '确认中...' : '确认加入' }}
+                      </button>
+                    </form>
+                    <p class="space-access-form-note">确认后会尝试走进同一间空间，不会盖掉你已经写下的愿望。</p>
+                  </div>
+                </details>
+              </section>
+
+              <section v-else-if="activeAccessPanel === 'email'" class="access-panel-body" role="tabpanel">
+                <div class="access-panel-head">
+                  <div>
+                    <p class="eyebrow">邮箱走进来</p>
+                    <h3>邮箱进入</h3>
+                  </div>
+                  <span class="badge">{{ space.authStore.isAuthenticated ? '已进入' : '未进入' }}</span>
+                </div>
+
+                <p class="space-card-intro">把邮箱和这间空间连上，回来就不用每次都靠邀请码。</p>
+
+                <details class="space-fold-card tools-mini-fold">
+                  <summary class="space-fold-summary tools-mini-summary">
+                    <div class="space-fold-copy-block">
+                      <p class="eyebrow">需要输入邮箱时再展开</p>
+                    </div>
+                    <div class="space-fold-meta">
+                      <div class="space-fold-toggle" aria-hidden="true">
+                        <span class="space-fold-arrow"></span>
+                      </div>
+                    </div>
+                  </summary>
+
+                  <div class="space-fold-body tools-mini-body">
+                    <form class="space-form space-access-form access-inline-form" @submit.prevent="space.submitMagicLink">
+                      <label>
+                        <span class="muted">邮箱</span>
+                        <input v-model="space.loginEmail" type="email" placeholder="chenguang@example.com" />
+                      </label>
+                      <button class="button-solid" :disabled="space.isSendingMagicLink" type="submit">
+                        {{ space.isSendingMagicLink ? '发送中...' : '发送验证邮件' }}
+                      </button>
+                    </form>
+
+                    <form v-if="space.showOtpForm" class="space-form space-access-form space-access-form-otp access-inline-form" @submit.prevent="space.submitEmailOtp">
+                      <label>
+                        <span class="muted">邮箱验证码</span>
+                        <input v-model="space.loginOtp" type="text" inputmode="numeric" placeholder="输入邮件里的验证码" />
+                      </label>
+                      <button class="button-subtle" :disabled="space.isVerifyingOtp" type="submit">
+                        {{ space.isVerifyingOtp ? '校验中...' : '确认进入' }}
+                      </button>
+                    </form>
+                    <p v-if="space.otpTargetEmail && space.showOtpForm" class="space-access-form-note">按 {{ space.otpTargetEmail }} 校验；换邮箱后先重发一次。</p>
+                  </div>
+                </details>
+
+                <p v-if="space.loginMessage" :class="['feedback-message', space.loginTone]">{{ space.loginMessage }}</p>
+              </section>
+
+              <section v-else-if="space.canBindFixedEmail" class="access-panel-body" role="tabpanel">
+                <div class="access-panel-head">
+                  <div>
+                    <p class="eyebrow">记住这个入口</p>
+                    <h3>记住常用邮箱</h3>
+                  </div>
+                  <span class="badge">仅创建者可用</span>
+                </div>
+
+                <p class="space-card-intro">把常用邮箱记在这间空间上，后面回来会更快。</p>
+
+                <details class="space-fold-card tools-mini-fold">
+                  <summary class="space-fold-summary tools-mini-summary">
+                    <div class="space-fold-copy-block">
+                      <p class="eyebrow">需要设置时再展开</p>
+                    </div>
+                    <div class="space-fold-meta">
+                      <div class="space-fold-toggle" aria-hidden="true">
+                        <span class="space-fold-arrow"></span>
+                      </div>
+                    </div>
+                  </summary>
+
+                  <div class="space-fold-body tools-mini-body">
+                    <form class="space-form space-access-form access-fixed-form" @submit.prevent="space.bindFixedEmail">
+                      <label>
+                        <span class="muted">邮箱</span>
+                        <input v-model="space.fixedEmailDraft" type="email" placeholder="partner@example.com" />
+                      </label>
+                      <label>
+                        <span class="muted">显示名称（可选）</span>
+                        <input v-model="space.fixedDisplayNameDraft" type="text" maxlength="50" placeholder="例如：晨光 / 星野" />
+                      </label>
+                      <button class="button-subtle" :disabled="space.isBindingEmail" type="submit">
+                        {{ space.isBindingEmail ? '保存中...' : '记住这个邮箱' }}
+                      </button>
+                    </form>
+                    <p class="space-access-form-note">这里只是把邮箱和显示名称记在这间空间上，不会替你发送邮件。</p>
+                  </div>
+                </details>
+              </section>
+            </div>
+
+            <p v-if="space.inviteMessage" :class="['feedback-message', space.inviteTone]">{{ space.inviteMessage }}</p>
+          </section>
+
+          <section v-else-if="activeSpaceToolsPanel === 'storage'" class="space-tools-section">
+            <div class="space-subsection-heading">
+              <div>
+                <p class="eyebrow">照片与备份</p>
+                <h3>照片空间和备份都放在这里</h3>
+              </div>
+              <div class="badge-row">
+                <span class="badge">已用 {{ space.storageSummary.usagePercent }}%</span>
+                <span class="badge">{{ space.authStore.usesSupabaseSpace ? '云端空间' : '本地体验空间' }}</span>
+              </div>
+            </div>
+
+            <div class="storage-compact-panel">
+              <p class="section-copy storage-lead">{{ space.storageLead }}</p>
+
+              <div class="storage-meter" :aria-label="`照片空间已使用 ${space.storageSummary.usagePercent}%`">
+                <div
+                  :class="['storage-meter-fill', { warning: space.storageSummary.nearingLimit, danger: space.storageSummary.overSoftLimit }]"
+                  :style="{ width: `${space.storageSummary.usagePercent}%` }"
+                ></div>
+              </div>
+
+              <dl class="storage-stat-list storage-stat-list-compact">
+                <div v-for="fact in space.storageFacts.slice(0, 2)" :key="fact.label" class="storage-stat-item">
+                  <dt>{{ fact.label }}</dt>
+                  <dd>{{ fact.value }}</dd>
+                </div>
+              </dl>
+
+              <details v-if="space.storageFacts.length > 2" class="space-fold-card storage-more-fold">
+                <summary class="space-fold-summary storage-more-summary">
+                  <div class="space-fold-copy-block">
+                    <p class="eyebrow">更多空间数据</p>
+                  </div>
+                  <div class="space-fold-meta">
+                    <div class="space-fold-toggle" aria-hidden="true">
+                      <span class="space-fold-arrow"></span>
+                    </div>
+                  </div>
+                </summary>
+
+                <div class="space-fold-body storage-more-body">
+                  <dl class="storage-stat-list">
+                    <div v-for="fact in space.storageFacts.slice(2)" :key="fact.label" class="storage-stat-item">
+                      <dt>{{ fact.label }}</dt>
+                      <dd>{{ fact.value }}</dd>
+                    </div>
+                  </dl>
+                </div>
+              </details>
+
+              <div class="storage-backup-row">
+                <div class="storage-backup-copy">
+                  <p class="section-copy">
+                    {{ space.estimatedRemainingImageCount === null
+                      ? '再多传几张后，这里会显示还能放多少。'
+                      : `按现在的大小，大约还能放 ${space.estimatedRemainingImageCount} 张。` }}
+                  </p>
+                  <p class="space-meta-line">
+                    <span>备份会带上清单、星币奖励和记录</span>
+                    <span>两个人最好各自留一份</span>
+                  </p>
+                </div>
+                <button class="button-subtle" type="button" @click="space.downloadBackup">备份清单</button>
+              </div>
+            </div>
+
+            <p v-if="space.backupMessage" :class="['feedback-message', space.backupTone]">{{ space.backupMessage }}</p>
+          </section>
+
+          <section v-else class="space-tools-section">
+            <div class="space-subsection-heading">
+              <div>
+                <p class="eyebrow">同步与退出</p>
+                <h3>同步详情和退出</h3>
+              </div>
+              <span class="badge">{{ space.syncStatusLabel }}</span>
+            </div>
+
+            <div class="space-advanced-grid">
+              <article class="space-access-card space-advanced-status-card sync-flat-card">
+                <span class="muted">同步状态</span>
+                <strong>{{ space.syncStatusLabel }}</strong>
+                <span class="badge">{{ space.authStore.usesSupabaseSpace ? '云端数据' : '本地体验' }}</span>
+              </article>
+
+              <details class="space-access-card space-fold-card space-debug-fold">
+                <summary class="space-fold-summary space-debug-summary">
+                  <div class="space-fold-copy-block">
+                    <p class="eyebrow">同步详情</p>
+                    <h3>连接与数据来源</h3>
+                  </div>
+
+                  <div class="space-fold-meta">
+                    <span class="badge">{{ space.syncStatusLabel }}</span>
+                    <div class="space-fold-toggle" aria-hidden="true">
+                      <span class="space-fold-arrow"></span>
+                    </div>
+                  </div>
+                </summary>
+
+                <div class="space-fold-body space-debug-body">
+                  <div class="info-list">
+                    <div v-for="item in space.advancedInfoRows" :key="item.label" class="info-row">
+                      <span class="muted">{{ item.label }}</span>
+                      <strong>{{ item.value }}</strong>
+                    </div>
+                  </div>
+                </div>
+              </details>
+
+              <article class="space-access-card danger-card">
+                <div class="danger-row">
+                  <span class="muted">离开这台设备</span>
+                  <button v-if="space.authStore.isAuthenticated" class="button-subtle danger-button" type="button" @click="void space.authStore.signOut()">
+                    退出登录
+                  </button>
+                  <span v-else class="muted">当前还没有登录中的邮箱会话。</span>
+                </div>
+              </article>
+            </div>
+          </section>
         </div>
       </details>
     </div>
@@ -1307,83 +1336,155 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
   gap: 0.95rem;
 }
 
-.space-appearance-card {
-  gap: 0.85rem;
-  background:
-    radial-gradient(circle at 100% 0%, var(--accent-panel), transparent 26%),
-    linear-gradient(180deg, var(--card-bg), var(--card-bg-soft));
+.space-utility-card-tools {
+  gap: 0;
+  background: linear-gradient(180deg, rgba(248, 242, 236, 0.96), rgba(242, 234, 225, 0.92));
 }
 
-.space-appearance-body {
-  gap: 0.85rem;
-  padding-top: 0.85rem;
+.space-tools-fold-body {
+  gap: 0.62rem;
+}
+
+.space-tools-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.36rem;
+}
+
+.space-tools-tab {
+  display: grid;
+  gap: 0.02rem;
+  align-content: center;
+  min-height: 2.34rem;
+  padding: 0.32rem 0.42rem;
+  border: 1px solid rgba(95, 74, 55, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.42);
+  color: var(--text-main);
+  text-align: left;
+}
+
+.space-tools-tab span {
+  font-family: var(--font-heading);
+  font-size: var(--type-meta-size);
+  font-weight: 600;
+  line-height: 1.14;
+}
+
+.space-tools-tab small {
+  overflow: hidden;
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: var(--type-eyebrow-size);
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.space-tools-tab.active {
+  border-color: rgba(142, 116, 88, 0.28);
+  background: rgba(255, 247, 237, 0.78);
+}
+
+.space-tools-section {
+  display: grid;
+  gap: 0.56rem;
+  padding-top: 0.56rem;
+  border-top: 1px dashed rgba(95, 74, 55, 0.14);
+}
+
+.space-utility-card-tools .space-subsection-heading h3,
+.space-utility-card-tools .access-panel-head h3,
+.space-utility-card-tools .space-debug-summary h3,
+.space-utility-card-tools .storage-stat-item dd {
+  font-size: var(--type-l6-size);
+  line-height: var(--type-l6-line);
+}
+
+.space-utility-card-tools .eyebrow,
+.space-utility-card-tools .muted,
+.space-utility-card-tools .badge,
+.space-utility-card-tools .space-card-intro,
+.space-utility-card-tools .space-access-form-note,
+.space-utility-card-tools .space-meta-line {
+  font-size: var(--type-eyebrow-size);
+  line-height: 1.3;
+}
+
+.space-utility-card-tools .space-form label {
+  gap: 0.28rem;
+}
+
+.space-utility-card-tools input {
+  min-height: 2.08rem;
+  padding: 0.34rem 0.58rem;
+  font-size: var(--type-meta-size);
+  line-height: 1.2;
+}
+
+.space-utility-card-tools .button-solid,
+.space-utility-card-tools .button-subtle,
+.space-utility-card-tools .space-fold-toggle {
+  min-height: 2.04rem;
+  padding: 0.3rem 0.66rem;
+  font-size: var(--type-meta-size);
+  line-height: 1.15;
+}
+
+.tools-mini-fold {
+  border: 1px solid rgba(95, 74, 55, 0.08);
+  border-radius: 12px;
+  padding: 0.42rem 0.5rem;
+  background: rgba(255, 255, 255, 0.26);
+}
+
+.tools-mini-summary {
+  align-items: center;
+  gap: 0.42rem;
+}
+
+.tools-mini-summary .space-fold-copy-block {
+  gap: 0;
+}
+
+.tools-mini-summary .space-fold-copy-block .eyebrow {
+  margin: 0;
+}
+
+.tools-mini-summary .space-fold-toggle {
+  min-height: 1.72rem;
+  padding: 0.18rem 0.48rem;
+}
+
+.tools-mini-body {
+  gap: 0.48rem;
+  padding-top: 0.5rem;
   border-top-style: dashed;
 }
 
-.space-appearance-options {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.72rem;
-}
-
-.space-appearance-option {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.78rem;
+.sync-flat-card {
+  display: flex;
   align-items: center;
-  min-height: 5.2rem;
-  padding: 0.82rem;
-  border: 1px solid var(--card-border);
-  border-radius: var(--radius-lg);
-  background: var(--panel-bg);
-  color: var(--text-main);
-  text-align: left;
-  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+  justify-content: space-between;
+  gap: 0.52rem;
 }
 
-.space-appearance-option:hover {
-  transform: translateY(-1px);
-  border-color: var(--active-item-border);
-  background: var(--card-bg-popover);
-}
-
-.space-appearance-option.active {
-  border-color: var(--active-item-border);
-  background: var(--active-item-bg);
-  box-shadow: 0 12px 24px var(--accent-shadow-soft);
-}
-
-.space-appearance-preview {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  width: 4.1rem;
-  height: 3.2rem;
-  overflow: hidden;
-  border: 1px solid var(--card-border-soft);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-card);
-}
-
-.space-appearance-preview span {
-  min-width: 0;
-}
-
-.space-appearance-copy {
-  display: grid;
-  gap: 0.18rem;
-}
-
-.space-appearance-copy strong {
+.sync-flat-card strong {
   font-family: var(--font-heading);
-  font-size: var(--type-l5-size);
-  line-height: var(--type-l5-line);
+  font-size: var(--type-meta-size);
+  line-height: 1.2;
 }
 
-.space-appearance-copy small {
-  color: var(--text-soft);
-  font-family: var(--font-body);
-  font-size: var(--type-meta-size);
-  line-height: var(--type-meta-line);
+.danger-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.52rem;
+}
+
+.space-tools-section:first-child {
+  padding-top: 0;
+  border-top: none;
 }
 
 .space-reward-hub-head {
@@ -1612,18 +1713,6 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
   flex-wrap: wrap;
 }
 
-.space-utility-card-access {
-  order: 1;
-}
-
-.space-utility-card-memory {
-  order: 2;
-}
-
-.space-utility-card-advanced {
-  order: 3;
-}
-
 .space-reward-stage {
   padding-top: 1.1rem;
   border-top: 1px solid rgba(95, 74, 55, 0.08);
@@ -1631,6 +1720,11 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 
 .space-hero-title {
   max-width: 20ch;
+  font-family: var(--font-display);
+  font-size: var(--type-page-title-size);
+  font-weight: 400;
+  line-height: var(--type-page-title-line);
+  letter-spacing: var(--type-page-title-tracking);
 }
 
 .space-page {
@@ -1809,7 +1903,7 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 }
 
 .access-compact-panel {
-  gap: 0.76rem;
+  gap: 0.56rem;
 }
 
 .access-panel-tabs {
@@ -1821,8 +1915,8 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 .access-panel-tab {
   display: grid;
   gap: 0.06rem;
-  min-height: 2.46rem;
-  padding: 0.36rem 0.52rem;
+  min-height: 2.2rem;
+  padding: 0.3rem 0.46rem;
   border: 1px solid rgba(95, 74, 55, 0.1);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.42);
@@ -1832,7 +1926,7 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 
 .access-panel-tab span {
   font-family: var(--font-heading);
-  font-size: var(--type-meta-size);
+  font-size: var(--type-eyebrow-size);
   font-weight: 600;
   line-height: 1.15;
 }
@@ -1853,7 +1947,7 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 }
 
 .access-panel-body {
-  gap: 0.52rem;
+  gap: 0.44rem;
 }
 
 .access-panel-head,
@@ -1876,18 +1970,28 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 .access-code-row .space-inline-code {
   flex: 1 1 auto;
   min-width: 0;
-  padding: 0.58rem 0.68rem;
+  padding: 0.46rem 0.58rem;
 }
 
 .access-code-row .button-subtle {
-  min-height: 2.62rem;
-  padding-inline: 0.75rem;
+  min-height: 2.08rem;
+  padding-inline: 0.62rem;
 }
 
 .space-utility-card-access .space-card-intro,
 .space-utility-card-access .space-access-form-note {
   font-size: var(--type-meta-size);
   line-height: var(--type-meta-line);
+}
+
+.space-tools-section .space-card-intro,
+.space-tools-section .space-access-form-note,
+.storage-lead,
+.storage-backup-copy .section-copy {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .space-utility-card-access .space-access-form {
@@ -1899,8 +2003,8 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 }
 
 .space-utility-card-access input {
-  min-height: 2.32rem;
-  padding-block: 0.44rem;
+  min-height: 2.08rem;
+  padding-block: 0.34rem;
 }
 
 .access-inline-form {
@@ -1910,8 +2014,8 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 
 .access-inline-form button,
 .access-fixed-form button {
-  min-height: 2.32rem;
-  padding-inline: 0.78rem;
+  min-height: 2.08rem;
+  padding-inline: 0.64rem;
 }
 
 .space-utility-card-access .space-access-form-otp {
@@ -1931,7 +2035,7 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 }
 
 .storage-compact-panel {
-  gap: 0.72rem;
+  gap: 0.56rem;
 }
 
 .storage-lead {
@@ -1964,15 +2068,19 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 .storage-stat-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.46rem 0.68rem;
+  gap: 0.4rem 0.56rem;
   margin: 0;
+}
+
+.storage-stat-list-compact .storage-stat-item {
+  padding-block: 0.44rem;
 }
 
 .storage-stat-item {
   display: grid;
   gap: 0.12rem;
   min-width: 0;
-  padding: 0.5rem 0;
+  padding: 0.42rem 0;
   border-top: 1px solid rgba(95, 74, 55, 0.12);
 }
 
@@ -2001,8 +2109,8 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.8rem;
-  padding-top: 0.68rem;
+  gap: 0.62rem;
+  padding-top: 0.56rem;
   border-top: 1px dashed rgba(95, 74, 55, 0.14);
 }
 
@@ -2014,7 +2122,7 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 
 .storage-backup-row .button-subtle {
   flex: 0 0 auto;
-  padding-inline: 0.86rem;
+  padding-inline: 0.66rem;
 }
 
 .space-utility-card-advanced {
@@ -2045,6 +2153,37 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 
 .space-fold-card {
   gap: 0;
+}
+
+.storage-more-fold {
+  border: 1px solid rgba(95, 74, 55, 0.08);
+  border-radius: 14px;
+  padding: 0.5rem 0.56rem;
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.storage-more-summary {
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.storage-more-summary .space-fold-copy-block {
+  gap: 0;
+}
+
+.storage-more-summary .space-fold-copy-block .eyebrow {
+  margin: 0;
+}
+
+.storage-more-summary .space-fold-toggle {
+  min-height: 1.72rem;
+  padding: 0.2rem 0.5rem;
+}
+
+.storage-more-body {
+  gap: 0.44rem;
+  padding-top: 0.52rem;
+  border-top-style: dashed;
 }
 
 .space-fold-card[open] {
@@ -2252,7 +2391,7 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 
 .space-utility-card .space-fold-body {
   border-top-style: dashed;
-  padding-top: 0.92rem;
+  padding-top: 0.72rem;
 }
 
 .space-fold-summary-compact h3 {
@@ -2709,7 +2848,7 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--accent-strong), var(--sage-strong));
+  background: linear-gradient(90deg, var(--accent-strong, var(--accent-dark)), var(--sage-strong, var(--success)));
   transition: width 180ms ease;
 }
 
@@ -2770,7 +2909,7 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 }
 
 .reward-command-stat-primary strong {
-  color: var(--accent-strong);
+  color: var(--accent-strong, var(--accent-dark));
 }
 
 .reward-command-actions {
@@ -3761,7 +3900,6 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 
   .space-reward-form-grid,
   .space-reward-hub-tabs,
-  .space-appearance-options,
   .space-access-grid,
   .space-member-grid,
   .space-reward-member-grid,
@@ -3981,7 +4119,33 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
   }
 
   .space-page .badge-row {
-    gap: 0.5rem;
+    gap: 0.36rem;
+  }
+
+  .space-tools-tabs {
+    grid-template-columns: 1fr;
+  }
+
+  .sync-flat-card,
+  .danger-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .space-utility-card-tools .space-subsection-heading h3,
+  .space-utility-card-tools .access-panel-head h3,
+  .space-utility-card-tools .space-debug-summary h3,
+  .space-utility-card-tools .storage-stat-item dd {
+    font-size: var(--type-meta-size);
+    line-height: 1.28;
+  }
+
+  .space-utility-card-tools .button-solid,
+  .space-utility-card-tools .button-subtle,
+  .space-utility-card-tools input,
+  .space-utility-card-tools .space-fold-toggle {
+    min-height: 1.96rem;
+    padding-inline: 0.56rem;
   }
 
   .space-hero-note,

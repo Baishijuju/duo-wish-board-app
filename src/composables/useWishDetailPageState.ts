@@ -14,13 +14,6 @@ export function useWishDetailPageState() {
 
   const viewerName = computed(() => authStore.currentMember?.displayName ?? '我们')
   const coverImageUrl = computed(() => selectedWish.value?.images[0]?.url ?? '')
-  const dueDateLabel = computed(() => {
-    if (!selectedWish.value?.dueDate?.trim()) {
-      return '还没有定日子'
-    }
-
-    return `${selectedWish.value.dueDate} 前`
-  })
   const summaryCards = computed(() => {
     return [
       {
@@ -62,7 +55,6 @@ export function useWishDetailPageState() {
   return {
     ...detailState,
     coverImageUrl,
-    dueDateLabel,
     progressLead,
     rewardHeadline,
     summaryCards,
