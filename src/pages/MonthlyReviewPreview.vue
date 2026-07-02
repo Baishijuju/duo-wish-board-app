@@ -11,7 +11,7 @@ const BEIJING_TIME_OFFSET_MS = 8 * 60 * 60 * 1000
 
 const weekdayLabels = ['一', '二', '三', '四', '五', '六', '日']
 
-type ReviewMetric = 'messages' | 'progress' | 'coins'
+type ReviewMetric = 'messages' | 'progress' | 'coins' | 'claims' | 'completed'
 type ReviewScope = 'all' | 'me' | 'partner'
 type ReviewRange = 'week' | 'month' | 'year'
 type ReviewEventKind = 'message' | 'step' | 'count_progress' | 'wish_complete' | 'coin_income' | 'coin_spending' | 'image'
@@ -94,6 +94,14 @@ type ProgressCategoryRow = {
   wishRows: ProgressRow[]
 }
 
+type ClaimStatRow = {
+  claimCount: number
+  key: string
+  label: string
+  latestAt: string
+  spending: number
+}
+
 type StarCoinWaterfallKind = Extract<RewardClaimKind, 'count_star_coin' | 'step_star_coin' | 'wish_completion_bonus' | 'reward_deposit'>
 
 type StarCoinWaterfallStep = {
@@ -135,6 +143,8 @@ const metricOptions: SwitchOption<ReviewMetric>[] = [
   { value: 'messages', label: '留言', note: '看人写下的话' },
   { value: 'progress', label: '推进', note: '看愿望往前走' },
   { value: 'coins', label: '星币', note: '看收入与兑换' },
+  { value: 'claims', label: '领奖', note: '看领奖次数和花费' },
+  { value: 'completed', label: '完结', note: '看已经完本的愿望' },
 ]
 
 const rangeOptions: SwitchOption<ReviewRange>[] = [
@@ -571,9 +581,48 @@ const quietProgressCategory = computed(() => progressCategoryRows.value.length >
 const categoryProgressShare = computed(() => hottestProgressCategory.value?.percent ?? 0)
 const completedWishJournals = computed(() => {
   return [...wishStore.wishes]
-    .filter((wish) => wish.status === 'done')
+    .filter((wish) => {
+      if (wish.status !== 'done') return false
+      if (!activeLedgerMemberIdSet.value.has(wish.ownerId)) return false
+      return activePeriodDateSet.value.has(getBeijingDateKey(wish.completedAt ?? wish.updatedAt))
+    })
     .sort((left, right) => new Date(right.completedAt ?? right.updatedAt).getTime() - new Date(left.completedAt ?? left.updatedAt).getTime())
 })
+const claimStatsRows = computed<ClaimStatRow[]>(() => {
+  const claimKinds = new Set<RewardClaimKind>(['count_reward', 'step_reward', 'wish_reward', 'premium_redeem'])
+  const groupedRows = new Map<string, ClaimStatRow>()
+
+  for (const claim of currentPeriodRewardClaims.value) {
+    const claimKey = claim.rewardItemId ? `item:${claim.rewardItemId}` : `fallback:${claim.claimKind}:${claim.titleSnapshot}`
+    const fallbackLabel = claim.titleSnapshot.trim() || getRewardClaimKindLabel(claim.claimKind)
+    const existingRow = groupedRows.get(claimKey) ?? {
+      claimCount: 0,
+      key: claimKey,
+      label: fallbackLabel,
+      latestAt: claim.createdAt,
+      spending: 0,
+    }
+
+    if (claimKinds.has(claim.claimKind)) {
+      existingRow.claimCount += 1
+    }
+
+    if (claim.claimKind === 'reward_deposit') {
+      existingRow.spending += Math.abs(Math.min(0, claim.starCoinDelta))
+    }
+
+    if (new Date(claim.createdAt).getTime() > new Date(existingRow.latestAt).getTime()) {
+      existingRow.latestAt = claim.createdAt
+    }
+
+    groupedRows.set(claimKey, existingRow)
+  }
+
+  return [...groupedRows.values()]
+    .filter((row) => row.claimCount > 0 || row.spending > 0)
+    .sort((left, right) => right.claimCount - left.claimCount || right.spending - left.spending || new Date(right.latestAt).getTime() - new Date(left.latestAt).getTime() || left.label.localeCompare(right.label, 'zh-CN'))
+})
+const claimStatsMaxSpending = computed(() => Math.max(1, ...claimStatsRows.value.map((row) => row.spending)))
 
 function formatWaterfallPercent(ratio: number) {
   return `${Number((ratio * 100).toFixed(4))}%`
@@ -919,9 +968,9 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 <template>
   <section class="monthly-preview-page palette-sage">
     <section class="monthly-preview-hero">
-      <div class="monthly-preview-kicker">回顾期刊 · 只读热力图</div>
+      <div class="monthly-preview-kicker">月度记录 · 只读热力图</div>
       <div class="monthly-preview-hero-copy">
-        <h1>{{ currentMonthKey }} 的回顾期刊</h1>
+        <h1>{{ currentMonthKey }} 的月度记录</h1>
         <p>热力图只看强弱。切换周、月、年和成员后，下方用当前范围的统计和留言解释发生了什么。</p>
       </div>
     </section>
@@ -1006,53 +1055,24 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
       </div>
     </section>
 
-    <section class="monthly-preview-panel monthly-ledger-panel">
-      <div class="monthly-section-head">
-        <div>
-          <p>星币账本</p>
-          <h2>收入、兑换和余额</h2>
+    <section v-if="activeMetric === 'progress'" class="monthly-fact-layout">
+      <article class="monthly-preview-panel monthly-range-summary">
+        <div class="monthly-section-head">
+          <div>
+            <p>当前范围进展</p>
+            <h2>{{ heatSummary }}</h2>
+          </div>
+          <span>{{ activeDayCount }} / {{ activePeriodDateKeys.length }} 天亮起</span>
         </div>
-      </div>
-      <div v-if="hasStarCoinWaterfall" class="monthly-waterfall" aria-label="星币来源阶梯瀑布图">
-        <div class="monthly-waterfall-stage">
-          <article
-            v-for="step in starCoinWaterfallSteps"
-            :key="step.key"
-            class="monthly-waterfall-step"
-            :class="`is-${step.tone}`"
-          >
-            <div class="monthly-waterfall-column">
-              <span v-if="step.isEndpoint" class="monthly-waterfall-marker" :style="{ bottom: step.markerBottom }"><em></em></span>
-              <i v-else :style="{ height: step.height, bottom: step.bottom }"></i>
-            </div>
-            <div class="monthly-waterfall-copy">
-              <span>{{ step.label }}</span>
-              <strong>{{ step.isEndpoint ? formatNumber(step.signedAmount) : `${step.signedAmount > 0 ? '+' : step.signedAmount < 0 ? '-' : ''}${formatNumber(step.amount)}` }}</strong>
-            </div>
+        <div class="monthly-summary-card-grid">
+          <article v-for="card in periodSummaryCards" :key="card.label" class="monthly-summary-card">
+            <span>{{ card.label }}</span>
+            <strong>{{ card.value }}</strong>
+            <p>{{ card.note }}</p>
           </article>
         </div>
-      </div>
-      <p v-else class="monthly-empty-note">这个范围还没有星币流动。</p>
-    </section>
+      </article>
 
-    <section class="monthly-preview-panel monthly-range-summary">
-      <div class="monthly-section-head">
-        <div>
-          <p>当前范围进展</p>
-          <h2>{{ heatSummary }}</h2>
-        </div>
-        <span>{{ activeDayCount }} / {{ activePeriodDateKeys.length }} 天亮起</span>
-      </div>
-      <div class="monthly-summary-card-grid">
-        <article v-for="card in periodSummaryCards" :key="card.label" class="monthly-summary-card">
-          <span>{{ card.label }}</span>
-          <strong>{{ card.value }}</strong>
-          <p>{{ card.note }}</p>
-        </article>
-      </div>
-    </section>
-
-    <section class="monthly-fact-layout">
       <article class="monthly-preview-panel monthly-progress-panel">
         <div class="monthly-section-head">
           <div><p>分类推进</p><h2>这段时间精力落在哪些愿望方向</h2></div>
@@ -1088,7 +1108,9 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
           </article>
         </div>
       </article>
+    </section>
 
+    <section v-else-if="activeMetric === 'messages'" class="monthly-fact-layout">
       <article class="monthly-preview-panel monthly-message-panel">
         <div class="monthly-section-head">
           <div><p>留言册</p><h2>{{ activeRange === 'year' ? '年度留言摘要' : '按时间留下来的话' }}</h2></div>
@@ -1106,7 +1128,67 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
           <p v-if="!messageBookEntries.length" class="monthly-empty-note">这个范围还没有留言。</p>
         </div>
       </article>
+    </section>
 
+    <section v-else-if="activeMetric === 'coins'" class="monthly-fact-layout">
+      <article class="monthly-preview-panel monthly-ledger-panel">
+        <div class="monthly-section-head">
+          <div>
+            <p>星币账本</p>
+            <h2>收入、兑换和余额</h2>
+          </div>
+        </div>
+        <div v-if="hasStarCoinWaterfall" class="monthly-waterfall" aria-label="星币来源阶梯瀑布图">
+          <div class="monthly-waterfall-stage">
+            <article
+              v-for="step in starCoinWaterfallSteps"
+              :key="step.key"
+              class="monthly-waterfall-step"
+              :class="`is-${step.tone}`"
+            >
+              <div class="monthly-waterfall-column">
+                <span v-if="step.isEndpoint" class="monthly-waterfall-marker" :style="{ bottom: step.markerBottom }"><em></em></span>
+                <i v-else :style="{ height: step.height, bottom: step.bottom }"></i>
+              </div>
+              <div class="monthly-waterfall-copy">
+                <span>{{ step.label }}</span>
+                <strong>{{ step.isEndpoint ? formatNumber(step.signedAmount) : `${step.signedAmount > 0 ? '+' : step.signedAmount < 0 ? '-' : ''}${formatNumber(step.amount)}` }}</strong>
+              </div>
+            </article>
+          </div>
+        </div>
+        <p v-else class="monthly-empty-note">这个范围还没有星币流动。</p>
+      </article>
+    </section>
+
+    <section v-else-if="activeMetric === 'claims'" class="monthly-fact-layout">
+      <article class="monthly-preview-panel monthly-claims-panel">
+        <div class="monthly-section-head">
+          <div><p>领奖统计</p><h2>这段时间你们领了哪些奖励</h2></div>
+          <span>{{ claimStatsRows.length }} 项</span>
+        </div>
+        <div v-if="claimStatsRows.length" class="monthly-claims-chart-shell">
+          <div class="monthly-claims-chart" role="img" aria-label="领奖花费星币条形图，按次数排序">
+            <article v-for="row in claimStatsRows" :key="row.key" class="monthly-claims-item">
+              <strong :title="row.label">{{ row.label }}</strong>
+              <div class="monthly-claims-bars" aria-hidden="true">
+                <i class="is-spending" :style="{ width: `${row.spending > 0 ? Math.max(4, Math.round((row.spending / claimStatsMaxSpending) * 100)) : 0}%` }"></i>
+              </div>
+              <div class="monthly-claims-values">
+                <span>次数 {{ row.claimCount }}</span>
+                <span>花费 {{ formatNumber(row.spending) }}</span>
+              </div>
+            </article>
+          </div>
+          <div class="monthly-claims-legend" aria-hidden="true">
+            <span><i class="is-spending"></i> 花费</span>
+          </div>
+        </div>
+        <p v-else class="monthly-empty-note">这个范围还没有领奖记录。</p>
+      </article>
+    </section>
+
+    <section v-else class="monthly-fact-layout">
       <article class="monthly-preview-panel monthly-completed-panel">
         <div class="monthly-section-head">
           <div><p>已完本愿望</p><h2>已经走完整条路的册页</h2></div>
@@ -1285,7 +1367,7 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 }
 
 .monthly-fact-layout {
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .monthly-segmented-control,
@@ -1529,6 +1611,97 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 .monthly-message-list {
   display: grid;
   gap: 0.46rem;
+}
+
+.monthly-claims-chart-shell {
+  display: grid;
+  gap: 0.52rem;
+}
+
+.monthly-claims-chart {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.46rem;
+  align-items: stretch;
+  padding: 0.5rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.monthly-claims-item {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) minmax(7.8rem, 0.9fr) auto;
+  align-items: center;
+  gap: 0.42rem;
+  min-width: 0;
+  padding: 0.38rem 0.44rem;
+  border-radius: 12px;
+  border: 1px solid var(--line-soft);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.monthly-claims-bars {
+  display: block;
+  min-height: 0.62rem;
+  padding: 0.34rem;
+  border-radius: 12px;
+  border: 1px solid var(--line-soft);
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.monthly-claims-bars i {
+  display: block;
+  min-width: 0;
+  height: 0.6rem;
+  border-radius: 999px;
+}
+
+.monthly-claims-bars i.is-spending,
+.monthly-claims-legend i.is-spending {
+  background: linear-gradient(90deg, #78b9ae, #2f756f);
+}
+
+.monthly-claims-values {
+  display: grid;
+  gap: 0.08rem;
+  justify-items: end;
+  text-align: right;
+  color: var(--text-soft);
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.monthly-claims-item strong {
+  overflow: hidden;
+  color: var(--text-main);
+  font-family: var(--font-heading);
+  font-size: 0.84rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.monthly-claims-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.46rem;
+  color: var(--text-soft);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.monthly-claims-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.24rem;
+}
+
+.monthly-claims-legend i {
+  width: 0.68rem;
+  height: 0.68rem;
+  border-radius: 4px;
 }
 
 .monthly-completed-card {
@@ -1817,6 +1990,25 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
   .monthly-segmented-control,
   .monthly-compact-control {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .monthly-claims-item {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .monthly-claims-values {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .monthly-segmented-control button {
+    min-height: 1.9rem;
+    padding: 0.24rem 0.2rem;
+  }
+
+  .monthly-segmented-control strong {
+    font-size: 0.8rem;
   }
 
   .monthly-thermometer-groups.is-year {

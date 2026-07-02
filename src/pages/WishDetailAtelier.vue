@@ -90,7 +90,6 @@ const {
   rewardFeedbackTone,
   saveCountProgress,
   saveThreadComment,
-  shouldRecordCountProgressLog,
   selectedWish,
   startEditingThreadComment,
   stepDraft,
@@ -163,6 +162,9 @@ const canShowProgressCompletionAction = computed(() => {
         || ((progress?.mode === 'count' || progress?.mode === 'steps') && progress.isReady)
       ),
   )
+})
+const isProgressAutoCompleted = computed(() => {
+  return selectedWish.value?.status === 'done' && (progressSnapshot.value?.mode === 'count' || progressSnapshot.value?.mode === 'steps')
 })
 const wishBottleAnimationSnapshot = computed(() => wishStore.wishBottleSnapshot)
 const wishBottleAnimationStarCount = computed(() => {
@@ -240,30 +242,60 @@ async function runWishCompletionAction() {
 }
 
 async function runWishStepToggle(stepId: string) {
-  const completedStep = await toggleWishStep(stepId)
+  const result = await toggleWishStep(stepId)
 
-  if (!completedStep) {
+  if (!result || typeof result !== 'object') {
+    return
+  }
+
+  if (!result.completedStep) {
     return
   }
 
   isStepStarDropActive.value = false
   await nextTick()
   isStepStarDropActive.value = true
+
+  if (result.autoCompleted) {
+    isCompletionFireworksActive.value = false
+    await nextTick()
+    isCompletionFireworksActive.value = true
+  }
 }
 
 async function runCountProgressAdjustment(delta: number) {
-  const gainedProgress = await adjustCountProgress(delta)
+  const result = await adjustCountProgress(delta)
 
-  if (gainedProgress) {
+  if (!result || typeof result !== 'object') {
+    return
+  }
+
+  if (result.gainedProgress) {
     await triggerStepStarDrop()
+  }
+
+  if (result.autoCompleted) {
+    isCompletionFireworksActive.value = false
+    await nextTick()
+    isCompletionFireworksActive.value = true
   }
 }
 
 async function runCountProgressSave() {
-  const gainedProgress = await saveCountProgress()
+  const result = await saveCountProgress()
 
-  if (gainedProgress) {
+  if (!result || typeof result !== 'object') {
+    return
+  }
+
+  if (result.gainedProgress) {
     await triggerStepStarDrop()
+  }
+
+  if (result.autoCompleted) {
+    isCompletionFireworksActive.value = false
+    await nextTick()
+    isCompletionFireworksActive.value = true
   }
 }
 
@@ -450,8 +482,8 @@ async function triggerStepStarDrop() {
                 <strong>先让它继续往前一点</strong>
                 <p>{{ canProgressSelectedWish ? getCountStarCoinLabel() : '你可以评论和打气，进度由愿望归属人推进。' }}</p>
               </div>
-              <button v-if="canProgressSelectedWish" class="detail-atelier-primary detail-atelier-progress-primary" type="button" @click="void runCountProgressAdjustment(1)">
-                +1{{ selectedWish.progressUnit ? ` ${selectedWish.progressUnit}` : '' }}
+              <button v-if="canProgressSelectedWish" class="detail-atelier-primary detail-atelier-progress-primary" :class="{ 'is-complete': isProgressAutoCompleted }" type="button" :disabled="isProgressAutoCompleted" @click="void runCountProgressAdjustment(1)">
+                {{ isProgressAutoCompleted ? `这个愿望已经完成啦，恭喜你，获得了最后的 ${getCompletionStarCoinLabel()} 奖励` : `+1${selectedWish.progressUnit ? ` ${selectedWish.progressUnit}` : ''}` }}
               </button>
               <p v-if="rewardFeedback && isCountProgressFeedback" :class="['detail-atelier-feedback', 'detail-atelier-step-feedback', 'detail-atelier-progress-feedback', rewardFeedbackTone]" role="status" aria-live="polite">{{ rewardFeedback }}</p>
             </div>
@@ -500,8 +532,8 @@ async function triggerStepStarDrop() {
                 <strong>{{ selectedWish.steps.length ? '先完成眼前这一步' : '先写下第一步' }}</strong>
                 <p>{{ canProgressSelectedWish ? (selectedWish.steps.length ? '走完下一步时，星星币会自动到账。' : '有了第一步，这条愿望会更容易继续往前。') : '你可以在下面评论和打气，步骤由愿望归属人推进。' }}</p>
               </div>
-              <button v-if="canProgressSelectedWish" class="detail-atelier-primary detail-atelier-progress-primary" type="button" @click="mobilePrimaryStep ? void runWishStepToggle(mobilePrimaryStep.id) : undefined" :disabled="!mobilePrimaryStep || mobilePrimaryStep.isDone">
-                {{ selectedWish.steps.length ? '完成这一步' : '先去下面补一步' }}
+              <button v-if="canProgressSelectedWish" class="detail-atelier-primary detail-atelier-progress-primary" :class="{ 'is-complete': isProgressAutoCompleted }" type="button" @click="mobilePrimaryStep ? void runWishStepToggle(mobilePrimaryStep.id) : undefined" :disabled="isProgressAutoCompleted || !mobilePrimaryStep || mobilePrimaryStep.isDone">
+                {{ isProgressAutoCompleted ? `这个愿望已经完成啦，恭喜你，获得了最后的 ${getCompletionStarCoinLabel()} 奖励` : (selectedWish.steps.length ? '完成这一步' : '先去下面补一步') }}
               </button>
               <p v-if="rewardFeedback && stepRewardFeedbackTargetId" :class="['detail-atelier-feedback', 'detail-atelier-step-feedback', rewardFeedbackTone]" role="status" aria-live="polite">{{ rewardFeedback }}</p>
             </div>
@@ -538,7 +570,7 @@ async function triggerStepStarDrop() {
             </div>
           </div>
 
-          <div v-if="canShowProgressCompletionAction && canProgressSelectedWish" class="detail-atelier-inline-buttons detail-atelier-progress-completion-row">
+          <div v-if="canShowProgressCompletionAction && canProgressSelectedWish && !isProgressAutoCompleted" class="detail-atelier-inline-buttons detail-atelier-progress-completion-row">
             <button class="detail-atelier-secondary detail-atelier-secondary-action detail-atelier-progress-completion" type="button" @click="void runWishCompletionAction()">完成并获得 {{ getCompletionStarCoinLabel() }}</button>
           </div>
         </article>
@@ -1021,11 +1053,6 @@ async function triggerStepStarDrop() {
               <span>数字进度校正</span>
               <p>只有当你想回头整理记录时，再从这里校正现在的数值。</p>
             </div>
-
-            <label class="detail-atelier-progress-log-toggle">
-              <input v-model="shouldRecordCountProgressLog" type="checkbox" />
-              <span>每次推进数字进度时，顺手记一笔手账记录</span>
-            </label>
 
             <div class="detail-atelier-inline-form detail-atelier-inline-form-compact">
               <label>
@@ -2067,6 +2094,24 @@ async function triggerStepStarDrop() {
   min-width: 10rem;
 }
 
+.detail-atelier-progress-primary.is-complete {
+  min-height: 40px;
+  padding: 0.5rem 0.88rem;
+  border: 1px solid var(--warm-border);
+  background: linear-gradient(180deg, var(--warm-panel-strong), var(--surface-soft));
+  color: var(--text-muted);
+  box-shadow: none;
+  font-size: var(--type-l6-size);
+  font-weight: 400;
+  line-height: 1.35;
+  letter-spacing: var(--type-l6-spacing);
+}
+
+.detail-atelier-progress-primary.is-complete:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
 .detail-atelier-progress-completion-row {
   justify-content: flex-end;
   padding-top: 0.1rem;
@@ -2171,23 +2216,6 @@ async function triggerStepStarDrop() {
 
 .detail-atelier-compose-card textarea {
   min-height: 112px;
-}
-
-.detail-atelier-progress-log-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  width: fit-content;
-  color: var(--text-soft);
-  font-family: var(--font-body);
-  font-size: var(--type-supporting-size);
-  line-height: var(--type-supporting-line);
-  letter-spacing: var(--type-supporting-spacing);
-}
-
-.detail-atelier-progress-log-toggle input {
-  width: 1rem;
-  height: 1rem;
 }
 
 .detail-atelier-inline-form-compact {

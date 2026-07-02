@@ -67,7 +67,6 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
   const stepRewardFeedbackTargetId = ref('')
   const isCountProgressFeedback = ref(false)
   const isSubmittingReward = ref(false)
-  const shouldRecordCountProgressLog = ref(true)
 
   const deletableImageCount = computed(() => selectedWish.value?.images.filter((image) => canDeleteImage(image.createdBy)).length ?? 0)
   const progressSnapshot = computed(() => {
@@ -662,6 +661,48 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     return selectedWish.value ? `${formatStarCoinAmount(selectedWish.value.completionStarCoinBonus)} 星星币` : '0 星星币'
   }
 
+  function getAutoCompletionSuccessMessage() {
+    if (!selectedWish.value) {
+      return '这条愿望已经自动完成。'
+    }
+
+    return `这条愿望已经完成，${formatStarCoinAmount(selectedWish.value.completionStarCoinBonus)} 枚星星币已经自动到账。`
+  }
+
+  async function completeWishAfterProgressIfReady(source: 'count' | 'steps') {
+    const wish = selectedWish.value
+    const progress = progressSnapshot.value
+
+    if (!wish || !progress || !progress.isReady || (progress.mode !== 'count' && progress.mode !== 'steps')) {
+      return false
+    }
+
+    if (wish.status === 'done') {
+      setRewardFeedback(getAutoCompletionSuccessMessage(), 'success', '', source === 'count' ? 'count' : 'global')
+      return true
+    }
+
+    if (wishStore.hasWishRewardClaim(wish)) {
+      const toggled = await wishStore.toggleDone(wish.id)
+
+      if (toggled) {
+        setRewardFeedback(getAutoCompletionSuccessMessage(), 'success', '', source === 'count' ? 'count' : 'global')
+      }
+
+      return toggled
+    }
+
+    isSubmittingReward.value = true
+
+    try {
+      const result = await wishStore.completeWishWithReward(wish.id, '')
+      setRewardFeedback(result.message, result.ok ? 'success' : 'danger', '', source === 'count' ? 'count' : 'global')
+      return result.ok
+    } finally {
+      isSubmittingReward.value = false
+    }
+  }
+
   function getClaimToneLabel(claimKind: string) {
     if (claimKind === 'count_reward') {
       return '数字奖励'
@@ -817,17 +858,6 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     const nextCurrent = selectedWish.value?.progressCurrent ?? previousCurrent
     const gainedUnits = Math.max(nextCurrent - previousCurrent, 0)
 
-    if (gainedUnits > 0 && shouldRecordCountProgressLog.value) {
-      const actorId = authStore.currentMemberId || authStore.currentMember?.id || ''
-      if (actorId) {
-        void wishStore.addComment(
-          selectedWish.value.id,
-          actorId,
-          `数字进度往前推进了 ${gainedUnits} 点（现在 ${nextCurrent}/${selectedWish.value.progressTarget}${selectedWish.value.progressUnit ? ` ${selectedWish.value.progressUnit}` : ''}）。`,
-        ).catch(() => undefined)
-      }
-    }
-
     setRewardFeedback(
       gainedUnits
         ? `数字进度先往前走了 ${gainedUnits} 点，${formatStarCoinAmount(gainedUnits * selectedWish.value.progressStarCoinValue)} 枚星星币已经自动到账。`
@@ -838,7 +868,12 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
       '',
       'count',
     )
-    return gainedUnits > 0
+
+    const autoCompleted = gainedUnits > 0 ? await completeWishAfterProgressIfReady('count') : false
+    return {
+      autoCompleted,
+      gainedProgress: gainedUnits > 0,
+    }
   }
 
   async function saveCountProgress() {
@@ -862,17 +897,6 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     const nextCurrent = selectedWish.value?.progressCurrent ?? previousCurrent
     const gainedUnits = Math.max(nextCurrent - previousCurrent, 0)
 
-    if (gainedUnits > 0 && shouldRecordCountProgressLog.value) {
-      const actorId = authStore.currentMemberId || authStore.currentMember?.id || ''
-      if (actorId) {
-        void wishStore.addComment(
-          selectedWish.value.id,
-          actorId,
-          `数字进度改到了 ${nextCurrent}/${selectedWish.value.progressTarget}${selectedWish.value.progressUnit ? ` ${selectedWish.value.progressUnit}` : ''}，本次新增 ${gainedUnits} 点。`,
-        ).catch(() => undefined)
-      }
-    }
-
     setRewardFeedback(
       gainedUnits
         ? `数字进度已经补到现在的位置，新增的 ${gainedUnits} 点已经自动换成 ${formatStarCoinAmount(gainedUnits * selectedWish.value.progressStarCoinValue)} 枚星星币。`
@@ -883,7 +907,12 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
       '',
       'count',
     )
-    return gainedUnits > 0
+
+    const autoCompleted = gainedUnits > 0 ? await completeWishAfterProgressIfReady('count') : false
+    return {
+      autoCompleted,
+      gainedProgress: gainedUnits > 0,
+    }
   }
 
   async function submitWishStep() {
@@ -976,7 +1005,12 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
         'success',
         stepId,
       )
-      return true
+      const autoCompleted = await completeWishAfterProgressIfReady('steps')
+
+      return {
+        autoCompleted,
+        completedStep: true,
+      }
     }
 
     setRewardFeedback(
@@ -986,7 +1020,10 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
       'success',
       stepId,
     )
-    return false
+    return {
+      autoCompleted: false,
+      completedStep: false,
+    }
   }
 
   async function removeWishStep(stepId: string) {
@@ -1346,7 +1383,6 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     selectedImageIds,
     selectedWish,
     setCoverImage,
-    shouldRecordCountProgressLog,
     startEditingImageNote,
     startEditingThreadComment,
     stepDraft,
