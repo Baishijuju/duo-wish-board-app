@@ -131,6 +131,11 @@ const activeRewardHubLead = computed(() => {
   return '先写下一条会让自己开心的奖励。'
 })
 
+function formatStarCoinAmount(value: number) {
+  const roundedValue = Math.round(value * 10) / 10
+  return Number.isInteger(roundedValue) ? `${roundedValue}` : roundedValue.toFixed(1)
+}
+
 function createRewardDisplayEntries(rewards: RewardPoolItem[], tier: RewardEditorTier) {
   return rewards.map((item) => ({
     fallbackNote: '这条奖励还没有补充说明。',
@@ -256,8 +261,22 @@ function getRewardDepositedAmount(entry: RewardKeywordEntry) {
   return space.getRewardDepositedStarCoins(entry.item)
 }
 
+function getRewardTotalDepositedAmount(entry: RewardKeywordEntry) {
+  return space.wishStore.getRewardItemDepositedStarCoins(entry.item)
+}
+
 function getRewardRemainingAmount(entry: RewardKeywordEntry) {
   return space.getRewardRemainingStarCoins(entry.item)
+}
+
+function getRewardTotalDepositPercent(entry: RewardKeywordEntry) {
+  const starCoinCost = Math.max(entry.item.starCoinCost, 0)
+
+  if (!starCoinCost) {
+    return 0
+  }
+
+  return Math.min(Math.round((getRewardTotalDepositedAmount(entry) / starCoinCost) * 1000) / 10, 100)
 }
 
 function isRewardEntryClaimable(entry: RewardKeywordEntry) {
@@ -522,7 +541,7 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
             <div class="reward-command-summary">
               <article class="reward-command-stat reward-command-stat-primary">
                 <span>手里星币</span>
-                <strong>{{ space.currentMemberStarCoins }}</strong>
+                <strong>{{ formatStarCoinAmount(space.currentMemberStarCoins) }}</strong>
               </article>
               <article class="reward-command-stat">
                 <span>奖池词条</span>
@@ -650,16 +669,18 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
               <div>
                 <span class="reward-card-kicker">{{ getRewardKeywordOwnerLabel(selectedRewardEntry) }}</span>
                 <strong>{{ selectedRewardEntry.item.title }}</strong>
+                <p class="reward-selected-note">{{ selectedRewardEntry.item.note || '还没有备注' }}</p>
               </div>
               <span class="badge">{{ selectedRewardEntry.item.starCoinCost }} 星币</span>
             </div>
 
-            <div class="reward-deposit-progress" :aria-label="`已存入 ${space.getRewardDepositPercent(selectedRewardEntry.item)}%`">
-              <span :style="{ width: `${space.getRewardDepositPercent(selectedRewardEntry.item)}%` }"></span>
+            <div class="reward-deposit-progress" :aria-label="`累计预存 ${formatStarCoinAmount(getRewardTotalDepositPercent(selectedRewardEntry))}%`">
+              <span :style="{ width: `${getRewardTotalDepositPercent(selectedRewardEntry)}%` }"></span>
             </div>
 
             <p class="space-meta-line reward-card-meta">
-              <span>已存 {{ space.getRewardDepositedStarCoins(selectedRewardEntry.item) }} / {{ selectedRewardEntry.item.starCoinCost }}</span>
+              <span>累计预存 {{ formatStarCoinAmount(getRewardTotalDepositedAmount(selectedRewardEntry)) }} / {{ formatStarCoinAmount(selectedRewardEntry.item.starCoinCost) }}</span>
+              <span>当前可用 {{ formatStarCoinAmount(space.getRewardDepositedStarCoins(selectedRewardEntry.item)) }} 枚</span>
               <span>{{ space.getRewardRemainingStarCoins(selectedRewardEntry.item) > 0 ? `还差 ${space.getRewardRemainingStarCoins(selectedRewardEntry.item)} 枚` : '已经存满' }}</span>
               <span>已领 {{ space.wishStore.getRewardItemClaimCount(selectedRewardEntry.item) }} 份</span>
             </p>
@@ -2694,6 +2715,14 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 
 .reward-card-meta {
   padding-top: 0.1rem;
+}
+
+.reward-selected-note {
+  margin: 0;
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: var(--type-meta-size);
+  line-height: 1.3;
 }
 
 .reward-command-panel {
