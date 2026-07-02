@@ -828,11 +828,6 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
                       <p class="space-member-summary">对方 · {{ item.starCoins }} 枚星星币 · {{ item.rewardCount }} 条奖励</p>
                     </div>
                   </div>
-
-                  <div class="reward-member-strip-stats" aria-label="成员奖励摘要">
-                    <span><strong>{{ item.premiumRewards.length }}</strong>奖励</span>
-                    <span><strong>{{ item.starCoins }}</strong>星币</span>
-                  </div>
                 </button>
               </div>
 
@@ -3174,7 +3169,7 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 }
 
 .reward-member-strip-list {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   align-items: stretch;
 }
 
@@ -3257,9 +3252,9 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
 .reward-member-strip {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 0.64rem;
+  gap: 0.44rem;
   align-items: start;
-  padding: 0.78rem 0.84rem;
+  padding: 0.7rem 0.76rem;
   border-radius: 18px;
   border: 1px solid var(--card-border-soft);
   background: linear-gradient(135deg, var(--panel-bg-strong), var(--card-bg-soft));
@@ -3320,34 +3315,6 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
   color: var(--text-main);
   font-family: var(--font-heading);
   font-weight: 700;
-}
-
-.reward-member-strip-stats {
-  display: flex;
-  gap: 0.36rem;
-  flex-wrap: wrap;
-  justify-content: flex-start;
-}
-
-.reward-member-strip-stats span {
-  display: grid;
-  min-width: 3.45rem;
-  padding: 0.34rem 0.48rem;
-  border-radius: 14px;
-  border: 1px solid var(--card-border-soft);
-  background: var(--panel-bg);
-  color: var(--text-soft);
-  font-family: var(--font-body);
-  font-size: var(--type-meta-size);
-  line-height: var(--type-meta-line);
-  text-align: center;
-}
-
-.reward-member-strip-stats strong {
-  color: var(--text-main);
-  font-family: var(--font-heading);
-  font-size: var(--type-l5-size);
-  line-height: var(--type-l5-line);
 }
 
 .reward-member-strip-preview {
@@ -3972,7 +3939,7 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
   }
 
   .reward-member-strip-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
     gap: 0.58rem;
   }
 
@@ -3980,8 +3947,8 @@ function chooseAppearanceTheme(id: AppearanceThemeId) {
     width: 100%;
   }
 
-  .reward-member-strip-stats {
-    justify-content: flex-start;
+  .reward-pool-viewer-member {
+    padding: 0.74rem;
   }
 
   .space-page .badge-row {
