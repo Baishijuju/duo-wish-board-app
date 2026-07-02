@@ -3,6 +3,18 @@ import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useComposePreviewState } from '../composables/useComposePreviewState'
 
+interface ComposePreviewStateWithLastSavedWishId {
+  lastSavedWishId: {
+    value: string | null
+  }
+}
+
+function hasLastSavedWishId(state: unknown): state is ComposePreviewStateWithLastSavedWishId {
+  return typeof state === 'object' && state !== null && 'lastSavedWishId' in state
+}
+
+const composePreviewState = useComposePreviewState({ allowEditing: true })
+
 const {
   addInitialStepField,
   applyCategory,
@@ -17,14 +29,17 @@ const {
   feedbackTone,
   initialStepCount,
   initialStepDrafts,
-  lastSavedWishId,
   progressOptions,
   progressSummary,
   removeInitialStepField,
   starCoinTotalSummary,
   submitWish,
   viewerName,
-} = useComposePreviewState({ allowEditing: true })
+} = composePreviewState
+
+const lastSavedWishId = computed(() => {
+  return hasLastSavedWishId(composePreviewState) ? composePreviewState.lastSavedWishId.value : null
+})
 
 const feedbackToneClass = computed(() => {
   return `compose-preview-feedback-${feedbackTone.value}`
