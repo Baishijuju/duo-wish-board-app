@@ -29,6 +29,7 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
 
   const feedbackMessage = ref('')
   const feedbackTone = ref<'success' | 'danger'>('success')
+  const lastSavedWishId = ref<string | null>(null)
   const initialStepDrafts = ref<InitialStepDraft[]>([createEmptyInitialStepDraft(), createEmptyInitialStepDraft()])
   const categorySuggestions = ['旅行', '生活', '成长', '健康', '家', '纪念']
 
@@ -36,12 +37,10 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
     return {
       title: '',
       category: '',
-      priority: 'medium',
-      dueDate: '',
       note: '',
       ownerId: authStore.currentMember?.id ?? authStore.members[0]?.id ?? '',
       scope: 'shared',
-      progressMode: 'none',
+      progressMode: 'steps',
       progressCurrent: 0,
       progressTarget: 0,
       progressUnit: '',
@@ -84,8 +83,6 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
       draft.value = {
         title: editingWish.value.title,
         category: editingWish.value.category,
-        priority: editingWish.value.priority,
-        dueDate: editingWish.value.dueDate,
         note: editingWish.value.note,
         ownerId: editingWish.value.ownerId,
         scope: editingWish.value.scope,
@@ -132,8 +129,28 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
   }
 
   async function submitWish() {
+    lastSavedWishId.value = null
+
     if (!draft.value.title.trim()) {
-      feedbackMessage.value = '先写下这条愿望是什么。'
+      feedbackMessage.value = '请写清楚这条愿望是什么。'
+      feedbackTone.value = 'danger'
+      return
+    }
+
+    if (!draft.value.category.trim()) {
+      feedbackMessage.value = '给这条愿望选一个分类，让它以后更好找。'
+      feedbackTone.value = 'danger'
+      return
+    }
+
+    if (!draft.value.note.trim()) {
+      feedbackMessage.value = '留下一句为什么想实现它，愿望会更容易被认真对待。'
+      feedbackTone.value = 'danger'
+      return
+    }
+
+    if (!editingWish.value && draft.value.progressMode === 'none') {
+      feedbackMessage.value = '新愿望需要选一种推进方式，可以按步骤走，也可以按数字靠近。'
       feedbackTone.value = 'danger'
       return
     }
@@ -182,13 +199,16 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
     }
 
     if (editingWish.value) {
+      const savedWishId = editingWish.value.id
       await wishStore.updateWish(editingWish.value.id, draft.value)
       await router.replace({ name: formRouteName.value })
       feedbackMessage.value = '这条愿望已经按现在的样子改好了。'
       feedbackTone.value = 'success'
+      lastSavedWishId.value = savedWishId
       return
     }
 
+    draft.value.ownerId = authStore.currentMemberId || authStore.currentMember?.id || draft.value.ownerId
     const initialSteps = draft.value.progressMode === 'steps' ? getNormalizedInitialSteps() : []
     const createdWishId = await wishStore.addWish(draft.value, initialSteps)
 
@@ -202,12 +222,14 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
       ? (initialSteps.length ? `这条愿望和 ${initialSteps.length} 个起步步骤已经放进清单了。` : '这条愿望已经放进清单了，步骤后面还可以慢慢补。')
       : '这条愿望已经放进清单了。'
     feedbackTone.value = 'success'
+    lastSavedWishId.value = createdWishId
     resetDraft()
   }
 
   function cancelEditing() {
     void router.replace({ name: formRouteName.value })
     feedbackMessage.value = ''
+    lastSavedWishId.value = null
     resetDraft()
   }
 
@@ -222,6 +244,7 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
     feedbackMessage,
     feedbackTone,
     initialStepDrafts,
+    lastSavedWishId,
     removeInitialStepField,
     resetDraft,
     submitWish,

@@ -1,30 +1,7 @@
 import { computed } from 'vue'
 import { useComposeWishForm } from './useComposeWishForm'
 
-export const priorityOptions = [
-  {
-    value: 'high',
-    label: '最想先靠近',
-    description: '想尽快把它放到最近会去碰的一层。',
-  },
-  {
-    value: 'medium',
-    label: '稳稳往前',
-    description: '不着急，但希望它一直在往前走。',
-  },
-  {
-    value: 'low',
-    label: '先替它留位',
-    description: '先认真放进生活里，之后再慢慢把它提近。',
-  },
-] as const
-
 export const progressOptions = [
-  {
-    value: 'none',
-    label: '先只写下来',
-    description: '先把愿望放稳，进度以后再补。',
-  },
   {
     value: 'count',
     label: '按数字靠近',
@@ -44,30 +21,15 @@ interface UseComposePreviewStateOptions {
 export function useComposePreviewState(options: UseComposePreviewStateOptions = {}) {
   const composeForm = useComposeWishForm({ allowEditing: options.allowEditing })
   const {
-    authStore,
     categorySuggestions,
     draft,
     editingWish,
     initialStepDrafts,
   } = composeForm
 
-  const viewerName = computed(() => authStore.currentMember?.displayName ?? '我们')
-  const selectedOwnerLabel = computed(() => {
-    return authStore.members.find((member) => member.id === draft.value.ownerId)?.displayName
-      ?? authStore.currentMember?.displayName
-      ?? '当前成员'
-  })
-  const selectedPriorityOption = computed(() => {
-    return priorityOptions.find((option) => option.value === draft.value.priority) ?? priorityOptions[1]
-  })
+  const viewerName = computed(() => composeForm.authStore.currentMember?.displayName ?? '我们')
   const selectedProgressOption = computed(() => {
     return progressOptions.find((option) => option.value === draft.value.progressMode) ?? progressOptions[0]
-  })
-  const selectedPriorityLabel = computed(() => {
-    return selectedPriorityOption.value.label
-  })
-  const selectedPriorityDescription = computed(() => {
-    return selectedPriorityOption.value.description
   })
   const selectedProgressLabel = computed(() => {
     return selectedProgressOption.value.label
@@ -102,7 +64,6 @@ export function useComposePreviewState(options: UseComposePreviewStateOptions = 
   const draftNotePreview = computed(() => {
     return draft.value.note.trim() || '等你留下一句为什么想实现，它才更像会被回看的那一页。'
   })
-  const dueDateLabel = computed(() => getRelativeDueLabel(draft.value.dueDate))
   const composerHeadline = computed(() => {
     return editingWish.value ? '把这条愿望整理成它现在最像的样子' : '把一个愿望认真写进今天'
   })
@@ -111,7 +72,7 @@ export function useComposePreviewState(options: UseComposePreviewStateOptions = 
       return '这一页只整理基本信息，让标题、范围和进度方式重新对齐。'
     }
 
-    return '不用一次写满，先写名字、方向和一点想实现它的心情。'
+    return '把名字、分类和第一步都放好，让这个小愿望一开始就有路可走。'
   })
   const progressSummary = computed(() => {
     if (draft.value.progressMode === 'count') {
@@ -131,7 +92,7 @@ export function useComposePreviewState(options: UseComposePreviewStateOptions = 
       return initialStepCount.value ? `先拆成 ${initialStepCount.value} 步，共 ${formatStarCoinAmount(progressStarCoinTotal.value)} 星星币` : '还没写起步步骤'
     }
 
-    return '先只写愿望本身'
+    return '先选一种推进方式'
   })
   const progressDetail = computed(() => {
     if (draft.value.progressMode === 'count') {
@@ -146,7 +107,7 @@ export function useComposePreviewState(options: UseComposePreviewStateOptions = 
         : '先写第一批步骤，写下后再去详情页补全和勾选。'
     }
 
-    return '先把愿望本身写稳，进度以后再补。'
+    return '新愿望需要一种推进方式，选步骤或数字都可以。'
   })
 
   return {
@@ -156,15 +117,10 @@ export function useComposePreviewState(options: UseComposePreviewStateOptions = 
     composerLead,
     draftNotePreview,
     draftTitlePreview,
-    dueDateLabel,
     initialStepCount,
     progressDetail,
     progressSummary,
     progressOptions,
-    priorityOptions,
-    selectedOwnerLabel,
-    selectedPriorityDescription,
-    selectedPriorityLabel,
     selectedProgressDescription,
     selectedProgressLabel,
     starCoinTotalSummary,
@@ -175,50 +131,4 @@ export function useComposePreviewState(options: UseComposePreviewStateOptions = 
 function formatStarCoinAmount(value: number) {
   const roundedValue = Math.round(value * 10) / 10
   return Number.isInteger(roundedValue) ? `${roundedValue}` : roundedValue.toFixed(1)
-}
-
-function getLocalDateTimestamp(dateValue: string) {
-  const trimmedValue = dateValue.trim()
-
-  if (!trimmedValue) {
-    return null
-  }
-
-  const [yearText, monthText, dayText] = trimmedValue.split('-')
-  const year = Number(yearText)
-  const month = Number(monthText)
-  const day = Number(dayText)
-
-  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
-    return null
-  }
-
-  const timestamp = new Date(year, month - 1, day).getTime()
-  return Number.isNaN(timestamp) ? null : timestamp
-}
-
-function getRelativeDueLabel(dueDate: string) {
-  const dueTimestamp = getLocalDateTimestamp(dueDate)
-
-  if (dueTimestamp === null) {
-    return '还没定下日子'
-  }
-
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const dayDifference = Math.round((dueTimestamp - today.getTime()) / (24 * 60 * 60 * 1000))
-
-  if (dayDifference < 0) {
-    return `已经过了 ${Math.abs(dayDifference)} 天`
-  }
-
-  if (dayDifference === 0) {
-    return '就定在今天'
-  }
-
-  if (dayDifference === 1) {
-    return '还有 1 天'
-  }
-
-  return `还有 ${dayDifference} 天`
 }
