@@ -268,6 +268,86 @@ export function useListWishBoardState() {
     } as const
   }
 
+  function getWishListPrimaryValue(wish: WishRecord) {
+    return getWishSortContext(wish).value
+  }
+
+  function getWishListSecondaryValue(wish: WishRecord) {
+    const progress = getWishProgress(wish)
+
+    if (wish.status === 'done') {
+      if (filterStore.sortMode === 'starCoins') {
+        return getWishEarnedStarCoinLabel(wish)
+      }
+
+      if (filterStore.sortMode === 'age') {
+        return `写下于 ${formatDateLabel(wish.createdAt)}`
+      }
+
+      return '已经做到啦，给自己一个小小拥抱。'
+    }
+
+    if (filterStore.sortMode === 'progress') {
+      if (progress.isReady && wish.status !== 'done') {
+        return '就差最后一步。'
+      }
+
+      if (progress.mode === 'steps') {
+        const nextStep = progress.pendingStepTitles[0]
+        return nextStep ? `下一步：${nextStep}` : '慢慢来，清单记着呢。'
+      }
+
+      if (progress.mode === 'count') {
+        return progress.label
+      }
+
+      return wish.note.trim() ? '已经写下，何时开始都好。' : '先放在这里，慢慢长成。'
+    }
+
+    if (filterStore.sortMode === 'starCoins') {
+      return getWishEarnedStarCoinLabel(wish)
+    }
+
+    if (filterStore.sortMode === 'age') {
+      return `写下于 ${formatDateLabel(wish.createdAt)}`
+    }
+
+    if (progress.isReady && wish.status !== 'done') {
+      return '就差最后一步。'
+    }
+
+    if (progress.mode === 'steps') {
+      const nextStep = progress.pendingStepTitles[0]
+      return nextStep ? `下一步：${nextStep}` : '慢慢来，清单记着呢。'
+    }
+
+    if (progress.mode === 'count') {
+      return progress.label
+    }
+
+    return wish.note.trim() ? '已经写下，何时开始都好。' : '先放在这里，慢慢长成。'
+  }
+
+  function getWishListOwnerLabel(wish: WishRecord) {
+    return canCurrentMemberProgressWish(wish) ? '我的' : '对方'
+  }
+
+  function getWishListSideStatus(wish: WishRecord) {
+    if (wish.status === 'done') {
+      return {
+        ariaLabel: '状态：已点亮',
+        label: '已亮',
+        tone: 'done',
+      } as const
+    }
+
+    return {
+      ariaLabel: '状态：在路上',
+      label: '在途',
+      tone: 'active',
+    } as const
+  }
+
   function getWishProgressHint(wish: WishRecord) {
     const progress = getWishProgress(wish)
 
@@ -318,6 +398,10 @@ export function useListWishBoardState() {
     getWishEarnedStarCoinLabel,
     getWishProgress,
     getWishCompactMeta,
+    getWishListOwnerLabel,
+    getWishListPrimaryValue,
+    getWishListSecondaryValue,
+    getWishListSideStatus,
     getWishProgressHint,
     getWishProgressPercentLabel,
     getWishRemainingStarCoinLabel,

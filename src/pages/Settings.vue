@@ -25,16 +25,19 @@ const rewardPoolScope = ref<RewardPoolScope>('mine')
 const rewardPoolViewerMemberId = ref<string | null>(null)
 const selectedRewardKeywordId = ref<string | null>(null)
 const rewardKeywordSortMode = ref<RewardKeywordSortMode>('default')
-const rewardKeywordOwnerFilter = ref<RewardKeywordOwnerFilter>('all')
-const rewardKeywordStatusFilter = ref<RewardKeywordStatusFilter>('all')
+const rewardKeywordOwnerFilter = ref<RewardKeywordOwnerFilter>('personal')
+const rewardKeywordStatusFilter = ref<RewardKeywordStatusFilter>('depositable')
 const rewardCostMinDraft = ref('')
 const rewardCostMaxDraft = ref('')
 const rewardDepositedMinDraft = ref('')
 const rewardDepositedMaxDraft = ref('')
 const isRewardRangeFilterOpen = ref(false)
 const isRewardShelfManaging = ref(false)
+const isRewardManagePanelOpen = ref(false)
+const isRewardKeywordExpanded = ref(false)
 const activeAccessPanel = ref<AccessPanel>('invite')
 const activeSpaceToolsPanel = ref<SpaceToolsPanel>('access')
+const REWARD_DEFAULT_VISIBLE_COUNT = 6
 
 const rewardKeywordSortTabs: { label: string; value: RewardKeywordSortMode }[] = [
   { label: '默认', value: 'default' },
@@ -131,6 +134,14 @@ const spaceToolsPanelTabs = computed(() => {
 watchEffect(() => {
   if (activeAccessPanel.value === 'fixedEmail' && !space.canBindFixedEmail) {
     activeAccessPanel.value = 'invite'
+  }
+})
+
+watchEffect(() => {
+  if (!isRewardManagePanelOpen.value) {
+    rewardHubTab.value = 'claim'
+    isRewardShelfManaging.value = false
+    isRewardRangeFilterOpen.value = false
   }
 })
 
@@ -363,6 +374,18 @@ const selectedRewardEntry = computed(() => {
   return visibleRewardKeywordEntries.value.find((entry) => entry.item.id === selectedRewardKeywordId.value) || visibleRewardKeywordEntries.value[0]
 })
 
+const visibleRewardKeywordEntriesForDisplay = computed(() => {
+  if (isRewardManagePanelOpen.value || isRewardKeywordExpanded.value) {
+    return visibleRewardKeywordEntries.value
+  }
+
+  return visibleRewardKeywordEntries.value.slice(0, REWARD_DEFAULT_VISIBLE_COUNT)
+})
+
+const canToggleRewardKeywordExpansion = computed(() => {
+  return !isRewardManagePanelOpen.value && visibleRewardKeywordEntries.value.length > REWARD_DEFAULT_VISIBLE_COUNT
+})
+
 watchEffect(() => {
   if (!visibleRewardKeywordEntries.value.length) {
     selectedRewardKeywordId.value = null
@@ -413,7 +436,12 @@ function resetActiveRewardDraft() {
 }
 
 function openRewardManager() {
+  isRewardManagePanelOpen.value = true
   rewardHubTab.value = 'editor'
+}
+
+function toggleRewardManageMode() {
+  isRewardManagePanelOpen.value = !isRewardManagePanelOpen.value
 }
 
 function selectRewardKeyword(entry: RewardKeywordEntry) {
@@ -433,8 +461,8 @@ function chooseRewardKeywordStatusFilter(filter: RewardKeywordStatusFilter) {
 }
 
 function clearRewardKeywordFilters() {
-  rewardKeywordOwnerFilter.value = 'all'
-  rewardKeywordStatusFilter.value = 'all'
+  rewardKeywordOwnerFilter.value = 'personal'
+  rewardKeywordStatusFilter.value = 'depositable'
   rewardCostMinDraft.value = ''
   rewardCostMaxDraft.value = ''
   rewardDepositedMinDraft.value = ''
@@ -527,10 +555,9 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
             <h2 class="space-panel-title space-reward-hub-title">{{ activeRewardHubTitle }}</h2>
             <p class="space-reward-hub-lead">{{ activeRewardHubLead }}</p>
           </div>
-
         </div>
 
-        <div class="space-reward-hub-tabs" role="tablist" aria-label="奖励中心切换">
+        <div v-if="isRewardManagePanelOpen" class="space-reward-hub-tabs" role="tablist" aria-label="奖励中心切换">
           <button
             v-for="tab in rewardHubTabs"
             :key="tab.value"
@@ -570,7 +597,7 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
 
           <p v-if="space.rewardMessage" :class="['feedback-message', 'space-reward-feedback', space.rewardTone]">{{ space.rewardMessage }}</p>
 
-          <section v-if="rewardKeywordEntries.length" class="reward-keyword-controls" aria-label="奖励奖池筛选排序">
+          <section v-if="isRewardManagePanelOpen && rewardKeywordEntries.length" class="reward-keyword-controls" aria-label="奖励奖池筛选排序">
             <div class="reward-keyword-control-row">
               <span class="reward-keyword-control-label">排序</span>
               <div class="reward-keyword-pill-row" role="list" aria-label="排序方式">
@@ -647,30 +674,41 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
                 <p class="eyebrow">奖池</p>
                 <h3>点一个奖励，看它现在能不能兑现</h3>
               </div>
-              <span class="badge">{{ visibleRewardKeywordEntries.length }} / {{ rewardKeywordEntries.length }} 条</span>
+              <span class="badge">{{ visibleRewardKeywordEntriesForDisplay.length }} / {{ visibleRewardKeywordEntries.length }} 条</span>
             </div>
 
-            <div v-if="visibleRewardKeywordEntries.length" class="reward-keyword-cloud" aria-label="奖励词条奖池">
-              <button
-                v-for="entry in visibleRewardKeywordEntries"
-                :key="entry.item.id"
-                class="reward-keyword-chip"
-                :class="[
-                  `reward-keyword-chip-${entry.kind}`,
-                  { active: selectedRewardEntry?.item.id === entry.item.id },
-                ]"
-                type="button"
-                @click="selectRewardKeyword(entry)"
-              >
-                <span class="reward-keyword-title">{{ entry.item.title }}</span>
-                <span class="reward-keyword-metric">{{ getRewardKeywordMetricLabel(entry) }}</span>
-              </button>
-            </div>
+            <template v-if="visibleRewardKeywordEntries.length">
+              <div class="reward-keyword-cloud" aria-label="奖励词条奖池">
+                <button
+                  v-for="entry in visibleRewardKeywordEntriesForDisplay"
+                  :key="entry.item.id"
+                  class="reward-keyword-chip"
+                  :class="[
+                    `reward-keyword-chip-${entry.kind}`,
+                    { active: selectedRewardEntry?.item.id === entry.item.id },
+                  ]"
+                  type="button"
+                  @click="selectRewardKeyword(entry)"
+                >
+                  <span class="reward-keyword-title">{{ entry.item.title }}</span>
+                  <span class="reward-keyword-metric">{{ getRewardKeywordMetricLabel(entry) }}</span>
+                </button>
+              </div>
+
+              <div class="reward-keyword-inline-links">
+                <button v-if="canToggleRewardKeywordExpansion" class="reward-text-link" type="button" @click="isRewardKeywordExpanded = !isRewardKeywordExpanded">
+                  {{ isRewardKeywordExpanded ? '收起奖励' : '查看更多奖励' }}
+                </button>
+                <button class="space-manage-link" type="button" @click="toggleRewardManageMode">
+                  {{ isRewardManagePanelOpen ? '完成管理' : '管理' }}
+                </button>
+              </div>
+            </template>
 
             <div v-else class="space-empty-card reward-filter-empty">
               <strong>没有符合条件的奖励</strong>
-              <p>试试放宽币数区间，或清空筛选。</p>
-              <button class="button-subtle" type="button" @click="clearRewardKeywordFilters">清空筛选</button>
+              <p>当前筛选下还没有奖励，试试清空筛选。</p>
+              <button v-if="isRewardManagePanelOpen" class="reward-text-link reward-empty-text-link" type="button" @click="clearRewardKeywordFilters">清空筛选</button>
             </div>
           </section>
 
@@ -728,7 +766,7 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
             <button class="button-solid" type="button" @click="openRewardManager">写一条奖励</button>
           </div>
 
-          <section class="reward-recent-strip">
+          <section v-if="isRewardManagePanelOpen" class="reward-recent-strip">
             <div class="reward-task-section-head">
               <div>
                 <p class="eyebrow">最近发生</p>
@@ -755,7 +793,7 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
           </section>
         </template>
 
-        <template v-else>
+        <template v-else-if="isRewardManagePanelOpen">
           <div class="space-reward-workbench">
             <div class="space-reward-stage-head">
               <div class="space-reward-stage-copy">
@@ -1519,6 +1557,57 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
   flex-wrap: wrap;
   justify-content: flex-end;
   align-items: center;
+}
+
+.space-manage-link {
+  margin: 0;
+  padding: 0.1rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: var(--type-eyebrow-size);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--text-soft) 55%, transparent);
+  text-underline-offset: 2px;
+}
+
+.space-manage-link:hover {
+  color: var(--text-muted);
+}
+
+.reward-keyword-inline-links {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.64rem;
+}
+
+.reward-text-link {
+  margin: 0;
+  padding: 0.1rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: var(--type-eyebrow-size);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--text-soft) 55%, transparent);
+  text-underline-offset: 2px;
+}
+
+.reward-text-link:hover {
+  color: var(--text-muted);
+}
+
+.reward-empty-text-link {
+  justify-self: center;
 }
 
 .space-reward-hub-tabs {

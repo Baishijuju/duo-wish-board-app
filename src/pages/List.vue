@@ -9,11 +9,9 @@ const {
   canCurrentMemberProgressWish,
   filterStore,
   filteredWishes,
-  getWishAgeLabel,
-  getWishProgressPercentLabel,
-  getWishStarCoinRing,
-  getWishSortContext,
-  getWishUpdatedLabel,
+  getWishListPrimaryValue,
+  getWishListSecondaryValue,
+  getWishListSideStatus,
   listWorkbenchStats,
 } = useListWishBoardState()
 
@@ -90,6 +88,27 @@ const boardSummary = computed(() => {
 
   return `${stats.activeCount} 个还在路上 · ${stats.remainingStarCoins} 枚星星币等你慢慢拿`
 })
+const heroSummary = computed(() => {
+  const stats = listWorkbenchStats.value
+
+  if (filterStore.status === 'done') {
+    if (filterStore.visibility === 'mine') {
+      return `${filteredWishes.value.length} 条已经实现 · 都是你一步步走到这里的`
+    }
+
+    if (filterStore.visibility === 'others') {
+      return `${filteredWishes.value.length} 条已经实现 · 也记得夸夸对方的认真`
+    }
+
+    return `${filteredWishes.value.length} 条已经实现 · 这些光都值得被看见`
+  }
+
+  if (filterStore.status === 'all') {
+    return `${filteredWishes.value.length} 条在清单里 · 还能获得 ${stats.remainingStarCoins} 星星币`
+  }
+
+  return `${stats.activeCount} 条正在推进 · ${stats.currentMemberActiveCount} 条归我 · 还能获得 ${stats.remainingStarCoins} 星星币`
+})
 function getWishOwnerClass(wish: WishRecord) {
   return canCurrentMemberProgressWish(wish) ? 'is-personal-owner' : 'is-assist-owner'
 }
@@ -100,28 +119,6 @@ function getSortButtonLabel(sortMode: keyof typeof sortLabels) {
   }
 
   return `${sortLabels[sortMode]}${selectedSortDirectionLabel.value}`
-}
-
-function getWishSideStatusLabel(wish: WishRecord) {
-  if (filterStore.sortMode === 'progress') {
-    return getWishProgressPercentLabel(wish)
-  }
-
-  if (filterStore.sortMode === 'age') {
-    return getWishAgeLabel(wish)
-      .replace('存在 ', '')
-      .replace(' 天', '天')
-      .replace('今天加入', '今天')
-  }
-
-  if (filterStore.sortMode === 'updated') {
-    return getWishUpdatedLabel(wish)
-      .replace(' 天前更新', '天前')
-      .replace('昨天更新', '昨天')
-      .replace('今天更新', '今天')
-  }
-
-  return ''
 }
 
 function setSlidingTabRef(group: SlidingTabGroup, index: number, element: HTMLElement | null) {
@@ -204,7 +201,7 @@ onBeforeUnmount(() => {
       <div class="list-board-hero-copy list-board-workbench-copy">
         <p class="list-board-kicker">今日清单</p>
         <h1>{{ viewerName }}，挑一件继续</h1>
-        <p>{{ listWorkbenchStats.activeCount }} 条正在推进 · {{ listWorkbenchStats.currentMemberActiveCount }} 条归我 · 还能获得 {{ listWorkbenchStats.remainingStarCoins }} 星星币</p>
+        <p>{{ heroSummary }}</p>
       </div>
     </article>
 
@@ -328,7 +325,8 @@ onBeforeUnmount(() => {
                 :class="{ 'is-active': filterStore.sortMode === 'progress' }"
                 @click="filterStore.setSortMode('progress')"
               >
-                {{ getSortButtonLabel('progress') }}
+                <span class="list-board-sort-pill-icon is-progress" aria-hidden="true"></span>
+                <span>{{ getSortButtonLabel('progress') }}</span>
               </button>
               <button
                 class="list-board-filter-pill"
@@ -336,7 +334,8 @@ onBeforeUnmount(() => {
                 :class="{ 'is-active': filterStore.sortMode === 'starCoins' }"
                 @click="filterStore.setSortMode('starCoins')"
               >
-                {{ getSortButtonLabel('starCoins') }}
+                <span class="list-board-sort-pill-icon is-star-coins" aria-hidden="true"></span>
+                <span>{{ getSortButtonLabel('starCoins') }}</span>
               </button>
               <button
                 class="list-board-filter-pill"
@@ -344,7 +343,8 @@ onBeforeUnmount(() => {
                 :class="{ 'is-active': filterStore.sortMode === 'age' }"
                 @click="filterStore.setSortMode('age')"
               >
-                {{ getSortButtonLabel('age') }}
+                <span class="list-board-sort-pill-icon is-age" aria-hidden="true"></span>
+                <span>{{ getSortButtonLabel('age') }}</span>
               </button>
               <button
                 class="list-board-filter-pill"
@@ -352,7 +352,8 @@ onBeforeUnmount(() => {
                 :class="{ 'is-active': filterStore.sortMode === 'updated' }"
                 @click="filterStore.setSortMode('updated')"
               >
-                {{ getSortButtonLabel('updated') }}
+                <span class="list-board-sort-pill-icon is-updated" aria-hidden="true"></span>
+                <span>{{ getSortButtonLabel('updated') }}</span>
               </button>
             </div>
           </div>
@@ -386,23 +387,20 @@ onBeforeUnmount(() => {
 
             <div class="list-board-card-data">
               <RouterLink class="list-board-data-block list-board-progress-link list-board-sort-context" :to="{ name: 'wish-detail', params: { id: wish.id }, hash: '#progress' }" aria-label="打开详情页进度区域">
-                <strong>{{ getWishSortContext(wish).value }}</strong>
-                <em>{{ getWishSortContext(wish).meta }}</em>
+                <strong>{{ getWishListPrimaryValue(wish) }}</strong>
+                <em>{{ getWishListSecondaryValue(wish) }}</em>
               </RouterLink>
             </div>
           </div>
 
           <div class="list-board-star-ring-shell">
             <div
-              v-if="filterStore.sortMode === 'starCoins'"
-              class="list-board-star-ring"
-              :aria-label="`星币领取进度：已获得 ${getWishStarCoinRing(wish).claimedPercent}%`"
-              :style="{ '--ring-progress': `${getWishStarCoinRing(wish).claimedPercent}%` }"
+              class="list-board-side-stat is-side-status"
+              :class="`is-${getWishListSideStatus(wish).tone}`"
+              :aria-label="getWishListSideStatus(wish).ariaLabel"
             >
-              <span>{{ Math.round(getWishStarCoinRing(wish).claimedPercent) }}%</span>
-            </div>
-            <div v-else class="list-board-side-stat" :aria-label="`${getWishSortContext(wish).label}：${getWishSideStatusLabel(wish)}`">
-              <strong>{{ getWishSideStatusLabel(wish) }}</strong>
+              <span class="list-board-side-glyph" aria-hidden="true"></span>
+              <strong class="list-board-side-label">{{ getWishListSideStatus(wish).label }}</strong>
             </div>
           </div>
 
@@ -1271,8 +1269,93 @@ onBeforeUnmount(() => {
 }
 
 .list-board-filter-row.is-sort-row .list-board-filter-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.18rem;
   width: 100%;
   min-width: 0;
+}
+
+.list-board-sort-pill-icon {
+  position: relative;
+  width: 0.7rem;
+  height: 0.7rem;
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--text-muted) 78%, var(--text-main));
+}
+
+.list-board-filter-pill.is-active .list-board-sort-pill-icon {
+  color: color-mix(in srgb, var(--text-main) 86%, var(--accent-dark));
+}
+
+.list-board-sort-pill-icon.is-progress {
+  border-radius: 2px;
+  background:
+    linear-gradient(currentColor, currentColor) left bottom / 2px 4px no-repeat,
+    linear-gradient(currentColor, currentColor) center bottom / 2px 6px no-repeat,
+    linear-gradient(currentColor, currentColor) right bottom / 2px 8px no-repeat;
+}
+
+.list-board-sort-pill-icon.is-star-coins {
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+
+.list-board-sort-pill-icon.is-star-coins::before {
+  content: '';
+  position: absolute;
+  inset: 0.22rem;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.list-board-sort-pill-icon.is-age {
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+
+.list-board-sort-pill-icon.is-age::before,
+.list-board-sort-pill-icon.is-age::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1px;
+  border-radius: 999px;
+  background: currentColor;
+  transform-origin: bottom center;
+}
+
+.list-board-sort-pill-icon.is-age::before {
+  height: 0.22rem;
+  transform: translate(-50%, -100%) rotate(0deg);
+}
+
+.list-board-sort-pill-icon.is-age::after {
+  height: 0.18rem;
+  transform: translate(-50%, -100%) rotate(55deg);
+}
+
+.list-board-sort-pill-icon.is-updated {
+  border-radius: 999px;
+  border: 1px solid transparent;
+  border-top-color: currentColor;
+  border-left-color: currentColor;
+  transform: rotate(-40deg);
+}
+
+.list-board-sort-pill-icon.is-updated::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 3px 0 3px 4px;
+  border-color: transparent transparent transparent currentColor;
+  transform: rotate(40deg);
 }
 
 .list-board-filter-pill {
@@ -1305,6 +1388,13 @@ onBeforeUnmount(() => {
   .list-board-filter-row.is-sliding-tabs .list-board-filter-pill {
     transition: none !important;
   }
+
+  .list-board-item,
+  .list-board-sort-context strong,
+  .list-board-sort-context em {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 
 .list-board-card {
@@ -1329,9 +1419,9 @@ onBeforeUnmount(() => {
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
   overflow: hidden;
-  border: 1px solid rgba(126, 96, 76, 0.08);
+  border: 1px solid rgba(126, 96, 76, 0.06);
   border-radius: var(--radius-lg);
-  background: rgba(255, 253, 249, 0.58);
+  background: rgba(255, 253, 249, 0.52);
 }
 
 .list-board-item {
@@ -1342,14 +1432,15 @@ onBeforeUnmount(() => {
   position: relative;
   grid-template-columns: 0.5rem minmax(0, 1fr) 2.9rem;
   column-gap: 0.58rem;
-  row-gap: 0.18rem;
+  row-gap: 0.24rem;
   align-items: start;
-  padding: 0.64rem 0.66rem 0.66rem 0.62rem;
-  border-bottom: 1px solid rgba(126, 96, 76, 0.075);
+  padding: 0.7rem 0.66rem 0.72rem 0.62rem;
+  border-bottom: 1px solid rgba(126, 96, 76, 0.055);
   background: transparent;
   border-radius: 0;
   box-shadow: none;
   transition: background 160ms ease;
+  animation: list-board-sort-enter 100ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .list-board-item:last-child {
@@ -1370,20 +1461,25 @@ onBeforeUnmount(() => {
   --owner-progress-end: color-mix(in srgb, var(--accent-teal) 72%, var(--text-muted));
 }
 
-.list-board-item:hover,
 .list-board-item:focus-within {
-  background: var(--owner-row-hover);
+  background: color-mix(in srgb, var(--owner-row-hover) 58%, transparent);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .list-board-item:hover {
+    background: color-mix(in srgb, var(--owner-row-hover) 58%, transparent);
+  }
 }
 
 .list-board-owner-dot {
   grid-column: 1;
   grid-row: 1;
-  width: 0.42rem;
-  height: 0.42rem;
-  margin-top: 0.42rem;
+  width: 7px;
+  height: 7px;
+  margin-top: 6px;
   border-radius: 999px;
   background: var(--owner-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--owner-accent) 12%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--owner-accent) 10%, transparent);
 }
 
 .list-board-main {
@@ -1399,66 +1495,89 @@ onBeforeUnmount(() => {
   grid-row: 1;
   align-self: start;
   justify-self: end;
-  width: 2.9rem;
+  width: 45px;
   display: grid;
   justify-items: end;
   margin-top: 0.04rem;
 }
 
 .list-board-side-stat {
-  display: grid;
-  place-items: center;
-  width: 2.9rem;
-  min-height: 2.02rem;
-  padding: 0.2rem 0.22rem;
-  border: 1px solid color-mix(in srgb, var(--owner-progress-end) 16%, transparent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 45px;
+  min-height: 34px;
+  gap: 2px;
+  padding: 2px 4px;
+  border: 1px solid color-mix(in srgb, var(--owner-progress-end) 14%, transparent);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--owner-row-hover) 68%, white);
+  background: color-mix(in srgb, var(--owner-row-hover) 34%, white);
   text-align: center;
 }
 
 .list-board-side-stat strong {
   color: var(--owner-progress-end);
   font-family: var(--list-body-font);
-  font-size: 0.62rem;
-  font-weight: 700;
-  line-height: 1.12;
+  font-size: 0.54rem;
+  font-weight: 500;
+  line-height: 1;
   letter-spacing: 0;
 }
 
-.list-board-star-ring {
-  --ring-progress: 0%;
-  --ring-size: 2.6rem;
-  --ring-track: color-mix(in srgb, var(--owner-progress-end) 16%, transparent);
-  width: var(--ring-size);
-  height: var(--ring-size);
-  position: relative;
-  border-radius: 999px;
-  display: grid;
-  place-items: center;
-  background: conic-gradient(
-    from -90deg,
-    var(--owner-progress-end) 0 var(--ring-progress),
-    var(--ring-track) var(--ring-progress) 100%
-  );
+.list-board-side-stat.is-side-status strong {
+  font-size: 0.54rem;
+  line-height: 1;
 }
 
-.list-board-star-ring::after {
+.list-board-side-stat.is-side-status .list-board-side-label {
+  position: static;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  opacity: 1;
+  transform: none;
+  transition: none;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.list-board-side-glyph {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+}
+
+.list-board-side-stat.is-active .list-board-side-glyph {
+  border: 1.5px solid color-mix(in srgb, var(--owner-progress-end) 72%, white);
+  background: transparent;
+}
+
+.list-board-side-stat.is-done .list-board-side-glyph {
+  border: 1.5px solid color-mix(in srgb, var(--owner-progress-end) 76%, white);
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--owner-progress-end) 62%, white) 0%,
+    color-mix(in srgb, var(--owner-progress-end) 78%, white) 58%,
+    color-mix(in srgb, var(--owner-progress-end) 68%, white) 100%
+  );
+  box-shadow: none;
+}
+
+.list-board-side-stat.is-done .list-board-side-glyph::after {
   content: '';
   position: absolute;
-  inset: 0.32rem;
-  border-radius: 999px;
-  background: var(--list-paper);
-}
-
-.list-board-star-ring span {
-  position: relative;
-  z-index: 1;
-  color: var(--owner-progress-end);
-  font-family: var(--list-body-font);
-  font-size: var(--type-eyebrow-size);
-  font-weight: 700;
-  line-height: 1;
+  left: 0.19rem;
+  top: 0.12rem;
+  width: 0.34rem;
+  height: 0.2rem;
+  border-left: 1px solid rgba(255, 255, 255, 0.94);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.94);
+  filter: drop-shadow(0 0 0.4px rgba(255, 255, 255, 0.6));
+  transform: rotate(-45deg);
 }
 
 .list-board-card-top {
@@ -1547,11 +1666,11 @@ onBeforeUnmount(() => {
 .list-board-item h3 {
   overflow: hidden;
   color: var(--list-ink);
-  font-family: var(--list-body-font);
-  font-size: 0.95rem;
-  font-weight: 600;
-  line-height: 1.28;
-  letter-spacing: 0;
+  font-family: var(--list-heading-font);
+  font-size: 0.88rem;
+  font-weight: 500;
+  line-height: 1.34;
+  letter-spacing: 0.01em;
   text-overflow: ellipsis;
   text-wrap: nowrap;
   white-space: nowrap;
@@ -1576,11 +1695,10 @@ onBeforeUnmount(() => {
 }
 
 .list-board-sort-context {
-  display: flex;
-  align-items: baseline;
+  display: grid;
+  align-items: start;
   min-width: 0;
-  gap: 0.22rem;
-  flex-wrap: nowrap;
+  gap: 0.12rem;
 }
 
 .list-board-sort-context strong,
@@ -1592,23 +1710,64 @@ onBeforeUnmount(() => {
 }
 
 .list-board-sort-context strong {
-  flex: 0 1 auto;
   font-family: var(--list-body-font);
-  font-size: 0.72rem;
+  font-size: 0.74rem;
   font-weight: 600;
-  line-height: 1.25;
+  line-height: 1.2;
   letter-spacing: 0;
+  transition: opacity 160ms ease, transform 160ms ease;
 }
 
 .list-board-sort-context em {
-  flex: 1 1 auto;
-  color: rgba(76, 59, 50, 0.5);
+  color: rgba(76, 59, 50, 0.54);
   font-family: var(--list-body-font);
-  font-size: 0.68rem;
+  font-size: 0.66rem;
   font-style: normal;
   font-weight: 400;
-  line-height: 1.16;
-  letter-spacing: 0;
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+@keyframes list-board-sort-enter {
+  from {
+    opacity: 0;
+    transform: translateY(1px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .list-board-item {
+    animation: none;
+  }
+
+  .list-board-item:hover {
+    background: transparent;
+  }
+
+  .list-board-sort-context strong,
+  .list-board-sort-context em {
+    transition: none;
+  }
+
+  .list-board-side-stat.is-side-status .list-board-side-label {
+    position: static;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    opacity: 1;
+    transform: none;
+    white-space: nowrap;
+    line-height: 1;
+  }
 }
 
 .list-board-starcoin-line {
@@ -1829,6 +1988,11 @@ onBeforeUnmount(() => {
     font-size: 0.66rem;
   }
 
+  .list-board-sort-pill-icon {
+    width: calc(0.7rem + 0.5px);
+    height: calc(0.7rem + 0.5px);
+  }
+
   .list-board-card-image {
     max-width: none;
   }
@@ -1839,17 +2003,19 @@ onBeforeUnmount(() => {
 
   .list-board-item {
     column-gap: 0.54rem;
-    row-gap: 0.16rem;
-    padding: 0.62rem 0.58rem 0.64rem 0.58rem;
-  }
-
-  .list-board-star-ring {
-    --ring-size: 2.05rem;
+    row-gap: 0.2rem;
+    padding: 0.66rem 0.58rem 0.68rem 0.58rem;
   }
 
   .list-board-star-ring-shell,
   .list-board-side-stat {
-    width: 2.7rem;
+    width: 45px;
+  }
+
+  .list-board-side-stat {
+    min-height: 34px;
+    padding: 2px 4px;
+    gap: 2px;
   }
 
   .list-board-card-top {
@@ -1866,6 +2032,16 @@ onBeforeUnmount(() => {
 
   .list-board-card-data {
     grid-template-columns: 1fr;
+  }
+
+  .list-board-sort-context em {
+    display: -webkit-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    line-height: 1.24;
   }
 }
 
@@ -1905,6 +2081,11 @@ onBeforeUnmount(() => {
     font-size: 0.6rem;
   }
 
+  .list-board-sort-pill-icon {
+    width: calc(0.66rem + 0.5px);
+    height: calc(0.66rem + 0.5px);
+  }
+
   .list-board-inline-actions {
     display: grid;
     width: 100%;
@@ -1914,14 +2095,39 @@ onBeforeUnmount(() => {
     grid-template-columns: 0.5rem minmax(0, 1fr) 2.7rem;
   }
 
-  .list-board-star-ring-shell {
-    grid-column: 3;
-    justify-self: end;
-    margin-top: 0.04rem;
+  .list-board-star-ring-shell,
+  .list-board-side-stat {
+    width: 43px;
+  }
+
+  .list-board-side-stat {
+    min-height: 32px;
+    padding: 2px 3px;
   }
 
   .list-board-inline-actions .list-board-side-button {
     width: 100%;
+  }
+}
+
+@media (min-width: 1024px) {
+  .list-board-item {
+    padding: 0.78rem 0.76rem 0.8rem 0.72rem;
+    row-gap: 0.26rem;
+  }
+
+  .list-board-item h3 {
+    font-size: 0.92rem;
+    line-height: 1.36;
+  }
+
+  .list-board-sort-context strong {
+    font-size: 0.76rem;
+  }
+
+  .list-board-sort-context em {
+    font-size: 0.68rem;
+    line-height: 1.32;
   }
 }
 </style>
