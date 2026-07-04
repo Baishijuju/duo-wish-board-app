@@ -288,7 +288,7 @@ export function useListWishBoardState() {
     }
 
     if (filterStore.sortMode === 'progress') {
-      if (progress.isReady && wish.status !== 'done') {
+      if (progress.isReady) {
         return '就差最后一步。'
       }
 
@@ -312,7 +312,7 @@ export function useListWishBoardState() {
       return `写下于 ${formatDateLabel(wish.createdAt)}`
     }
 
-    if (progress.isReady && wish.status !== 'done') {
+    if (progress.isReady) {
       return '就差最后一步。'
     }
 
