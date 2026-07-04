@@ -573,7 +573,7 @@ function formatRecentThreadTime(timestamp: string) {
         <h1>
           <span class="atelier-hero-name">{{ viewerName }}</span>
           <span class="atelier-hero-promise">
-            <span class="atelier-hero-line">今天先把最想推进的一条愿望</span>
+            <span class="atelier-hero-line">把最想推进的一条愿望</span>
             <span class="atelier-hero-line is-tight">摆到眼前。</span>
           </span>
         </h1>
@@ -882,8 +882,7 @@ function formatRecentThreadTime(timestamp: string) {
         <div class="section-head">
           <div class="section-head-copy">
             <p class="atelier-kicker">最近发生</p>
-            <h2>刚刚，你们又先跟彼此说了什么</h2>
-            <p>先看看这两句近况，再决定下一步往哪条愿望靠。</p>
+            <h2>先看彼此刚说的两句近况</h2>
           </div>
         </div>
 
@@ -917,7 +916,6 @@ function formatRecentThreadTime(timestamp: string) {
             <div v-else-if="!card.highlight" class="journal-member-empty">
               <p class="journal-feature-meta">最近 14 天还没有新的近况</p>
               <h3>等下一次推进发生，这里会先替你们把这句招呼留住。</h3>
-              <p>只要有一笔留言、投币或完成步骤，对方就会先从这里看到。</p>
             </div>
           </article>
 

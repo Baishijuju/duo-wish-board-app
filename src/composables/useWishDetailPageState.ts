@@ -13,7 +13,23 @@ export function useWishDetailPageState() {
   } = detailState
 
   const viewerName = computed(() => authStore.currentMember?.displayName ?? '我们')
-  const coverImageUrl = computed(() => selectedWish.value?.images[0]?.url ?? '')
+  const coverImageUrl = computed(() => {
+    const wishCoverUrl = selectedWish.value?.images[0]?.url
+
+    if (wishCoverUrl) {
+      return wishCoverUrl
+    }
+
+    for (const thread of wishJournalEntries.value) {
+      const fallbackThreadImageUrl = thread.images.find((image) => image.url)?.url
+
+      if (fallbackThreadImageUrl) {
+        return fallbackThreadImageUrl
+      }
+    }
+
+    return ''
+  })
   const summaryCards = computed(() => {
     return [
       {
@@ -35,14 +51,14 @@ export function useWishDetailPageState() {
   })
   const progressLead = computed(() => {
     if (!progressSnapshot.value || progressSnapshot.value.mode === 'none') {
-      return '这条愿望还没决定要怎么记进度，也没关系，先挑一种顺手的记法就能继续往前。'
+      return '还没定记录方式也没关系，先挑一种顺手的，就能继续往前。'
     }
 
     if (progressSnapshot.value.mode === 'count') {
-      return '数字进度适合那些一点点累起来的靠近，页数、公里和次数，都能在这里慢慢记下。'
+      return '每次 +1 都算数，页数、公里和次数都会在这里记下。'
     }
 
-    return '步骤进度适合那些要一件件推进的靠近，每做完一步，这一页都会替你记住。'
+    return '把这一步做完，这一页就会替你记下。'
   })
   const rewardHeadline = computed(() => {
     if (wishRewardClaim.value) {

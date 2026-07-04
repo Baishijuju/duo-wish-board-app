@@ -62,7 +62,7 @@ export function useComposePreviewState(options: UseComposePreviewStateOptions = 
     return draft.value.title.trim() || '这条愿望还在等名字'
   })
   const draftNotePreview = computed(() => {
-    return draft.value.note.trim() || '等你留下一句为什么想实现，它才更像会被回看的那一页。'
+    return draft.value.note.trim() || '留下一句为什么想实现它，这页会更值得回看。'
   })
   const composerHeadline = computed(() => {
     return editingWish.value ? '把这条愿望整理成它现在最像的样子' : '把一个愿望认真写进今天'

@@ -35,7 +35,7 @@ const isRewardRangeFilterOpen = ref(false)
 const isRewardShelfManaging = ref(false)
 const isRewardManagePanelOpen = ref(false)
 const isRewardKeywordExpanded = ref(false)
-const activeAccessPanel = ref<AccessPanel>('invite')
+const activeAccessPanel = ref<AccessPanel>('email')
 const activeSpaceToolsPanel = ref<SpaceToolsPanel>('access')
 const REWARD_DEFAULT_VISIBLE_COUNT = 6
 
@@ -133,7 +133,7 @@ const spaceToolsPanelTabs = computed(() => {
 
 watchEffect(() => {
   if (activeAccessPanel.value === 'fixedEmail' && !space.canBindFixedEmail) {
-    activeAccessPanel.value = 'invite'
+    activeAccessPanel.value = 'email'
   }
 })
 
@@ -540,9 +540,7 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
         <div class="space-main-summary-shell">
           <div class="space-main-summary-intro">
             <div class="space-hero-copy-block">
-              <p class="eyebrow space-main-kicker">共同空间</p>
-              <h1 class="section-title space-hero-title">把两个人的日常收在同一页</h1>
-              <p class="section-copy space-main-summary-lead">成员、邀请、奖励和照片，都从这里往后翻。</p>
+              <h1 class="section-title space-hero-title">把两个人的日常放在同一页</h1>
             </div>
           </div>
         </div>
@@ -707,7 +705,6 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
 
             <div v-else class="space-empty-card reward-filter-empty">
               <strong>没有符合条件的奖励</strong>
-              <p>当前筛选下还没有奖励，试试清空筛选。</p>
               <button v-if="isRewardManagePanelOpen" class="reward-text-link reward-empty-text-link" type="button" @click="clearRewardKeywordFilters">清空筛选</button>
             </div>
           </section>
@@ -762,7 +759,6 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
 
           <div v-if="!rewardKeywordEntries.length" class="space-empty-card reward-command-empty">
             <strong>还没有可以推进的奖励</strong>
-            <p>先写一条有星星币价格的奖励，它就会出现在这里。</p>
             <button class="button-solid" type="button" @click="openRewardManager">写一条奖励</button>
           </div>
 
@@ -788,7 +784,6 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
 
             <div v-else class="space-empty-card reward-recent-empty">
               <strong>还没有领取记录</strong>
-              <p>第一次存入或领取后会显示在这里。</p>
             </div>
           </section>
         </template>
@@ -967,7 +962,6 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
 
     <div class="space-utility-band-head">
       <div>
-        <p class="eyebrow">后页工具</p>
       </div>
     </div>
 
@@ -975,8 +969,7 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
       <details class="page-card space-shell-card space-fold-card space-utility-card space-utility-card-tools">
         <summary class="space-fold-summary space-utility-summary">
           <div class="space-fold-copy-block">
-            <h3>进入、备份、同步都收在这里</h3>
-            <p class="space-fold-copy">需要时再展开，处理完再收起。</p>
+            <h3>进入、备份与同步</h3>
           </div>
 
           <div class="space-fold-meta">
@@ -1011,7 +1004,7 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
             <div class="space-subsection-heading">
               <div>
                 <p class="eyebrow">进入与邀请</p>
-                <h3>需要时再来处理进入方式</h3>
+                <h3>选择进入方式</h3>
               </div>
               <div class="badge-row">
                 <span v-for="badge in space.accountBadges" :key="badge" class="badge">{{ badge }}</span>
@@ -1038,13 +1031,10 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
               <section v-if="activeAccessPanel === 'invite'" class="access-panel-body" role="tabpanel">
                 <div class="access-panel-head">
                   <div>
-                    <p class="eyebrow">把对方带进来</p>
                     <h3>邀请对方</h3>
                   </div>
                   <span class="badge">{{ space.syncStatusLabel }}</span>
                 </div>
-
-                <p class="space-card-intro">{{ space.inviteSummary }}</p>
 
                 <div class="access-code-row">
                   <div class="space-inline-code">
@@ -1054,18 +1044,7 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
                   <button v-if="space.canCopyInviteCode" class="button-subtle" type="button" @click="space.copyInviteCode">复制</button>
                 </div>
 
-                <details class="space-fold-card tools-mini-fold">
-                  <summary class="space-fold-summary tools-mini-summary">
-                    <div class="space-fold-copy-block">
-                      <p class="eyebrow">需要填写时再展开</p>
-                    </div>
-                    <div class="space-fold-meta">
-                      <div class="space-fold-toggle" aria-hidden="true">
-                        <span class="space-fold-arrow"></span>
-                      </div>
-                    </div>
-                  </summary>
-
+                <div class="space-fold-card tools-mini-fold">
                   <div class="space-fold-body tools-mini-body">
                     <form class="space-form space-access-form access-inline-form" @submit.prevent="space.joinSpace">
                       <label>
@@ -1078,32 +1057,18 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
                     </form>
                     <p class="space-access-form-note">确认后会尝试走进同一间空间，不会盖掉你已经写下的愿望。</p>
                   </div>
-                </details>
+                </div>
               </section>
 
               <section v-else-if="activeAccessPanel === 'email'" class="access-panel-body" role="tabpanel">
                 <div class="access-panel-head">
                   <div>
-                    <p class="eyebrow">邮箱走进来</p>
                     <h3>邮箱进入</h3>
                   </div>
                   <span class="badge">{{ space.authStore.isAuthenticated ? '已进入' : '未进入' }}</span>
                 </div>
 
-                <p class="space-card-intro">把邮箱和这间空间连上，回来就不用每次都靠邀请码。</p>
-
-                <details class="space-fold-card tools-mini-fold">
-                  <summary class="space-fold-summary tools-mini-summary">
-                    <div class="space-fold-copy-block">
-                      <p class="eyebrow">需要输入邮箱时再展开</p>
-                    </div>
-                    <div class="space-fold-meta">
-                      <div class="space-fold-toggle" aria-hidden="true">
-                        <span class="space-fold-arrow"></span>
-                      </div>
-                    </div>
-                  </summary>
-
+                <div class="space-fold-card tools-mini-fold">
                   <div class="space-fold-body tools-mini-body">
                     <form class="space-form space-access-form access-inline-form" @submit.prevent="space.submitMagicLink">
                       <label>
@@ -1126,7 +1091,7 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
                     </form>
                     <p v-if="space.otpTargetEmail && space.showOtpForm" class="space-access-form-note">按 {{ space.otpTargetEmail }} 校验；换邮箱后先重发一次。</p>
                   </div>
-                </details>
+                </div>
 
                 <p v-if="space.loginMessage" :class="['feedback-message', space.loginTone]">{{ space.loginMessage }}</p>
               </section>
@@ -1134,26 +1099,12 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
               <section v-else-if="space.canBindFixedEmail" class="access-panel-body" role="tabpanel">
                 <div class="access-panel-head">
                   <div>
-                    <p class="eyebrow">记住这个入口</p>
                     <h3>记住常用邮箱</h3>
                   </div>
                   <span class="badge">仅创建者可用</span>
                 </div>
 
-                <p class="space-card-intro">把常用邮箱记在这间空间上，后面回来会更快。</p>
-
-                <details class="space-fold-card tools-mini-fold">
-                  <summary class="space-fold-summary tools-mini-summary">
-                    <div class="space-fold-copy-block">
-                      <p class="eyebrow">需要设置时再展开</p>
-                    </div>
-                    <div class="space-fold-meta">
-                      <div class="space-fold-toggle" aria-hidden="true">
-                        <span class="space-fold-arrow"></span>
-                      </div>
-                    </div>
-                  </summary>
-
+                <div class="space-fold-card tools-mini-fold">
                   <div class="space-fold-body tools-mini-body">
                     <form class="space-form space-access-form access-fixed-form" @submit.prevent="space.bindFixedEmail">
                       <label>
@@ -1168,9 +1119,8 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
                         {{ space.isBindingEmail ? '保存中...' : '记住这个邮箱' }}
                       </button>
                     </form>
-                    <p class="space-access-form-note">这里只是把邮箱和显示名称记在这间空间上，不会替你发送邮件。</p>
                   </div>
-                </details>
+                </div>
               </section>
             </div>
 
@@ -1181,7 +1131,7 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
             <div class="space-subsection-heading">
               <div>
                 <p class="eyebrow">照片与备份</p>
-                <h3>照片空间和备份都放在这里</h3>
+                <h3>照片空间与备份</h3>
               </div>
               <div class="badge-row">
                 <span class="badge">已用 {{ space.storageSummary.usagePercent }}%</span>
@@ -1236,8 +1186,7 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
                       : `按现在的大小，大约还能放 ${space.estimatedRemainingImageCount} 张。` }}
                   </p>
                   <p class="space-meta-line">
-                    <span>备份会带上清单、星币奖励和记录</span>
-                    <span>两个人最好各自留一份</span>
+                    <span>备份会带上清单、星币奖励和记录，建议两个人各留一份。</span>
                   </p>
                 </div>
                 <button class="button-subtle" type="button" @click="space.downloadBackup">备份清单</button>
@@ -1251,7 +1200,7 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
             <div class="space-subsection-heading">
               <div>
                 <p class="eyebrow">同步与退出</p>
-                <h3>同步详情和退出</h3>
+                <h3>同步与退出</h3>
               </div>
               <span class="badge">{{ space.syncStatusLabel }}</span>
             </div>
@@ -1476,28 +1425,10 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
   background: rgba(255, 255, 255, 0.26);
 }
 
-.tools-mini-summary {
-  align-items: center;
-  gap: 0.42rem;
-}
-
-.tools-mini-summary .space-fold-copy-block {
-  gap: 0;
-}
-
-.tools-mini-summary .space-fold-copy-block .eyebrow {
-  margin: 0;
-}
-
-.tools-mini-summary .space-fold-toggle {
-  min-height: 1.72rem;
-  padding: 0.18rem 0.48rem;
-}
-
 .tools-mini-body {
   gap: 0.48rem;
-  padding-top: 0.5rem;
-  border-top-style: dashed;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .sync-flat-card {

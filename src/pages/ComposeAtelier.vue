@@ -82,7 +82,7 @@ const previewStageTitle = computed(() => {
 
             <label class="compose-field compose-field-title">
               <span>愿望名字</span>
-              <input v-model="draft.title" type="text" maxlength="36" placeholder="例如：一起去看海边的日出" />
+              <input v-model="draft.title" type="text" maxlength="36" placeholder="例如：一起去看海边日出" />
             </label>
 
             <label class="compose-field">
@@ -91,7 +91,7 @@ const previewStageTitle = computed(() => {
                 v-model="draft.note"
                 rows="3"
                 maxlength="180"
-                placeholder="认真写一句为什么现在想实现它，之后回看会更有力量。"
+                placeholder="写一句为什么现在想实现它，回看时会更有力。"
               />
             </label>
 
@@ -112,7 +112,7 @@ const previewStageTitle = computed(() => {
 
               <label class="compose-field compact">
                 <span>分类</span>
-                <input v-model="draft.category" type="text" maxlength="20" placeholder="旅行 / 生活 / 成长" />
+                <input v-model="draft.category" type="text" maxlength="20" placeholder="如：旅行 / 生活 / 成长" />
               </label>
 
               <div class="compose-preview-chip-row" aria-label="分类建议">
@@ -164,7 +164,7 @@ const previewStageTitle = computed(() => {
                 </label>
                 <label class="compose-field compact">
                   <span>单位</span>
-                  <input v-model="draft.progressUnit" type="text" maxlength="10" placeholder="次 / 公里 / 页" />
+                  <input v-model="draft.progressUnit" type="text" maxlength="10" placeholder="单位，如：次 / 公里 / 页" />
                 </label>
                 <label class="compose-field compact">
                   <span>每单位星星币</span>
@@ -186,7 +186,7 @@ const previewStageTitle = computed(() => {
                         v-model="initialStepDrafts[index - 1].title"
                         type="text"
                         maxlength="30"
-                        placeholder="写一个很小的起步动作"
+                        placeholder="先写一个最小动作"
                       />
                       <input
                         v-model.number="initialStepDrafts[index - 1].starCoinValue"
@@ -194,7 +194,7 @@ const previewStageTitle = computed(() => {
                         type="number"
                         min="0"
                         step="0.5"
-                        placeholder="星币"
+                        placeholder="星币数"
                       />
                       <button type="button" class="compose-inline-action subtle" @click="removeInitialStepField(index - 1)">
                         移除
@@ -216,7 +216,7 @@ const previewStageTitle = computed(() => {
             <section class="compose-form-block compose-form-block-finish">
               <header class="compose-form-block-head">
                 <div>
-                  <h2>给未来那个做到的人留一点甜。</h2>
+                  <h2>给未来做到这件事的你，留一点甜。</h2>
                 </div>
               </header>
 

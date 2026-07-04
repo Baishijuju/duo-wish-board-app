@@ -32,6 +32,12 @@ export function buildDerivedWishThreadEntries(
   const stepMap = new Map(
     wishes.flatMap((wish) => wish.steps.map((step) => [step.id, { step, wish }] as const)),
   )
+  const stepCompletionClaimKinds = new Set<RewardClaimRecord['claimKind']>(['step_reward', 'star_coin', 'step_star_coin'])
+  const stepIdsWithRewardClaims = new Set(
+    rewardClaims
+      .filter((claim) => !!claim.sourceStepId && stepCompletionClaimKinds.has(claim.claimKind))
+      .map((claim) => claim.sourceStepId as string),
+  )
   const countStarCoinClaimGroups = new Map<string, CountStarCoinClaimGroup>()
   const threadEntries: WishThreadEntry[] = []
 
@@ -73,6 +79,10 @@ export function buildDerivedWishThreadEntries(
     }
 
     for (const step of wish.steps.filter((item) => item.isDone)) {
+      if (stepIdsWithRewardClaims.has(step.id)) {
+        continue
+      }
+
       threadEntries.push(
         createWishThreadEntry({
           actorId: wish.ownerId,
@@ -117,16 +127,19 @@ export function buildDerivedWishThreadEntries(
     const relatedStep = claim.sourceStepId ? stepMap.get(claim.sourceStepId)?.step ?? null : null
     const eventKind: WishThreadEventKind = claim.claimKind === 'premium_redeem' ? 'premium_redeem' : 'reward_claimed'
     const countUnitLabel = `${claim.quantity} 点`
+    const gainedStarCoins = formatStarCoinAmount(Math.abs(claim.starCoinDelta))
     const messageText = claim.claimKind === 'step_reward'
-      ? `走完了小步骤「${relatedStep?.title ?? '这个小步骤'}」，也接住了「${claim.titleSnapshot}」。`
+      ? `完成「${relatedStep?.title ?? '这个小步骤'}」，接住「${claim.titleSnapshot}」。`
+      : claim.claimKind === 'step_star_coin'
+        ? `完成「${relatedStep?.title ?? '这个小步骤'}」，+${gainedStarCoins} 星。`
       : claim.claimKind === 'count_reward'
-        ? `把「${relatedWish?.title ?? '这个数字愿望'}」往前推进了 ${countUnitLabel}，也接住了「${claim.titleSnapshot}」。`
+        ? `推进 +${countUnitLabel}，接住「${claim.titleSnapshot}」。`
         : claim.claimKind === 'wish_reward'
           ? `把「${relatedWish?.title ?? claim.titleSnapshot}」认真完成，也接住了「${claim.titleSnapshot}」。`
           : claim.claimKind === 'star_coin'
             ? claim.sourceStepId
-              ? `完成了小步骤「${relatedStep?.title ?? '这个小步骤'}」，把这次奖励存成了 ${formatStarCoinAmount(Math.abs(claim.starCoinDelta))} 枚星星币。`
-              : `把「${relatedWish?.title ?? '这个数字愿望'}」往前推进了 ${countUnitLabel}，并存下了 ${formatStarCoinAmount(Math.abs(claim.starCoinDelta))} 枚星星币。`
+              ? `完成「${relatedStep?.title ?? '这个小步骤'}」，+${gainedStarCoins} 星。`
+              : `推进 +${countUnitLabel}，存下 ${gainedStarCoins} 星。`
             : `用 ${formatStarCoinAmount(Math.abs(claim.starCoinDelta))} 枚星星币换来了「${claim.titleSnapshot}」。`
 
     threadEntries.push(
@@ -161,7 +174,7 @@ export function buildDerivedWishThreadEntries(
         createdAt: group.createdAt,
         eventKind: 'reward_claimed',
         id: `thread-count-star-coin-${groupKey}`,
-        messageText: `往前推进了 ${group.quantity} 步，并获得了 ${formatStarCoinAmount(group.starCoinDelta)} 颗星星。`,
+        messageText: `推进 +${group.quantity} 步，+${formatStarCoinAmount(group.starCoinDelta)} 星。`,
         meta: {
           claimIds: group.claimIds,
           claimKind: 'count_star_coin',

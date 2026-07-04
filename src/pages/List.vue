@@ -19,7 +19,7 @@ const sortLabels = {
   updated: '最近更新',
   progress: '进度',
   starCoins: '星星币',
-  age: '存在更久',
+  age: '按创建时间',
 } as const
 
 const viewerName = computed(() => authStore.currentMember?.displayName ?? '我们')
@@ -33,7 +33,6 @@ const statusPillRef = ref<HTMLElement | null>(null)
 const visibilityValues = ['all', 'mine', 'others'] as const
 const statusValues = ['active', 'done', 'all'] as const
 type SlidingTabGroup = 'visibility' | 'status'
-const boardKicker = computed(() => filterStore.status === 'done' ? '已经亮起来的事' : '今天先靠近哪一个')
 const boardHeading = computed(() => {
   const query = filterStore.search.trim()
 
@@ -75,39 +74,30 @@ const boardHeading = computed(() => {
 
   return '慢慢来，我们还在把日子往喜欢的方向推。'
 })
-const boardSummary = computed(() => {
-  const stats = listWorkbenchStats.value
-
-  if (filterStore.status === 'done') {
-    return `${filteredWishes.value.length} 个已经实现 · 也值得重新夸一遍`
-  }
-
-  if (filterStore.visibility === 'mine') {
-    return `${stats.currentMemberActiveCount} 个还在路上 · ${stats.remainingStarCoins} 枚星星币等你慢慢拿`
-  }
-
-  return `${stats.activeCount} 个还在路上 · ${stats.remainingStarCoins} 枚星星币等你慢慢拿`
-})
 const heroSummary = computed(() => {
   const stats = listWorkbenchStats.value
 
   if (filterStore.status === 'done') {
     if (filterStore.visibility === 'mine') {
-      return `${filteredWishes.value.length} 条已经实现 · 都是你一步步走到这里的`
+      return `已完成 ${filteredWishes.value.length} 条`
     }
 
     if (filterStore.visibility === 'others') {
-      return `${filteredWishes.value.length} 条已经实现 · 也记得夸夸对方的认真`
+      return `对方已完成 ${filteredWishes.value.length} 条`
     }
 
-    return `${filteredWishes.value.length} 条已经实现 · 这些光都值得被看见`
+    return `已完成 ${filteredWishes.value.length} 条`
   }
 
   if (filterStore.status === 'all') {
-    return `${filteredWishes.value.length} 条在清单里 · 还能获得 ${stats.remainingStarCoins} 星星币`
+    return `共 ${filteredWishes.value.length} 条 · 可得 ${stats.remainingStarCoins} 星星币`
   }
 
-  return `${stats.activeCount} 条正在推进 · ${stats.currentMemberActiveCount} 条归我 · 还能获得 ${stats.remainingStarCoins} 星星币`
+  if (filterStore.visibility === 'mine') {
+    return `我在推进 ${stats.currentMemberActiveCount} 条 · 可得 ${stats.remainingStarCoins} 星星币`
+  }
+
+  return `正在推进 ${stats.activeCount} 条 · 可得 ${stats.remainingStarCoins} 星星币`
 })
 function getWishOwnerClass(wish: WishRecord) {
   return canCurrentMemberProgressWish(wish) ? 'is-personal-owner' : 'is-assist-owner'
@@ -199,8 +189,7 @@ onBeforeUnmount(() => {
   <section class="list-board-page">
     <article class="page-card list-board-hero-card list-board-workbench-hero">
       <div class="list-board-hero-copy list-board-workbench-copy">
-        <p class="list-board-kicker">今日清单</p>
-        <h1>{{ viewerName }}，挑一件继续</h1>
+        <h1>{{ viewerName }}，选 1 件推进</h1>
         <p>{{ heroSummary }}</p>
       </div>
     </article>
@@ -208,7 +197,7 @@ onBeforeUnmount(() => {
     <article class="page-card list-board-toolbar-card">
       <div class="list-board-search-row">
         <label class="list-board-search-field">
-          <input v-model="filterStore.search" type="search" placeholder="搜索标题、分类或原因" />
+          <input v-model="filterStore.search" type="search" placeholder="搜索愿望" />
         </label>
 
         <button
@@ -237,7 +226,7 @@ onBeforeUnmount(() => {
       <div v-if="isFilterPanelOpen" :id="filterPanelId" class="list-board-toolbar-actions">
         <div class="list-board-filter-stack">
           <div class="list-board-filter-group">
-            <span class="list-board-filter-label">先看哪一类</span>
+            <span class="list-board-filter-label">归属</span>
             <div class="list-board-filter-row is-sliding-tabs" role="tablist" aria-label="愿望归属筛选">
               <span ref="visibilityPillRef" class="list-board-filter-slider" aria-hidden="true"></span>
               <button
@@ -277,7 +266,7 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="list-board-filter-group">
-            <span class="list-board-filter-label">现在是什么状态</span>
+            <span class="list-board-filter-label">状态</span>
             <div class="list-board-filter-row is-sliding-tabs" role="tablist" aria-label="愿望状态筛选">
               <span ref="statusPillRef" class="list-board-filter-slider" aria-hidden="true"></span>
               <button
@@ -365,13 +354,8 @@ onBeforeUnmount(() => {
     <article class="page-card list-board-card">
       <div class="list-board-head">
         <div>
-          <p class="list-board-kicker">{{ boardKicker }}</p>
           <h2>{{ boardHeading }}</h2>
         </div>
-
-        <p class="list-board-head-summary">
-          {{ boardSummary }}
-        </p>
       </div>
 
       <div v-if="filteredWishes.length" class="list-board-grid">
@@ -408,8 +392,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-else class="list-board-empty">
-        <h3>这里先空着，等一个新的小梦慢慢落下来。</h3>
-        <p>换个筛选看看，或者写下一件还想好好对待的事。</p>
+        <h3>当前筛选下暂无愿望</h3>
         <div class="list-board-inline-actions">
           <button class="list-board-button is-ghost" type="button" @click="filterStore.reset()">清空筛选</button>
           <RouterLink class="list-board-button is-solid" :to="{ name: 'compose' }">写下新愿望</RouterLink>
@@ -585,27 +568,6 @@ onBeforeUnmount(() => {
   gap: 0.78rem;
   align-content: start;
   max-width: 42rem;
-}
-
-.list-board-kicker {
-  margin: 0;
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.46rem;
-  font-family: var(--list-body-font);
-  color: var(--text-soft);
-  font-size: var(--type-eyebrow-size);
-  font-weight: 600;
-  line-height: 1.4;
-  letter-spacing: 0.08em;
-  text-transform: none;
-}
-
-.list-board-kicker span {
-  color: var(--text-faint);
-  font-size: var(--type-kicker-sub-size);
-  letter-spacing: var(--type-kicker-sub-spacing);
-  text-transform: uppercase;
 }
 
 .list-board-summary-card > span,
@@ -962,14 +924,6 @@ onBeforeUnmount(() => {
 
 .list-board-head {
   align-items: end;
-}
-
-.list-board-head-summary {
-  margin: 0;
-  color: rgba(61, 46, 40, 0.58);
-  font-family: var(--list-body-font);
-  font-size: var(--type-meta-size);
-  line-height: var(--type-meta-line);
 }
 
 .list-board-search-row {

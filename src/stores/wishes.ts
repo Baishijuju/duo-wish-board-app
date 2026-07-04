@@ -3273,6 +3273,19 @@ export const useWishStore = defineStore('wishes', () => {
     }
   }
 
+  function snapshotLocalPersistedState(): PersistedWishState {
+    return {
+      version: 6,
+      monthlyJournalSnapshots: monthlyJournalSnapshots.value.map((snapshot) => createMonthlyJournalSnapshotRecord(snapshot)),
+      rewardClaims: rewardClaims.value.map((claim) => createRewardClaimRecord(claim)),
+      rewardPoolItems: rewardPoolItems.value.map((item) => createRewardPoolItem(item)),
+      threadReactions: threadReactions.value.map((reaction) => createThreadReactionRecord(reaction)),
+      wishes: wishes.value.map((wish) => createWishRecord(wish)),
+    }
+  }
+
+  const localMockStateSnapshot = ref<PersistedWishState>(snapshotLocalPersistedState())
+
   watch(
     [wishes, rewardClaims, threadReactions],
     () => {
@@ -3280,6 +3293,7 @@ export const useWishStore = defineStore('wishes', () => {
         return
       }
 
+      localMockStateSnapshot.value = snapshotLocalPersistedState()
       refreshLocalActivityState()
     },
     { deep: true, immediate: true },
@@ -3289,17 +3303,13 @@ export const useWishStore = defineStore('wishes', () => {
 
   if (storage) {
     watch(
-      [wishes, rewardPoolItems, rewardClaims, threadReactions, monthlyJournalSnapshots],
-      ([nextWishes, nextRewardPoolItems, nextRewardClaims, nextThreadReactions, nextMonthlyJournalSnapshots]) => {
-        const nextState: PersistedWishState = {
-          version: 6,
-          monthlyJournalSnapshots: nextMonthlyJournalSnapshots.map((snapshot) => createMonthlyJournalSnapshotRecord(snapshot)),
-          rewardClaims: nextRewardClaims.map((claim) => createRewardClaimRecord(claim)),
-          rewardPoolItems: nextRewardPoolItems.map((item) => createRewardPoolItem(item)),
-          threadReactions: nextThreadReactions.map((reaction) => createThreadReactionRecord(reaction)),
-          wishes: nextWishes.map((wish) => createWishRecord(wish)),
+      [wishes, rewardPoolItems, rewardClaims, threadReactions, monthlyJournalSnapshots, isUsingCloudWishes],
+      () => {
+        if (isUsingCloudWishes.value) {
+          return
         }
 
+        const nextState = snapshotLocalPersistedState()
         storage.setItem(STORAGE_KEY, JSON.stringify(nextState))
       },
       { deep: true },
@@ -3308,8 +3318,12 @@ export const useWishStore = defineStore('wishes', () => {
 
   watch(
     [() => authStore.usesSupabaseSpace, () => authStore.currentSpaceId],
-    ([usesCloudSpace, spaceId]) => {
+    ([usesCloudSpace, spaceId], [previousUsesCloudSpace]) => {
       if (usesCloudSpace && spaceId) {
+        if (!previousUsesCloudSpace) {
+          localMockStateSnapshot.value = snapshotLocalPersistedState()
+        }
+
         setupRealtimeSubscription(spaceId)
 
         if (lastLoadedSpaceId.value !== spaceId) {
@@ -3322,7 +3336,7 @@ export const useWishStore = defineStore('wishes', () => {
       teardownRealtimeSubscription()
 
       if (lastLoadedSpaceId.value) {
-        const localState = hydrateWishState()
+        const localState = localMockStateSnapshot.value
         wishes.value = localState.wishes
         threadReactions.value = localState.threadReactions
         monthlyJournalSnapshots.value = localState.monthlyJournalSnapshots

@@ -285,38 +285,46 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     const sourceStepId = typeof thread.meta.sourceStepId === 'string' ? thread.meta.sourceStepId : ''
 
     if (thread.eventKind === 'comment') {
-      return '留言'
+      return '近况'
     }
 
     if (thread.eventKind === 'wish_published') {
-      return '写下'
+      return '写下愿望'
     }
 
     if (thread.eventKind === 'wish_step_completed') {
-      return '步骤完成'
+      return '推进'
     }
 
     if (thread.eventKind === 'wish_completed') {
       return '完成'
     }
 
-    if (thread.eventKind === 'premium_redeem') {
-      return '兑换奖励'
+    if (thread.eventKind === 'premium_redeem' || claimKind === 'premium_redeem') {
+      return '兑换'
     }
 
     if (thread.eventKind === 'weekly_welfare_issued') {
-      return '本周发放'
+      return '每周发放'
     }
 
-    if (claimKind === 'count_reward') {
-      return '数字奖励'
+    if (claimKind === 'count_reward' || claimKind === 'count_star_coin') {
+      return '进度奖励'
     }
 
-    if (claimKind === 'star_coin' && !sourceStepId) {
-      return '进度存币'
+    if (claimKind === 'step_reward' || claimKind === 'step_star_coin') {
+      return '步骤奖励'
     }
 
-    return '领奖'
+    if (claimKind === 'star_coin') {
+      return sourceStepId ? '步骤奖励' : '进度奖励'
+    }
+
+    if (claimKind === 'wish_reward' || claimKind === 'wish_completion_bonus') {
+      return '完成奖励'
+    }
+
+    return '系统记录'
   }
 
   function getThreadHeadline(thread: WishThreadEntry) {
@@ -324,34 +332,80 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     const sourceStepId = typeof thread.meta.sourceStepId === 'string' ? thread.meta.sourceStepId : ''
 
     if (thread.eventKind === 'comment') {
-      return '留下了一句此刻的话'
+      return '写下一句近况'
     }
 
     if (thread.eventKind === 'wish_published') {
-      return '这条愿望被认真写下'
+      return '写下了这条愿望'
     }
 
     if (thread.eventKind === 'wish_step_completed') {
-      return '又往前走完了一小步'
+      return '完成了一小步'
     }
 
     if (thread.eventKind === 'wish_completed') {
-      return '它被正式收进回忆里'
+      return '这条愿望完成了'
     }
 
     if (thread.eventKind === 'premium_redeem') {
-      return '星星币换成了一份奖励'
+      return '兑换了一份奖励'
     }
 
     if (claimKind === 'count_reward') {
-      return '数字进度接住了一份小奖励'
+      return '收到一份进度奖励'
     }
 
     if (claimKind === 'star_coin' && !sourceStepId) {
-      return '数字进度先存成了星星币'
+      return '把进度换成了星星币'
     }
 
-    return '一份奖励被认真接住了'
+    return '收到一份奖励'
+  }
+
+  function getThreadMessageCopy(thread: WishThreadEntry) {
+    const claimKind = typeof thread.meta.claimKind === 'string' ? thread.meta.claimKind : ''
+    const titleSnapshot = typeof thread.meta.titleSnapshot === 'string' ? thread.meta.titleSnapshot.trim() : ''
+    const spentStarCoins = Math.abs(Number(thread.meta.starCoinDelta ?? 0))
+
+    if (claimKind === 'premium_redeem' || thread.eventKind === 'premium_redeem') {
+      if (titleSnapshot) {
+        if (spentStarCoins > 0) {
+          return `花费 ${formatStarCoinAmount(spentStarCoins)} 枚星星币，兑换了「${titleSnapshot}」。`
+        }
+
+        return `兑换了「${titleSnapshot}」。`
+      }
+
+      const redeemMatch = thread.messageText.match(/用\s*([0-9.]+)\s*枚星星币换来了「\s*(.+?)\s*」。?$/)
+
+      if (redeemMatch) {
+        const spentCopy = redeemMatch[1]
+        const rewardTitle = redeemMatch[2]
+        const normalizedRewardTitle = rewardTitle.replace(/\s+/g, '')
+
+        if (normalizedRewardTitle === `${spentCopy}星星币`) {
+          return `完成了 ${spentCopy} 枚星星币的兑换记录。`
+        }
+
+        return `花费 ${spentCopy} 枚星星币，兑换了「${rewardTitle}」。`
+      }
+    }
+
+    const redeemMatch = thread.messageText.match(/用\s*([0-9.]+)\s*枚星星币换来了「\s*(.+?)\s*」。?$/)
+
+    if (redeemMatch) {
+      const spentCopy = redeemMatch[1]
+      const rewardTitle = redeemMatch[2]
+      const normalizedRewardTitle = rewardTitle.replace(/\s+/g, '')
+
+      if (normalizedRewardTitle === `${spentCopy}星星币`) {
+        return `完成了 ${spentCopy} 枚星星币的兑换记录。`
+      }
+
+      return `花费 ${spentCopy} 枚星星币，兑换了「${rewardTitle}」。`
+    }
+
+    return thread.messageText
   }
 
   function getThreadReactionCount(thread: WishThreadEntry, emoji: string) {
@@ -1323,6 +1377,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     getStepStarCoinLabel,
     getStepStatusCopy,
     getThreadActorName,
+    getThreadMessageCopy,
     getThreadReactionAriaLabel,
     getThreadEyebrow,
     getThreadHeadline,

@@ -68,10 +68,21 @@ const router = createRouter({
   routes,
   scrollBehavior(to) {
     if (to.hash) {
+      const isWishProgressAnchor = to.name === 'wish-detail' && to.hash === '#progress'
+
+      if (isWishProgressAnchor && typeof document !== 'undefined') {
+        const root = document.documentElement
+        const previousBehavior = root.style.scrollBehavior
+        root.style.scrollBehavior = 'auto'
+        requestAnimationFrame(() => {
+          root.style.scrollBehavior = previousBehavior
+        })
+      }
+
       return {
         el: to.hash,
-        top: 96,
-        behavior: 'smooth',
+        top: isWishProgressAnchor ? 260 : 96,
+        behavior: isWishProgressAnchor ? 'auto' : 'smooth',
       }
     }
 
