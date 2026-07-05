@@ -1,5 +1,6 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, toValue, watch, type MaybeRefOrGetter } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { buildCurrentStarCoinBalance, buildWishStarCoinSummary, formatStarCoinAmountLabel, getPendingRewardSettledCopy } from '../shared/starCoinLedger'
 import { useAuthStore } from '../stores/auth'
 import { type WishImage, type WishThreadEntry, useWishStore } from '../stores/wishes'
 
@@ -77,56 +78,21 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
   const currentMemberPremiumRewards = computed(() => {
     return currentMemberId.value ? wishStore.getRewardPoolItems(currentMemberId.value, 'premium') : []
   })
-  const currentMemberStarCoins = computed(() => wishStore.currentMemberStarCoinBalance)
+  const currentMemberStarCoins = computed(() => buildCurrentStarCoinBalance({
+    claims: wishStore.rewardClaims,
+    memberId: currentMemberId.value,
+  }))
   const currentWishStarCoinSummary = computed(() => {
-    const wish = selectedWish.value
-
-    if (!wish) {
-      return {
-        earned: '0',
-        pending: '0',
-        remaining: '0',
-      }
-    }
-
-    const starCoinClaimKinds = new Set(['step_star_coin', 'count_star_coin', 'wish_completion_bonus'])
-    const earned = wishStore.rewardClaims
-      .filter((claim) => claim.sourceWishId === wish.id && starCoinClaimKinds.has(claim.claimKind))
-      .reduce((total, claim) => total + Math.max(0, claim.starCoinDelta), 0)
-
-    const pendingStepCoins = wishStore.pendingStepRewards
-      .filter((reward) => reward.wishId === wish.id)
-      .reduce((total, reward) => {
-        const step = wish.steps.find((item) => item.id === reward.stepId)
-        return total + Math.max(0, step?.starCoinValue ?? 0)
-      }, 0)
-    const pendingCountCoins = wishStore.pendingCountRewardSummaries
-      .filter((summary) => summary.wishId === wish.id)
-      .reduce((total, summary) => total + summary.pendingUnits * Math.max(0, wish.progressStarCoinValue), 0)
-    const pending = pendingStepCoins + pendingCountCoins
-
-    let remaining = 0
-
-    if (wish.status !== 'done') {
-      if (wish.progressMode === 'count') {
-        const target = Math.max(1, wish.progressTarget)
-        const current = Math.min(Math.max(0, wish.progressCurrent), target)
-        remaining = Math.max(target - current, 0) * Math.max(0, wish.progressStarCoinValue)
-      }
-
-      if (wish.progressMode === 'steps') {
-        remaining = wish.steps
-          .filter((step) => !step.isDone)
-          .reduce((total, step) => total + Math.max(0, step.starCoinValue), 0)
-      }
-
-      remaining += Math.max(0, wish.completionStarCoinBonus)
-    }
+    const summary = buildWishStarCoinSummary({
+      claims: wishStore.rewardClaims,
+      pendingCountRewardSummaries: wishStore.pendingCountRewardSummaries,
+      pendingStepRewards: wishStore.pendingStepRewards,
+      wish: selectedWish.value,
+    })
 
     return {
-      earned: formatStarCoinAmount(earned),
-      pending: formatStarCoinAmount(pending),
-      remaining: formatStarCoinAmount(remaining),
+      earned: formatStarCoinAmount(summary.earned),
+      remaining: formatStarCoinAmount(summary.remaining),
     }
   })
   const activeThreadReactionKey = computed(() => pendingThreadReactionKeys.value[0] ?? '')
@@ -693,8 +659,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
   }
 
   function formatStarCoinAmount(value: number) {
-    const roundedValue = Math.round(value * 10) / 10
-    return Number.isInteger(roundedValue) ? `${roundedValue}` : roundedValue.toFixed(1)
+    return formatStarCoinAmountLabel(value)
   }
 
   function getStepStarCoinLabel(stepId: string) {
@@ -916,7 +881,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
       gainedUnits
         ? `数字进度先往前走了 ${gainedUnits} 点，${formatStarCoinAmount(gainedUnits * selectedWish.value.progressStarCoinValue)} 枚星星币已经自动到账。`
         : nextCurrent < previousCurrent
-          ? '数字进度已经往回调整，空间页里的待领取数量也会跟着收住。'
+          ? getPendingRewardSettledCopy('count')
           : '数字进度已经更新。',
       'success',
       '',
@@ -955,7 +920,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
       gainedUnits
         ? `数字进度已经补到现在的位置，新增的 ${gainedUnits} 点已经自动换成 ${formatStarCoinAmount(gainedUnits * selectedWish.value.progressStarCoinValue)} 枚星星币。`
         : nextCurrent < previousCurrent
-          ? '数字进度已经重新校正，空间页里的待领取数量也会跟着收住。'
+          ? getPendingRewardSettledCopy('count')
           : '数字进度已经更新。',
       'success',
       '',
@@ -1070,7 +1035,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     setRewardFeedback(
       hadClaim
         ? '这个步骤已经放回路上；之前领过的小奖励会保留。'
-        : '这个步骤已经放回路上，空间页里对应的小奖励也会先收住。',
+        : getPendingRewardSettledCopy('step'),
       'success',
       stepId,
     )

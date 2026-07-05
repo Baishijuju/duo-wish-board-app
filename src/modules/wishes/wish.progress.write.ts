@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { REWARD_CLAIM_EDGE_COPY } from '../../shared/statusSemantics'
 import type { RewardPoolItem, WishRecord, WishStep } from '../../stores/wishes'
 import { createRewardClaimRecord } from '../rewards/reward.factories'
 import { createWishStep } from './wish.factories'
@@ -88,7 +89,7 @@ export async function claimCompletedStepRewardWrite(options: {
   syncFromSupabase: (spaceId: string) => Promise<boolean>
 }) {
   if (!options.wish || !options.step || options.wish.progressMode !== 'steps' || !options.memberId) {
-    return options.onResult(false, '当前没有可领取的小奖励。')
+    return options.onResult(false, REWARD_CLAIM_EDGE_COPY.noPendingSmallReward)
   }
 
   if (!options.step.isDone) {
@@ -170,11 +171,11 @@ export async function claimCountProgressRewardWrite(options: {
   const pendingUnits = Math.max(current - options.claimedUnits, 0)
 
   if (!options.wish || options.wish.progressMode !== 'count' || !options.memberId) {
-    return options.onResult(false, '当前没有可领取的数字进度奖励。')
+    return options.onResult(false, REWARD_CLAIM_EDGE_COPY.noCountPending)
   }
 
   if (pendingUnits <= 0) {
-    return options.onResult(false, '这条数字进度暂时没有待领取的小奖励。')
+    return options.onResult(false, REWARD_CLAIM_EDGE_COPY.noPendingUnits)
   }
 
   if (options.quantity > pendingUnits) {

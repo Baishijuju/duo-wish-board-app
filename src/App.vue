@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { applyStoredAppearanceTheme } from './composables/useAppearanceTheme'
+import { ENTRY_STATUS_LABELS, getSyncStatusLabel } from './shared/statusSemantics'
 import { useAuthStore } from './stores/auth'
 import { useWishStore } from './stores/wishes'
 
@@ -30,26 +31,19 @@ const navItems: NavItem[] = [
 const mobileNavItems = navItems.filter((item) => !item.desktopOnly)
 
 const syncLabel = computed(() => {
-  if (!authStore.usesSupabaseSpace) {
-    return '暂未同步'
-  }
-
-  if (wishStore.realtimeStatus === 'error' || wishStore.syncMessage.includes('失败')) {
-    return '同步异常'
-  }
-
-  if (wishStore.realtimeStatus === 'connecting' || wishStore.isLoading) {
-    return '同步中'
-  }
-
-  return '同步正常'
+  return getSyncStatusLabel({
+    isLoading: wishStore.isLoading,
+    realtimeStatus: wishStore.realtimeStatus,
+    syncMessage: wishStore.syncMessage,
+    usesSupabaseSpace: authStore.usesSupabaseSpace,
+  })
 })
 
 const spaceSummaryLabel = computed(() => {
   const currentMemberName = authStore.currentMember?.displayName ?? '当前成员'
 
   if (authStore.usesSupabaseSpace) {
-    return `${currentMemberName} 已进入共享愿望空间 · ${syncLabel.value} · ${authStore.members.length} 位成员`
+    return `${currentMemberName} ${ENTRY_STATUS_LABELS.entered}共享愿望空间 · ${syncLabel.value} · ${authStore.members.length} 位成员`
   }
 
   return `${currentMemberName} 当前在本地演示空间 · ${syncLabel.value} · ${authStore.members.length} 位成员`
@@ -124,13 +118,13 @@ function isActivePath(targetPath: string) {
   justify-content: space-between;
   gap: 1.35rem;
   align-items: center;
-  padding: 0.9rem 1rem;
+  padding: 0.78rem 0.92rem;
 }
 
 .shell-brand {
   display: grid;
-  gap: 0.28rem;
-  max-width: 19rem;
+  gap: 0.16rem;
+  max-width: 17rem;
 }
 
 .shell-brand-row {
@@ -143,17 +137,18 @@ function isActivePath(targetPath: string) {
 .shell-brand h1 {
   margin: 0;
   font-family: var(--font-heading);
-  font-size: var(--type-section-title-size);
-  line-height: var(--type-section-title-line);
-  letter-spacing: var(--type-section-title-tracking);
+  font-size: var(--type-card-title-size);
+  line-height: var(--type-card-title-line);
+  letter-spacing: var(--type-card-title-tracking);
+  color: color-mix(in srgb, var(--text-main) 84%, var(--text-soft));
 }
 
 .shell-status {
   margin: 0;
   font-family: var(--font-body);
   color: var(--text-soft);
-  font-size: var(--type-supporting-size);
-  line-height: var(--type-supporting-line);
+  font-size: var(--type-l7-size);
+  line-height: 1.4;
   letter-spacing: var(--type-supporting-spacing);
 }
 
@@ -256,7 +251,7 @@ function isActivePath(targetPath: string) {
   }
 
   .shell-brand h1 {
-    font-size: var(--type-section-title-size);
+    font-size: var(--type-card-title-size);
   }
 
   .top-nav {

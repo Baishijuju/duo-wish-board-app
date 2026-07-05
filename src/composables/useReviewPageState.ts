@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue'
+import { getThreadEventKindLabel } from '../shared/statusSemantics'
 import { useAuthStore } from '../stores/auth'
 import {
   useWishStore,
@@ -252,7 +253,7 @@ export function useReviewPageState() {
       return '系统记录'
     }
 
-    return '领取奖励'
+      return getThreadEventKindLabel(eventKind)
   }
 
   function getThreadReviewHeadline(thread: WishThreadEntry) {

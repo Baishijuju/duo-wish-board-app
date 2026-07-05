@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { formatStarCoinAmountLabel } from '../../shared/starCoinLedger'
 import type { RewardActionResult, RewardPoolItem, RewardScope, RewardTier } from '../../stores/wishes'
 import { createRewardClaimRecord, createRewardPoolItem } from './reward.factories'
 
@@ -222,7 +223,7 @@ export async function redeemPremiumRewardWrite(options: {
   }
 
   if (options.depositedAmount < options.rewardItem.starCoinCost) {
-    return options.onResult({ ok: false, message: `还差 ${options.rewardItem.starCoinCost - options.depositedAmount} 枚星星币才能领取。` })
+    return options.onResult({ ok: false, message: `还差 ${formatStarCoinAmountLabel(options.rewardItem.starCoinCost - options.depositedAmount)} 枚星星币才能领取。` })
   }
 
   if (options.supabase && options.isUsingCloudWishes && options.currentSpaceId) {
@@ -284,11 +285,11 @@ export async function depositRewardStarCoinsWrite(options: {
   const normalizedAmount = Math.min(Math.max(1, Math.trunc(Number(options.amount) || 0)), remainingAmount)
 
   if (remainingAmount <= 0) {
-    return options.onResult({ ok: false, message: '这条奖励已经存满了，可以领取。' })
+    return options.onResult({ ok: false, message: '这条奖励已经存满了，现在已满足领取条件。' })
   }
 
   if (options.currentBalance < normalizedAmount) {
-    return options.onResult({ ok: false, message: `手里的星星币还差 ${normalizedAmount - options.currentBalance} 枚。` })
+    return options.onResult({ ok: false, message: `手里的星星币还差 ${formatStarCoinAmountLabel(normalizedAmount - options.currentBalance)} 枚。` })
   }
 
   if (options.supabase && options.isUsingCloudWishes && options.currentSpaceId) {
@@ -305,7 +306,7 @@ export async function depositRewardStarCoinsWrite(options: {
       }
 
       await options.syncFromSupabase(options.currentSpaceId)
-      return options.onResult({ ok: true, message: `已往「${options.rewardItem.title}」助力 ${normalizedAmount} 枚星星币。` })
+      return options.onResult({ ok: true, message: `已往「${options.rewardItem.title}」助力 ${formatStarCoinAmountLabel(normalizedAmount)} 枚星星币。` })
     } finally {
       options.onLoadingChange(false)
     }
@@ -321,6 +322,6 @@ export async function depositRewardStarCoinsWrite(options: {
       starCoinDelta: -normalizedAmount,
       titleSnapshot: options.rewardItem.title,
     }),
-    result: options.onResult({ ok: true, message: `已往「${options.rewardItem.title}」助力 ${normalizedAmount} 枚星星币。` }),
+    result: options.onResult({ ok: true, message: `已往「${options.rewardItem.title}」助力 ${formatStarCoinAmountLabel(normalizedAmount)} 枚星星币。` }),
   }
 }

@@ -2,6 +2,10 @@
 import { computed, nextTick, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import CopyFold from '../components/CopyFold.vue'
+import ActionCard from '../components/page/ActionCard.vue'
+import ManagePanel from '../components/page/ManagePanel.vue'
+import PageModeFrame from '../components/page/PageModeFrame.vue'
+import { getWishStatusSemantic } from '../shared/statusSemantics'
 import WishCompletionFireworks from '../components/WishCompletionFireworks.vue'
 import WishBottleStarDrop from '../components/WishBottleStarDrop.vue'
 import { getWishBottleColorTier as getWishBottleColorTierModule } from '../modules/wishes/wish.progress'
@@ -115,7 +119,7 @@ const detailTags = computed(() => {
   return [
     selectedWish.value.scope === 'shared' ? '我们一起' : '只属于我',
     selectedWish.value.category || '还没有分类',
-    selectedWish.value.status === 'done' ? '已完成' : '进行中',
+    getWishStatusSemantic(selectedWish.value.status).label,
   ]
 })
 
@@ -180,7 +184,7 @@ const stickyCtaPrimaryLabel = computed(() => {
   }
 
   if (selectedWish.value.status === 'done') {
-    return '这条愿望已完成'
+    return `这条愿望${getWishStatusSemantic('done').label}`
   }
 
   if (!canProgressSelectedWish.value) {
@@ -333,6 +337,13 @@ const isStepStarDropActive = ref(false)
 const isDeleteWishConfirming = ref(false)
 const isDeletingWish = ref(false)
 const deleteWishFeedback = ref('')
+const isDetailManagePanelOpen = ref(false)
+const detailPageMode = computed({
+  get: () => (isDetailManagePanelOpen.value ? 'manage' : 'action') as 'action' | 'manage',
+  set: (mode: 'action' | 'manage') => {
+    isDetailManagePanelOpen.value = mode === 'manage'
+  },
+})
 
 function getPreviewImageCaption(image: WishImage) {
   if (wishImageIds.value.has(image.id)) {
@@ -475,6 +486,12 @@ function scrollToSection(sectionId: string) {
   })
 }
 
+async function openManageToolsSection() {
+  detailPageMode.value = 'manage'
+  await nextTick()
+  scrollToSection('detail-tools')
+}
+
 async function runStickyCtaPrimaryAction() {
   if (!selectedWish.value || selectedWish.value.status === 'done' || !canProgressSelectedWish.value) {
     return
@@ -491,7 +508,7 @@ async function runStickyCtaPrimaryAction() {
       return
     }
 
-    scrollToSection('detail-tools')
+    await openManageToolsSection()
     return
   }
 
@@ -509,7 +526,7 @@ async function runStickyCtaSecondaryAction() {
   }
 
   if (stickyCtaSecondaryIntent.value === 'stepSetup') {
-    scrollToSection('detail-tools')
+    await openManageToolsSection()
     return
   }
 
@@ -548,7 +565,7 @@ async function runStickyCtaSecondaryAction() {
 
           <div class="detail-atelier-story-header">
             <span class="detail-atelier-story-owner">{{ getMemberName(selectedWish.ownerId) }}</span>
-            <span class="detail-atelier-story-state-chip detail-atelier-story-state-chip-inline">{{ selectedWish.status === 'done' ? '已完成' : '进行中' }}</span>
+            <span class="detail-atelier-story-state-chip detail-atelier-story-state-chip-inline">{{ getWishStatusSemantic(selectedWish.status).label }}</span>
           </div>
 
           <p class="detail-atelier-story-meta-note" role="note">{{ [detailTags.join(' · '), formatBeijingDateTime(selectedWish.createdAt)].filter(Boolean).join(' · ') }}</p>
@@ -561,8 +578,8 @@ async function runStickyCtaSecondaryAction() {
           </div>
 
           <div class="detail-atelier-story-focus" role="group" aria-label="奖励进度">
-            <strong>已领 {{ currentWishStarCoinSummary.earned }} 枚</strong>
-            <p>还可获得 {{ currentWishStarCoinSummary.remaining }} 枚 · 可领取 {{ currentWishStarCoinSummary.pending }} 枚</p>
+            <strong>已入账 {{ currentWishStarCoinSummary.earned }} 枚</strong>
+            <p>剩余可得 {{ currentWishStarCoinSummary.remaining }} 枚</p>
           </div>
 
           <p v-if="rewardFeedback && !stepRewardFeedbackTargetId && !isCountProgressFeedback" :class="['detail-atelier-feedback', rewardFeedbackTone]" role="status" aria-live="polite">{{ rewardFeedback }}</p>
@@ -593,6 +610,23 @@ async function runStickyCtaSecondaryAction() {
           </div>
         </article>
       </section>
+
+      <PageModeFrame
+        v-model:mode="detailPageMode"
+        class="detail-mode-frame"
+        title="愿望详情主模式切换"
+        action-label="推进与记录"
+        manage-label="整理与设置"
+        :switch-only="true"
+      />
+
+      <ActionCard
+        v-if="detailPageMode === 'action'"
+        class="detail-atelier-mode-shell detail-atelier-action-shell"
+        eyebrow="行动区"
+        title="推进这条愿望"
+        summary="先推进进度、写近况，再回看最近记录。"
+      >
 
       <section class="detail-atelier-overview-grid">
         <article id="progress" class="page-card detail-atelier-overview-card detail-atelier-progress-anchor">
@@ -628,24 +662,18 @@ async function runStickyCtaSecondaryAction() {
               </article>
             </div>
 
-            <div v-if="selectedWish.steps.length" class="detail-atelier-mobile-progress-glance detail-atelier-mobile-only">
-              <article class="detail-atelier-mobile-step-focus">
-                <div class="detail-atelier-mobile-step-focus-title-row">
-                  <p class="detail-atelier-mobile-step-focus-title">{{ mobilePrimaryStep?.title || '还没有下一步' }}</p>
-                  <strong class="detail-atelier-mobile-step-focus-status">{{ mobileCompletedStepCount }} / {{ selectedWish.steps.length }} 步</strong>
-                </div>
-                <p class="detail-atelier-mobile-step-focus-note">{{ mobileCompletedStepCount === selectedWish.steps.length ? '已经全部完成' : `还剩 ${selectedWish.steps.length - mobileCompletedStepCount} 步` }}</p>
-              </article>
-            </div>
-
             <div v-else class="detail-atelier-empty-block">
               <strong>还没有拆出小步骤</strong>
               <p>可以先写下第一个很具体的小目标，例如订票、办签证、买装备。</p>
             </div>
 
-            <details v-if="selectedWish.steps.length" class="detail-atelier-mobile-more detail-atelier-mobile-only detail-atelier-step-more-card">
+            <details v-if="selectedWish.steps.length" class="detail-atelier-mobile-progress-glance detail-atelier-mobile-only detail-atelier-step-more-card">
               <summary class="detail-atelier-mobile-more-summary">
-                <strong>展开查看这 {{ selectedWish.steps.length }} 步</strong>
+                <div class="detail-atelier-mobile-step-focus-title-row">
+                  <p class="detail-atelier-mobile-step-focus-title">{{ mobilePrimaryStep?.title || '还没有下一步' }}</p>
+                  <strong class="detail-atelier-mobile-step-focus-status">{{ mobileCompletedStepCount }} / {{ selectedWish.steps.length }} 步</strong>
+                </div>
+                <p class="detail-atelier-mobile-step-focus-note">{{ mobileCompletedStepCount === selectedWish.steps.length ? '已经全部完成' : `还剩 ${selectedWish.steps.length - mobileCompletedStepCount} 步` }}</p>
               </summary>
 
               <div class="detail-atelier-step-list">
@@ -1175,7 +1203,20 @@ async function runStickyCtaSecondaryAction() {
 
       </section>
 
-      <section id="detail-tools" class="detail-atelier-tools-band">
+      </ActionCard>
+
+      <ManagePanel
+        v-else
+        class="detail-atelier-mode-shell detail-atelier-manage-shell"
+        eyebrow="整理区"
+        title="整理与设置"
+        summary="低频编辑、步骤整理和删除操作都放在这里。"
+      >
+        <template #actions>
+          <button class="detail-atelier-secondary" type="button" @click="detailPageMode = 'action'">回到推进</button>
+        </template>
+
+        <section id="detail-tools" class="detail-atelier-tools-band">
         <details class="page-card detail-atelier-tools-card detail-atelier-danger-details">
           <summary class="detail-atelier-danger-summary">
             <span>更多设置</span>
@@ -1246,9 +1287,10 @@ async function runStickyCtaSecondaryAction() {
             </div>
           </div>
         </details>
-      </section>
+        </section>
+      </ManagePanel>
 
-      <div v-if="shouldShowStickyCtaDock" class="detail-atelier-cta-dock detail-atelier-mobile-only" aria-live="polite">
+      <div v-if="shouldShowStickyCtaDock && detailPageMode === 'action'" class="detail-atelier-cta-dock detail-atelier-mobile-only" aria-live="polite">
         <div class="detail-atelier-cta-dock-inner">
           <p
             v-if="stickyCtaFeedbackState.message"
@@ -1441,6 +1483,20 @@ async function runStickyCtaSecondaryAction() {
   background:
     radial-gradient(circle at 8% 4%, color-mix(in srgb, var(--accent-panel) 40%, transparent), transparent 44%),
     linear-gradient(180deg, color-mix(in srgb, var(--surface-soft) 80%, white), var(--surface-soft));
+}
+
+.detail-mode-frame,
+.detail-atelier-mode-shell {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.detail-atelier-action-shell {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--card-bg-soft) 86%, white), color-mix(in srgb, var(--card-bg) 86%, white));
+}
+
+.detail-atelier-manage-shell {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--danger-panel) 62%, white), color-mix(in srgb, var(--card-bg-soft) 86%, white));
 }
 
 .visually-hidden {
@@ -1770,11 +1826,11 @@ async function runStickyCtaSecondaryAction() {
 
 .detail-atelier-story-focus {
   display: grid;
-  gap: 0.16rem;
-  padding: 0.44rem 0.52rem;
-  border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--accent-border) 40%, var(--warm-border-soft));
-  background: color-mix(in srgb, var(--surface-card) 84%, white);
+  gap: 0.1rem;
+  padding: 0.36rem 0.44rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--warm-border-soft) 78%, transparent);
+  background: color-mix(in srgb, var(--surface-card) 52%, white);
 }
 
 .detail-atelier-story-focus-kicker {
@@ -1789,20 +1845,20 @@ async function runStickyCtaSecondaryAction() {
 
 .detail-atelier-story-focus strong {
   margin: 0;
-  color: var(--text-main);
+  color: color-mix(in srgb, var(--text-main) 88%, var(--text-soft));
   font-family: var(--font-heading);
-  font-size: var(--type-l5-size);
-  font-weight: 600;
-  line-height: 1.22;
-  letter-spacing: var(--type-l5-spacing);
+  font-size: var(--type-l6-size);
+  font-weight: 500;
+  line-height: 1.18;
+  letter-spacing: var(--type-l6-spacing);
 }
 
 .detail-atelier-story-focus p {
   margin: 0;
-  color: var(--text-soft);
+  color: var(--text-faint);
   font-family: var(--font-body);
-  font-size: var(--type-l7-size);
-  line-height: 1.34;
+  font-size: 0.72rem;
+  line-height: 1.28;
   letter-spacing: var(--type-l7-spacing);
 }
 
@@ -1996,6 +2052,30 @@ async function runStickyCtaSecondaryAction() {
 
 .detail-atelier-mobile-more[open] .detail-atelier-mobile-more-summary {
   padding-bottom: 0.14rem;
+}
+
+.detail-atelier-progress-anchor .detail-atelier-step-more-card .detail-atelier-mobile-more-summary {
+  position: relative;
+  display: grid;
+  gap: 0.16rem;
+  align-items: start;
+  width: 100%;
+  min-height: 0;
+  padding: 0.06rem 1rem 0.06rem 0;
+}
+
+.detail-atelier-progress-anchor .detail-atelier-step-more-card .detail-atelier-mobile-more-summary::after {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.08rem;
+}
+
+.detail-atelier-progress-anchor .detail-atelier-step-more-card .detail-atelier-mobile-step-focus-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.34rem;
+  width: 100%;
 }
 
 .detail-atelier-mobile-meta-grid {
@@ -4296,21 +4376,22 @@ async function runStickyCtaSecondaryAction() {
   }
 
   .detail-atelier-story-focus {
-    gap: 0.4rem;
-    padding: 0.76rem 0.78rem;
-    border-radius: 14px;
-    border-color: color-mix(in srgb, var(--accent-border) 48%, var(--warm-border-soft));
-    background: color-mix(in srgb, var(--surface-card) 90%, white);
+    gap: 0.24rem;
+    padding: 0.5rem 0.56rem;
+    border-radius: 12px;
+    border-color: color-mix(in srgb, var(--warm-border-soft) 82%, transparent);
+    background: color-mix(in srgb, var(--surface-card) 58%, white);
   }
 
   .detail-atelier-story-focus strong {
-    font-size: clamp(1.06rem, 0.96rem + 0.55vw, 1.2rem);
-    line-height: 1.18;
+    font-size: clamp(0.94rem, 0.88rem + 0.34vw, 1.04rem);
+    line-height: 1.14;
   }
 
   .detail-atelier-story-focus p {
     color: var(--text-faint);
-    line-height: 1.42;
+    font-size: 0.7rem;
+    line-height: 1.3;
   }
 
   .detail-atelier-story-meta-note {

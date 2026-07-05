@@ -2,6 +2,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import CopyFold from '../components/CopyFold.vue'
+import ActionCard from '../components/page/ActionCard.vue'
+import { WISH_STATUS_FILTER_LABELS } from '../shared/statusSemantics'
 import type { WishRecord } from '../stores/wishes'
 import { useListWishBoardState } from '../composables/useListWishBoardState'
 
@@ -188,7 +190,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="list-board-page">
-    <article class="page-card list-board-hero-card list-board-workbench-hero">
+    <ActionCard class="list-board-hero-card list-board-workbench-hero" :title="''">
       <div class="list-board-hero-copy list-board-workbench-copy">
         <h1>{{ viewerName }}，选 1 件推进</h1>
         <CopyFold
@@ -199,7 +201,7 @@ onBeforeUnmount(() => {
           :text="heroSummary"
         />
       </div>
-    </article>
+    </ActionCard>
 
     <article class="page-card list-board-toolbar-card">
       <div class="list-board-search-row">
@@ -285,7 +287,7 @@ onBeforeUnmount(() => {
                 :class="{ 'is-active': filterStore.status === 'active' }"
                 @click="filterStore.status = 'active'"
               >
-                正在推进
+                {{ WISH_STATUS_FILTER_LABELS.active }}
               </button>
               <button
                 class="list-board-filter-pill"
@@ -296,7 +298,7 @@ onBeforeUnmount(() => {
                 :class="{ 'is-active': filterStore.status === 'done' }"
                 @click="filterStore.status = 'done'"
               >
-                已经实现
+                {{ WISH_STATUS_FILTER_LABELS.done }}
               </button>
               <button
                 class="list-board-filter-pill"
@@ -307,7 +309,7 @@ onBeforeUnmount(() => {
                 :class="{ 'is-active': filterStore.status === 'all' }"
                 @click="filterStore.status = 'all'"
               >
-                全部状态
+                {{ WISH_STATUS_FILTER_LABELS.all }}
               </button>
             </div>
           </div>

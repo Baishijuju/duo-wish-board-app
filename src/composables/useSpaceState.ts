@@ -1,5 +1,7 @@
 import { computed, ref, watch } from 'vue'
 import { supabaseAuthMode, supabaseReadinessMessage } from '../lib/supabase'
+import { REWARD_CLAIM_LABELS, getSyncStatusLabel } from '../shared/statusSemantics'
+import { buildClaimableEntries, buildCurrentStarCoinBalance, buildPendingRewardOverview, formatStarCoinAmountLabel } from '../shared/starCoinLedger'
 import { useAuthStore } from '../stores/auth'
 import { useWishStore, type RewardPoolItem } from '../stores/wishes'
 import { formatBeijingDateTime } from '../utils/datetime'
@@ -57,7 +59,10 @@ export function useSpaceState() {
   const canBindFixedEmail = computed(() => authStore.usesSupabaseSpace && authStore.currentMember?.role === 'owner')
   const storageSummary = computed(() => wishStore.imageStorageSummary)
   const currentMemberId = computed(() => authStore.currentMemberId || authStore.currentMember?.id || '')
-  const currentMemberStarCoins = computed(() => wishStore.currentMemberStarCoinBalance)
+  const currentMemberStarCoins = computed(() => buildCurrentStarCoinBalance({
+    claims: wishStore.rewardClaims,
+    memberId: currentMemberId.value,
+  }))
   const currentMemberDailyRewards = computed(() => {
     return currentMemberId.value ? wishStore.getRewardPoolItems(currentMemberId.value, 'daily') : []
   })
@@ -73,10 +78,12 @@ export function useSpaceState() {
   })
   const pendingStepRewards = computed(() => wishStore.pendingStepRewards)
   const pendingCountRewardSummaries = computed(() => wishStore.pendingCountRewardSummaries)
-  const pendingCountRewardUnits = computed(() => {
-    return pendingCountRewardSummaries.value.reduce((total, item) => total + item.pendingUnits, 0)
-  })
-  const pendingSmallRewardUnits = computed(() => wishStore.pendingSmallRewardCount)
+  const pendingRewardOverview = computed(() => buildPendingRewardOverview({
+    pendingCountRewardSummaries: pendingCountRewardSummaries.value,
+    pendingStepRewards: pendingStepRewards.value,
+  }))
+  const pendingCountRewardUnits = computed(() => pendingRewardOverview.value.pendingCountRewardUnits)
+  const pendingSmallRewardUnits = computed(() => pendingRewardOverview.value.pendingSmallRewardCount)
   const premiumWishlistCostTotal = computed(() => {
     return currentMemberPremiumRewards.value.reduce((total, item) => total + Math.max(item.starCoinCost, 0), 0)
   })
@@ -117,9 +124,11 @@ export function useSpaceState() {
   })
   const rewardTaskEntries = computed(() => [...currentMemberRewardEntries.value, ...sharedRewardEntries.value])
   const claimableRewardEntries = computed(() => {
-    return rewardTaskEntries.value
-      .filter((entry) => canRedeemPremiumReward(entry.item))
-      .sort((left, right) => getRewardRemainingStarCoins(left.item) - getRewardRemainingStarCoins(right.item))
+    return buildClaimableEntries({
+      canRedeem: (entry) => canRedeemPremiumReward(entry.item),
+      entries: rewardTaskEntries.value,
+      getRemaining: (entry) => getRewardRemainingStarCoins(entry.item),
+    })
   })
   const savingRewardEntries = computed(() => {
     return rewardTaskEntries.value
@@ -183,19 +192,12 @@ export function useSpaceState() {
   })
 
   const syncStatusLabel = computed(() => {
-    if (!authStore.usesSupabaseSpace) {
-      return '暂未同步'
-    }
-
-    if (wishStore.realtimeStatus === 'error' || wishStore.syncMessage.includes('失败')) {
-      return '同步异常'
-    }
-
-    if (wishStore.realtimeStatus === 'connecting' || wishStore.isLoading) {
-      return '同步中'
-    }
-
-    return '同步正常'
+    return getSyncStatusLabel({
+      isLoading: wishStore.isLoading,
+      realtimeStatus: wishStore.realtimeStatus,
+      syncMessage: wishStore.syncMessage,
+      usesSupabaseSpace: authStore.usesSupabaseSpace,
+    })
   })
 
   const estimatedRemainingImageCount = computed(() => {
@@ -541,7 +543,7 @@ export function useSpaceState() {
 
   function getRewardPrimaryActionLabel(entry: RewardTaskEntry) {
     if (canRedeemPremiumReward(entry.item)) {
-      return entry.kind === 'shared' ? '领取共同奖励' : '领取奖励'
+      return entry.kind === 'shared' ? REWARD_CLAIM_LABELS.claimShared : REWARD_CLAIM_LABELS.claimDefault
     }
 
     const amount = getRecommendedDepositAmount(entry.item)
@@ -690,7 +692,7 @@ export function useSpaceState() {
     }
 
     if (claim.claimKind === 'count_reward') {
-      return `因为「${sourceWishTitle}」推进了 ${Math.max(1, claim.quantity)} 点，接住了「${rewardTitle}」。`
+      return `因为「${sourceWishTitle}」推进了 ${formatStarCoinAmountLabel(Math.max(1, claim.quantity))} 点，接住了「${rewardTitle}」。`
     }
 
     if (claim.claimKind === 'wish_reward') {
@@ -699,8 +701,8 @@ export function useSpaceState() {
 
     if (claim.claimKind === 'star_coin') {
       return claim.sourceStepId
-        ? `因为「${sourceWishTitle}」的小步骤完成了，这次先存成了 ${Math.max(1, claim.quantity)} 枚星星币。`
-        : `因为「${sourceWishTitle}」数字进度推进了 ${Math.max(1, claim.quantity)} 点，这次先存成了 ${Math.max(1, claim.quantity)} 枚星星币。`
+        ? `因为「${sourceWishTitle}」的小步骤完成了，这次先记成了 ${formatStarCoinAmountLabel(Math.max(1, claim.quantity))} 枚星星币。`
+        : `因为「${sourceWishTitle}」数字进度推进了 ${formatStarCoinAmountLabel(Math.max(1, claim.quantity))} 点，这次先记成了 ${formatStarCoinAmountLabel(Math.max(1, claim.quantity))} 枚星星币。`
     }
 
     if (claim.claimKind === 'step_star_coin') {
@@ -716,7 +718,7 @@ export function useSpaceState() {
     }
 
     if (claim.claimKind === 'reward_deposit') {
-      return `往「${rewardTitle}」助力存入了 ${Math.max(1, claim.quantity)} 枚星星币。`
+      return `往「${rewardTitle}」助力存入了 ${formatStarCoinAmountLabel(Math.max(1, claim.quantity))} 枚星星币。`
     }
 
     return `用星星币兑换到了「${rewardTitle}」。`

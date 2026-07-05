@@ -1,4 +1,5 @@
 import { computed } from 'vue'
+import { ENTRY_STATUS_LABELS, REWARD_CLAIM_LABELS } from '../shared/statusSemantics'
 import { useSpaceState } from './useSpaceState'
 
 export function useSpacePageState() {
@@ -95,7 +96,7 @@ export function useSpacePageState() {
         caption: space.pendingSmallRewardUnits.value
           ? `步骤 ${space.pendingStepRewards.value.length} 条 · 数字进度 ${space.pendingCountRewardUnits.value} 点`
           : '新的推进会先把小奖励留在这里',
-        label: '待领取',
+        label: REWARD_CLAIM_LABELS.pending,
         note: '空间页统一接住',
         value: `${space.pendingSmallRewardUnits.value} 份`,
       },
@@ -141,10 +142,12 @@ export function useSpacePageState() {
 
   const accountBadges = computed(() => {
     if (space.authStore.isAuthenticated) {
-      return space.canBindFixedEmail.value ? ['已进入', '可记住邮箱'] : ['已进入', '可邀请对方']
+      return space.canBindFixedEmail.value
+        ? [ENTRY_STATUS_LABELS.entered, '可记住邮箱']
+        : [ENTRY_STATUS_LABELS.entered, '可邀请对方']
     }
 
-    return ['待进入', '准备邀请对方']
+    return [ENTRY_STATUS_LABELS.notEntered, '准备邀请对方']
   })
 
   const accountSummary = computed(() => {

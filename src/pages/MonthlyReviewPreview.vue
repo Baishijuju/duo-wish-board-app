@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
+import { getThreadEventKindLabel } from '../shared/statusSemantics'
+import { buildVisibleStarCoinLedger, type StarCoinVisibleLedger, type StarCoinWaterfallKind } from '../shared/starCoinLedger'
 import { useAuthStore } from '../stores/auth'
 import { useWishStore, type RewardClaimKind, type WishRecord, type WishThreadEntry } from '../stores/wishes'
 
@@ -105,8 +107,6 @@ type ClaimStatRow = {
   spending: number
 }
 
-type StarCoinWaterfallKind = Extract<RewardClaimKind, 'count_star_coin' | 'step_star_coin' | 'wish_completion_bonus' | 'reward_deposit'>
-
 type StarCoinWaterfallStep = {
   amount: number
   bottom: string
@@ -126,21 +126,14 @@ type StarCoinWaterfallChart = {
   steps: StarCoinWaterfallStep[]
 }
 
-type StarCoinVisibleLedger = {
-  endBalance: number
-  income: number
-  net: number
-  sourceTotals: Map<StarCoinWaterfallKind, number>
-  spending: number
-  startBalance: number
-}
-
 const activeMetric = ref<ReviewMetric>('progress')
 const activeScope = ref<ReviewScope>('all')
 const activeRange = ref<ReviewRange>('month')
 const anchorDateKey = ref(getBeijingDateKey())
 const bubbleDateKey = ref<string | null>(null)
 const isProgressListExpanded = ref(false)
+const isCompletedListExpanded = ref(false)
+const isMessageListExpanded = ref(false)
 const rewardClaimHeatKinds = new Set<RewardClaimKind>(['count_reward', 'step_reward', 'wish_reward', 'premium_redeem'])
 
 const metricOptions: SwitchOption<ReviewMetric>[] = [
@@ -166,10 +159,6 @@ const starCoinWaterfallKinds: Array<{ kind: StarCoinWaterfallKind; label: string
 
 const progressTouchEventKinds = new Set<ReviewEventKind>(['message', 'step', 'count_progress'])
 const trueProgressEventKinds = new Set<ReviewEventKind>(['step', 'count_progress'])
-
-function isStarCoinWaterfallKind(kind: RewardClaimKind): kind is StarCoinWaterfallKind {
-  return starCoinWaterfallKinds.some((source) => source.kind === kind)
-}
 
 function isProgressTouchEvent(event: ReviewEvent) {
   return progressTouchEventKinds.has(event.kind)
@@ -259,7 +248,14 @@ const periodCompletedSteps = computed(() => {
     .filter((step) => step.isDone && activePeriodDateSet.value.has(getBeijingDateKey(step.updatedAt)))
     .map((step) => ({ ...step, wishId: wish.id, wishTitle: wish.title })))
 })
-const starCoinLedger = computed(() => buildVisibleStarCoinLedger(periodStartDateKey.value, periodEndDateKey.value, activeLedgerMemberIds.value))
+const starCoinLedger = computed(() => buildVisibleStarCoinLedger({
+  claims: wishStore.rewardClaims,
+  endDateKey: periodEndDateKey.value,
+  getDateKey: getBeijingDateKey,
+  memberIds: activeLedgerMemberIds.value,
+  sourceKinds: starCoinWaterfallKinds.map((source) => source.kind),
+  startDateKey: periodStartDateKey.value,
+}))
 const periodStarCoinIncome = computed(() => starCoinLedger.value.income)
 const periodStarCoinSpending = computed(() => starCoinLedger.value.spending)
 const periodStarCoinNet = computed(() => starCoinLedger.value.net)
@@ -475,23 +471,31 @@ const heatSummary = computed(() => {
 
   return `${formatDateLabel(peakCell.value.dateKey)}最亮，${getMetricSummary(peakCell.value)}。`
 })
-const periodSummaryCards = computed(() => [
-  {
-    label: '星币流动',
-    value: `${periodStarCoinNet.value >= 0 ? '+' : ''}${formatNumber(periodStarCoinNet.value)}`,
-    note: `收入 ${formatNumber(periodStarCoinIncome.value)} / 花出 ${formatNumber(periodStarCoinSpending.value)}`,
-  },
-  {
-    label: '被摸过的愿望',
-    value: `${periodTouchedWishes.value.length} 个`,
-    note: `${periodCompletedSteps.value.length} 步 · ${periodProgressedWishes.value.length} 个真实推进`,
-  },
-  {
-    label: '峰值日',
-    value: peakCell.value?.score ? formatDateLabel(peakCell.value.dateKey) : '暂无',
-    note: peakCell.value?.score ? getMetricSummary(peakCell.value) : '这段时间还很安静',
-  },
-])
+const compactInsightLine = computed(() => {
+  const activeDaysLabel = `${activeDayCount.value} / ${activePeriodDateKeys.value.length} 天亮起`
+
+  if (!peakCell.value || peakCell.value.score <= 0) {
+    if (activeMetric.value === 'completed') {
+      return `${activePeriodLabel.value}还没有完本记录。`
+    }
+
+    if (activeMetric.value === 'messages') {
+      return `${activePeriodLabel.value}留言偏少（${activeDaysLabel}）。`
+    }
+
+    if (activeMetric.value === 'claims') {
+      return `${activePeriodLabel.value}还没有领奖发生。`
+    }
+
+    if (activeMetric.value === 'coins') {
+      return `${activePeriodLabel.value}还没有明显的星币变化。`
+    }
+
+    return `${activePeriodLabel.value}整体偏安静（${activeDaysLabel}）。`
+  }
+
+  return `${heatSummary.value} ${activeDaysLabel}`
+})
 const starCoinWaterfallChart = computed<StarCoinWaterfallChart>(() => {
   let runningTotal = periodStarCoinStartBalance.value
   const changeSteps = starCoinWaterfallKinds.map((source) => {
@@ -593,9 +597,6 @@ const progressCategoryRows = computed<ProgressCategoryRow[]>(() => {
     }))
     .sort((left, right) => right.progressAmount - left.progressAmount || right.touchedCount - left.touchedCount || right.commentCount - left.commentCount)
 })
-const hottestProgressCategory = computed(() => progressCategoryRows.value[0] ?? null)
-const quietProgressCategory = computed(() => progressCategoryRows.value.length > 1 ? progressCategoryRows.value[progressCategoryRows.value.length - 1] : null)
-const categoryProgressShare = computed(() => hottestProgressCategory.value?.percent ?? 0)
 const completedWishJournals = computed(() => {
   return [...wishStore.wishes]
     .filter((wish) => {
@@ -638,6 +639,7 @@ const claimStatsRows = computed<ClaimStatRow[]>(() => {
     .filter((row) => row.claimCount > 0 || row.spending > 0)
     .sort((left, right) => right.claimCount - left.claimCount || right.spending - left.spending || new Date(right.latestAt).getTime() - new Date(left.latestAt).getTime() || left.label.localeCompare(right.label, 'zh-CN'))
 })
+  const claimStatsMaxCount = computed(() => Math.max(1, ...claimStatsRows.value.map((row) => row.claimCount)))
 const claimStatsMaxSpending = computed(() => Math.max(1, ...claimStatsRows.value.map((row) => row.spending)))
 
 function formatWaterfallPercent(ratio: number) {
@@ -654,57 +656,10 @@ function getSlidingTabStyle(activeIndex: number, optionCount: number) {
   }
 }
 
-function buildVisibleStarCoinLedger(startDateKey: string, endDateKey: string, memberIds: string[]): StarCoinVisibleLedger {
-  const memberIdSet = new Set(memberIds)
-  const sourceTotals = new Map<StarCoinWaterfallKind, number>(starCoinWaterfallKinds.map((source) => [source.kind, 0]))
-  const balances = new Map(memberIds.map((memberId) => [memberId, 0]))
-
-  const claims = wishStore.rewardClaims
-    .filter((claim) => memberIdSet.has(claim.ownerId) && getBeijingDateKey(claim.createdAt) <= endDateKey)
-    .slice()
-    .sort((left, right) => {
-      const timeDiff = new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
-      return timeDiff || left.id.localeCompare(right.id)
-    })
-
-  let startBalance: number | null = null
-
-  claims.forEach((claim) => {
-    const dateKey = getBeijingDateKey(claim.createdAt)
-    if (startBalance === null && dateKey >= startDateKey) {
-      startBalance = getVisibleBalanceTotal(balances, memberIds)
-    }
-
-    const beforeBalance = balances.get(claim.ownerId) ?? 0
-    const afterBalance = Math.max(0, beforeBalance + claim.starCoinDelta)
-    balances.set(claim.ownerId, afterBalance)
-
-    if (dateKey < startDateKey || !isStarCoinWaterfallKind(claim.claimKind)) return
-
-    const visibleDelta = afterBalance - beforeBalance
-    sourceTotals.set(claim.claimKind, (sourceTotals.get(claim.claimKind) ?? 0) + visibleDelta)
-  })
-
-  const finalStartBalance = startBalance ?? getVisibleBalanceTotal(balances, memberIds)
-  const endBalance = getVisibleBalanceTotal(balances, memberIds)
-  const income = [...sourceTotals.values()].reduce((total, amount) => total + Math.max(0, amount), 0)
-  const spending = [...sourceTotals.values()].reduce((total, amount) => total + Math.abs(Math.min(0, amount)), 0)
-
-  return {
-    endBalance,
-    income,
-    net: income - spending,
-    sourceTotals,
-    spending,
-    startBalance: finalStartBalance,
-  }
-}
-
-function getVisibleBalanceTotal(balances: Map<string, number>, memberIds: string[]) {
-  return memberIds.reduce((total, memberId) => total + Math.max(0, balances.get(memberId) ?? 0), 0)
-}
-
 const messageBookEntries = computed(() => activeRange.value === 'year' ? [] : currentPeriodComments.value.slice(0, 8))
+const visibleMessageBookEntries = computed(() => {
+  return isMessageListExpanded.value ? messageBookEntries.value : messageBookEntries.value.slice(0, 4)
+})
 const yearMessageSummary = computed(() => {
   if (activeRange.value !== 'year') return null
 
@@ -723,6 +678,8 @@ const yearMessageSummary = computed(() => {
 
 watch([activeMetric, activeScope, activeRange, anchorDateKey], () => {
   bubbleDateKey.value = null
+  isCompletedListExpanded.value = false
+  isMessageListExpanded.value = false
 })
 
 function createImageEvent(id: string, createdAt: string, memberId: string, wish: WishRecord, title: string): ReviewEvent {
@@ -952,17 +909,11 @@ function formatCompletedWishDate(wish: WishRecord) {
 }
 
 function getThreadEventLabel(eventKind: WishThreadEntry['eventKind']) {
-  if (eventKind === 'comment') return '留言'
-  if (eventKind === 'wish_published') return '写下愿望'
-  if (eventKind === 'wish_step_completed') return '步骤完成'
-  if (eventKind === 'wish_completed') return '愿望完成'
-  if (eventKind === 'premium_redeem') return '兑换奖励'
-  if (eventKind === 'weekly_welfare_issued') return '系统记录'
-  return '领取奖励'
+  return getThreadEventKindLabel(eventKind)
 }
 
 function getCompletedWishPreviewRows(wishId: string) {
-  return wishStore.getWishThreadEntries(wishId).slice(0, 3)
+  return wishStore.getWishThreadEntries(wishId).slice(0, 2)
 }
 
 function getThreadPreviewText(thread: WishThreadEntry) {
@@ -1083,35 +1034,14 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
         <i class="is-level-5"></i>
         <span>多</span>
       </div>
+      <p class="monthly-heat-inline-summary">{{ compactInsightLine }}</p>
     </section>
 
     <section v-if="activeMetric === 'progress'" class="monthly-fact-layout">
-      <article class="monthly-preview-panel monthly-range-summary">
-        <div class="monthly-section-head">
-          <div>
-            <p>当前范围进展</p>
-            <h2>{{ heatSummary }}</h2>
-          </div>
-          <span>{{ activeDayCount }} / {{ activePeriodDateKeys.length }} 天亮起</span>
-        </div>
-        <div class="monthly-summary-card-grid">
-          <article v-for="card in periodSummaryCards" :key="card.label" class="monthly-summary-card">
-            <span>{{ card.label }}</span>
-            <strong>{{ card.value }}</strong>
-            <p>{{ card.note }}</p>
-          </article>
-        </div>
-      </article>
-
       <article class="monthly-preview-panel monthly-progress-panel">
         <div class="monthly-section-head">
-          <div><p>分类推进</p><h2>这段时间精力落在哪些愿望方向</h2></div>
+          <div><p>分类推进</p><h2>精力主要落点</h2></div>
           <span>{{ progressCategoryRows.length }} 类</span>
-        </div>
-        <div class="monthly-progress-metrics">
-          <div><strong>{{ hottestProgressCategory?.category ?? '暂无' }}</strong><span>最热分类</span></div>
-          <div><strong>{{ categoryProgressShare }}%</strong><span>推进占比</span></div>
-          <div><strong>{{ quietProgressCategory?.category ?? '暂无' }}</strong><span>安静分类</span></div>
         </div>
         <div class="monthly-category-list">
           <article v-for="row in progressCategoryRows" :key="row.category" class="monthly-category-row">
@@ -1122,7 +1052,7 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
             <div class="monthly-category-meter" aria-hidden="true"><i :style="{ width: `${row.percent}%` }"></i></div>
             <em>{{ row.percent }}%</em>
           </article>
-          <p v-if="!progressCategoryRows.length" class="monthly-empty-note">这个范围还没有被摸过的愿望。</p>
+          <p v-if="!progressCategoryRows.length" class="monthly-empty-note">这个范围里还没有推进记录。</p>
         </div>
         <button v-if="allProgressRows.length" type="button" class="monthly-progress-more" :aria-expanded="isProgressListExpanded" @click="isProgressListExpanded = !isProgressListExpanded">
           {{ isProgressListExpanded ? '收起愿望明细' : `展开 ${allProgressRows.length} 个愿望明细` }}
@@ -1143,20 +1073,23 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
     <section v-else-if="activeMetric === 'messages'" class="monthly-fact-layout">
       <article class="monthly-preview-panel monthly-message-panel">
         <div class="monthly-section-head">
-          <div><p>留言册</p><h2>{{ activeRange === 'year' ? '年度留言摘要' : '按时间留下来的话' }}</h2></div>
+          <div><p>留言册</p><h2>{{ activeRange === 'year' ? '年度留言重点' : '本期留言重点' }}</h2></div>
           <span>{{ activeRange === 'year' ? `${yearMessageSummary?.count ?? 0} 条` : `${messageBookEntries.length} 条` }}</span>
         </div>
         <div v-if="activeRange === 'year'" class="monthly-year-message-summary">
           <strong>{{ yearMessageSummary?.label }}</strong>
-          <p>年视图只保留总量和月份高点，不展开长留言列表。</p>
+          <p>年视图先只看高点。</p>
         </div>
         <div v-else class="monthly-message-list">
-          <article v-for="entry in messageBookEntries" :key="entry.id" class="monthly-message-item">
+          <article v-for="entry in visibleMessageBookEntries" :key="entry.id" class="monthly-message-item">
             <div><span>{{ entry.authorName }} · {{ entry.timeLabel }}</span><strong>{{ entry.wishTitle }}</strong></div>
             <p>{{ entry.text }}</p>
           </article>
-          <p v-if="!messageBookEntries.length" class="monthly-empty-note">这个范围还没有留言。</p>
+          <p v-if="!messageBookEntries.length" class="monthly-empty-note">这个范围里还没有留言。</p>
         </div>
+        <button v-if="messageBookEntries.length > 4 && activeRange !== 'year'" type="button" class="monthly-progress-more" :aria-expanded="isMessageListExpanded" @click="isMessageListExpanded = !isMessageListExpanded">
+          {{ isMessageListExpanded ? '收起留言' : `展开其余 ${messageBookEntries.length - 4} 条留言` }}
+        </button>
       </article>
     </section>
 
@@ -1165,7 +1098,7 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
         <div class="monthly-section-head">
           <div>
             <p>星币账本</p>
-            <h2>收入、兑换和余额</h2>
+            <h2>星币收支与余额</h2>
           </div>
         </div>
         <div v-if="hasStarCoinWaterfall" class="monthly-waterfall" aria-label="星币来源阶梯瀑布图">
@@ -1187,45 +1120,59 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
             </article>
           </div>
         </div>
-        <p v-else class="monthly-empty-note">这个范围还没有星币流动。</p>
+        <p v-else class="monthly-empty-note">这个范围里还没有星币变化。</p>
       </article>
     </section>
 
     <section v-else-if="activeMetric === 'claims'" class="monthly-fact-layout">
       <article class="monthly-preview-panel monthly-claims-panel">
         <div class="monthly-section-head">
-          <div><p>领奖统计</p><h2>这段时间你们领了哪些奖励</h2></div>
+          <div><p>领奖统计</p><h2>本期领奖重点</h2></div>
           <span>{{ claimStatsRows.length }} 项</span>
         </div>
         <div v-if="claimStatsRows.length" class="monthly-claims-chart-shell">
-          <div class="monthly-claims-chart" role="img" aria-label="领奖花费星币条形图，按次数排序">
+          <div class="monthly-claims-chart" role="img" aria-label="领奖次数与花费对比图，按次数排序">
             <article v-for="row in claimStatsRows" :key="row.key" class="monthly-claims-item">
               <strong :title="row.label">{{ row.label }}</strong>
-              <div class="monthly-claims-bars" aria-hidden="true">
-                <i class="is-spending" :style="{ width: `${row.spending > 0 ? Math.max(4, Math.round((row.spending / claimStatsMaxSpending) * 100)) : 0}%` }"></i>
-              </div>
-              <div class="monthly-claims-values">
-                <span>次数 {{ row.claimCount }}</span>
-                <span>花费 {{ formatNumber(row.spending) }}</span>
+              <div class="monthly-claims-compare-grid">
+                <div class="monthly-claims-metric-block">
+                  <div class="monthly-claims-metric-head">
+                    <span>次数</span>
+                    <strong>{{ row.claimCount }}</strong>
+                  </div>
+                  <div class="monthly-claims-bars" aria-hidden="true">
+                    <i class="is-count" :style="{ width: `${row.claimCount > 0 ? Math.max(4, Math.round((row.claimCount / claimStatsMaxCount) * 100)) : 0}%` }"></i>
+                  </div>
+                </div>
+                <div class="monthly-claims-metric-block">
+                  <div class="monthly-claims-metric-head">
+                    <span>花费</span>
+                    <strong>{{ formatNumber(row.spending) }}</strong>
+                  </div>
+                  <div class="monthly-claims-bars" aria-hidden="true">
+                    <i class="is-spending" :style="{ width: `${row.spending > 0 ? Math.max(4, Math.round((row.spending / claimStatsMaxSpending) * 100)) : 0}%` }"></i>
+                  </div>
+                </div>
               </div>
             </article>
           </div>
           <div class="monthly-claims-legend" aria-hidden="true">
+            <span><i class="is-count"></i> 次数</span>
             <span><i class="is-spending"></i> 花费</span>
           </div>
         </div>
-        <p v-else class="monthly-empty-note">这个范围还没有领奖记录。</p>
+        <p v-else class="monthly-empty-note">这个范围里还没有领奖记录。</p>
       </article>
     </section>
 
     <section v-else class="monthly-fact-layout">
       <article class="monthly-preview-panel monthly-completed-panel">
         <div class="monthly-section-head">
-          <div><p>已完本愿望</p><h2>已经走完整条路的册页</h2></div>
+          <div><p>已完本愿望</p><h2>本期完成册页</h2></div>
           <span>{{ completedWishJournals.length }} 本</span>
         </div>
         <div v-if="completedWishJournals.length" class="monthly-completed-list">
-          <article v-for="wish in completedWishJournals" :key="wish.id" class="monthly-completed-card">
+          <article v-for="wish in (isCompletedListExpanded ? completedWishJournals : completedWishJournals.slice(0, 3))" :key="wish.id" class="monthly-completed-card">
             <div class="monthly-completed-head">
               <span>{{ wish.category || '未分类' }} · {{ getMemberName(wish.ownerId) }}</span>
               <strong>{{ wish.title }}</strong>
@@ -1236,10 +1183,13 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
                 <span>{{ getThreadEventLabel(entry.eventKind) }}</span>{{ getThreadPreviewText(entry) }}
               </p>
             </div>
-            <RouterLink class="monthly-completed-link" :to="{ name: 'wish-detail', params: { id: wish.id } }">翻完整过程</RouterLink>
+            <RouterLink class="monthly-completed-link" :to="{ name: 'wish-detail', params: { id: wish.id } }">看完整过程</RouterLink>
           </article>
         </div>
-        <p v-else class="monthly-empty-note">还没有愿望完本。等第一条完成后，它会留在这里。</p>
+        <button v-if="completedWishJournals.length > 3" type="button" class="monthly-progress-more" :aria-expanded="isCompletedListExpanded" @click="isCompletedListExpanded = !isCompletedListExpanded">
+          {{ isCompletedListExpanded ? '收起完成册页' : `展开其余 ${completedWishJournals.length - 3} 本` }}
+        </button>
+        <p v-else class="monthly-empty-note">这一段还没有新增完本。</p>
       </article>
     </section>
   </section>
@@ -1343,8 +1293,8 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
   margin: 0;
   color: var(--text-muted);
   font-family: var(--font-body);
-  font-size: 0.82rem;
-  line-height: 1.5;
+  font-size: 0.78rem;
+  line-height: 1.42;
 }
 
 .monthly-summary-card-grid {
@@ -1359,8 +1309,8 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 
 .monthly-switch-panel,
 .monthly-preview-panel {
-  padding: 0.75rem;
-  border-radius: 18px;
+  padding: 0.66rem;
+  border-radius: 16px;
 }
 
 .monthly-switch-panel {
@@ -1369,7 +1319,7 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 
 .monthly-summary-card {
   display: grid;
-  gap: 0.18rem;
+  gap: 0.14rem;
 }
 
 .monthly-progress-metrics strong,
@@ -1377,7 +1327,7 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 .monthly-year-message-summary strong {
   color: var(--text-main);
   font-family: var(--font-heading);
-  font-size: 1.15rem;
+  font-size: 1.04rem;
   font-weight: 700;
   line-height: 1.05;
 }
@@ -1386,7 +1336,7 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 .monthly-fact-layout,
 .monthly-progress-metrics {
   display: grid;
-  gap: 0.5rem;
+  gap: 0.44rem;
 }
 
 .monthly-switch-row {
@@ -1617,6 +1567,14 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
   font-size: 0.68rem;
 }
 
+.monthly-heat-inline-summary {
+  margin: 0;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  line-height: 1.42;
+}
+
 .monthly-heat-legend i {
   width: 0.78rem;
   height: 0.78rem;
@@ -1630,8 +1588,8 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 .monthly-completed-card,
 .monthly-message-item,
 .monthly-year-message-summary {
-  padding: 0.62rem;
-  border-radius: 14px;
+  padding: 0.5rem;
+  border-radius: 12px;
   border: 1px solid var(--line-soft);
   background: rgba(255, 255, 255, 0.52);
 }
@@ -1641,7 +1599,7 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 .monthly-completed-list,
 .monthly-message-list {
   display: grid;
-  gap: 0.46rem;
+  gap: 0.34rem;
 }
 
 .monthly-claims-chart-shell {
@@ -1652,31 +1610,63 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 .monthly-claims-chart {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 0.46rem;
+  gap: 0.38rem;
   align-items: stretch;
-  padding: 0.5rem;
+  padding: 0.42rem;
   border: 1px solid var(--line-soft);
-  border-radius: 14px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.46);
 }
 
 .monthly-claims-item {
   display: grid;
-  grid-template-columns: minmax(8rem, 1fr) minmax(7.8rem, 0.9fr) auto;
-  align-items: center;
-  gap: 0.42rem;
+  grid-template-columns: minmax(8rem, 1fr) minmax(0, 1.25fr);
+  align-items: start;
+  gap: 0.34rem;
   min-width: 0;
-  padding: 0.38rem 0.44rem;
-  border-radius: 12px;
+  padding: 0.32rem 0.38rem;
+  border-radius: 10px;
   border: 1px solid var(--line-soft);
   background: rgba(255, 255, 255, 0.62);
+}
+
+.monthly-claims-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.monthly-claims-metric-block {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.monthly-claims-metric-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.42rem;
+  color: var(--text-soft);
+  font-size: 0.66rem;
+  line-height: 1.2;
+}
+
+.monthly-claims-metric-head strong {
+  color: var(--text-main);
+  font-family: var(--font-body);
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
 }
 
 .monthly-claims-bars {
   display: block;
   min-height: 0.62rem;
-  padding: 0.34rem;
-  border-radius: 12px;
+  padding: 0.28rem;
+  border-radius: 10px;
   border: 1px solid var(--line-soft);
   background: rgba(255, 255, 255, 0.66);
 }
@@ -1693,15 +1683,9 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
   background: linear-gradient(90deg, #78b9ae, #2f756f);
 }
 
-.monthly-claims-values {
-  display: grid;
-  gap: 0.08rem;
-  justify-items: end;
-  text-align: right;
-  color: var(--text-soft);
-  font-size: 0.66rem;
-  font-weight: 700;
-  line-height: 1.25;
+.monthly-claims-bars i.is-count,
+.monthly-claims-legend i.is-count {
+  background: linear-gradient(90deg, #f1c27a, #c98237);
 }
 
 .monthly-claims-item strong {
@@ -1737,7 +1721,7 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 
 .monthly-completed-card {
   display: grid;
-  gap: 0.55rem;
+  gap: 0.42rem;
 }
 
 .monthly-completed-head,
@@ -1956,7 +1940,7 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 .monthly-progress-row,
 .monthly-message-item {
   display: grid;
-  gap: 0.36rem;
+  gap: 0.28rem;
 }
 
 .monthly-progress-track i {
@@ -1967,13 +1951,13 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 }
 
 .monthly-progress-more {
-  min-height: 2.35rem;
+  min-height: 2rem;
   border: 1px solid var(--line-soft);
-  border-radius: 14px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.48);
   color: var(--text-main);
   font: inherit;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 700;
 }
 
@@ -1985,12 +1969,12 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 
 .monthly-empty-note {
   margin: 0;
-  padding: 0.68rem;
-  border-radius: 14px;
+  padding: 0.56rem;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.44);
   color: var(--text-muted);
-  font-size: 0.82rem;
-  line-height: 1.45;
+  font-size: 0.78rem;
+  line-height: 1.38;
 }
 
 @media (max-width: 920px) {
@@ -2028,9 +2012,8 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
     align-items: stretch;
   }
 
-  .monthly-claims-values {
-    justify-items: start;
-    text-align: left;
+  .monthly-claims-compare-grid {
+    grid-template-columns: 1fr;
   }
 
   .monthly-segmented-control button {

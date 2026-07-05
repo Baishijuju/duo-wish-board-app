@@ -2,6 +2,8 @@
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import CopyFold from '../components/CopyFold.vue'
+import ActionCard from '../components/page/ActionCard.vue'
+import { WISH_BOTTLE_STATUS_LABELS } from '../shared/statusSemantics'
 import { useAuthStore } from '../stores/auth'
 import type { WishRecord } from '../stores/wishes'
 import { useWishStore } from '../stores/wishes'
@@ -256,12 +258,12 @@ const stageMetrics = computed(() => {
 
   return [
     {
-      label: '在路上',
+      label: WISH_BOTTLE_STATUS_LABELS.active,
       note: '今天还在推进中的愿望',
       value: snapshot.activeWishCount ? `${snapshot.activeWishCount} 个` : '等待开始',
     },
     {
-      label: '已点亮',
+      label: WISH_BOTTLE_STATUS_LABELS.done,
       note: starNote,
       value: displayStarCount ? `${displayStarCount} 颗` : '等待第一颗',
     },
@@ -286,8 +288,8 @@ const bottleMoodChips = computed(() => {
     snapshot.progressedWishCount || snapshot.trackedWishCount || snapshot.activeWishCount
 
   const chips = [
-    `${snapshot.activeWishCount} 个愿望在路上`,
-    displayStarCount ? `已点亮 ${displayStarCount} 颗星星` : '第一颗星星还在路上',
+    `${snapshot.activeWishCount} 个愿望${WISH_BOTTLE_STATUS_LABELS.active}`,
+    displayStarCount ? `${WISH_BOTTLE_STATUS_LABELS.done} ${displayStarCount} 颗星星` : `第一颗星星还${WISH_BOTTLE_STATUS_LABELS.active}`,
     `${approachingWishCount} 条愿望正在靠近`,
   ]
 
@@ -356,7 +358,7 @@ function getWishBottleHeroSubcopy() {
     return '等下一条愿望写下后，这里会先亮起来。'
   }
 
-  return `${snapshot.activeWishCount} 个愿望还在路上。`
+  return `${snapshot.activeWishCount} 个愿望还${WISH_BOTTLE_STATUS_LABELS.active}。`
 }
 
 function getWishBottleDashboardHint() {
@@ -579,7 +581,7 @@ function formatRecentThreadTime(timestamp: string) {
           </span>
         </h1>
 
-        <article class="focus-card is-primary-focus">
+        <ActionCard class="focus-card is-primary-focus home-primary-action-shell" :title="''">
           <div class="focus-head">
             <div class="section-icon is-quill" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none">
@@ -599,7 +601,7 @@ function formatRecentThreadTime(timestamp: string) {
               {{ heroPrimaryActionLabel }}
             </RouterLink>
           </div>
-        </article>
+        </ActionCard>
 
       </div>
 

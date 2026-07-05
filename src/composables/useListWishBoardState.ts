@@ -3,6 +3,7 @@ import { useAuthStore } from '../stores/auth'
 import { useFilterStore, type SortFilter } from '../stores/filters'
 import type { WishRecord } from '../stores/wishes'
 import { useWishStore } from '../stores/wishes'
+import { getWishStatusSemantic } from '../shared/statusSemantics'
 import { formatBeijingDate } from '../utils/datetime'
 
 const wishStarCoinClaimKinds = new Set(['step_star_coin', 'count_star_coin', 'wish_completion_bonus'])
@@ -333,18 +334,12 @@ export function useListWishBoardState() {
   }
 
   function getWishListSideStatus(wish: WishRecord) {
-    if (wish.status === 'done') {
-      return {
-        ariaLabel: '状态：已点亮',
-        label: '已亮',
-        tone: 'done',
-      } as const
-    }
+    const semantic = getWishStatusSemantic(wish.status)
 
     return {
-      ariaLabel: '状态：在路上',
-      label: '在途',
-      tone: 'active',
+      ariaLabel: semantic.ariaLabel,
+      label: semantic.compactLabel,
+      tone: semantic.tone,
     } as const
   }
 

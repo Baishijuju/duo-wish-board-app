@@ -1,29 +1,27 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watchEffect } from 'vue'
+import { computed, nextTick, reactive, ref, watchEffect } from 'vue'
 import CopyFold from '../components/CopyFold.vue'
+import ActionCard from '../components/page/ActionCard.vue'
+import ManagePanel from '../components/page/ManagePanel.vue'
+import PageModeFrame from '../components/page/PageModeFrame.vue'
+import { ENTRY_STATUS_LABELS, REWARD_KEYWORD_STATUS_FILTER_LABELS } from '../shared/statusSemantics'
 import { useSpacePageState } from '../composables/useSpacePageState'
 import type { RewardPoolItem } from '../stores/wishes'
 
 const space = reactive(useSpacePageState())
 
-type RewardHubTab = 'claim' | 'editor'
 type RewardEditorTier = 'daily' | 'premium'
-type RewardPoolScope = 'mine' | 'others'
 type AccessPanel = 'invite' | 'email' | 'fixedEmail'
 type RewardKeywordKind = 'personal' | 'shared' | 'assist'
 type RewardKeywordSortMode = 'default' | 'cost' | 'deposited' | 'remaining' | 'popular' | 'newest'
 type RewardKeywordOwnerFilter = 'all' | RewardKeywordKind
 type RewardKeywordStatusFilter = 'all' | 'claimable' | 'depositable'
-type SpaceToolsPanel = 'access' | 'storage' | 'sync'
 type RewardKeywordEntry = {
   item: RewardPoolItem
   kind: RewardKeywordKind
   ownerName: string
 }
 
-const rewardHubTab = ref<RewardHubTab>('claim')
-const rewardPoolScope = ref<RewardPoolScope>('mine')
-const rewardPoolViewerMemberId = ref<string | null>(null)
 const selectedRewardKeywordId = ref<string | null>(null)
 const rewardKeywordSortMode = ref<RewardKeywordSortMode>('default')
 const rewardKeywordOwnerFilter = ref<RewardKeywordOwnerFilter>('personal')
@@ -35,9 +33,10 @@ const rewardDepositedMaxDraft = ref('')
 const isRewardRangeFilterOpen = ref(false)
 const isRewardShelfManaging = ref(false)
 const isRewardManagePanelOpen = ref(false)
+const isRewardFilterPanelOpen = ref(false)
 const isRewardKeywordExpanded = ref(false)
+const rewardFilterPanelId = 'space-reward-filter-panel'
 const activeAccessPanel = ref<AccessPanel>('email')
-const activeSpaceToolsPanel = ref<SpaceToolsPanel>('access')
 const REWARD_DEFAULT_VISIBLE_COUNT = 6
 
 const rewardKeywordSortTabs: { label: string; value: RewardKeywordSortMode }[] = [
@@ -57,35 +56,9 @@ const rewardKeywordOwnerTabs: { label: string; value: RewardKeywordOwnerFilter }
 ]
 
 const rewardKeywordStatusTabs: { label: string; value: RewardKeywordStatusFilter }[] = [
-  { label: '全部状态', value: 'all' },
-  { label: '可领取', value: 'claimable' },
-  { label: '我能存', value: 'depositable' },
-]
-
-const rewardHubTabs = [
-  {
-    label: '领奖',
-    note: '待领 / 兑换 / 记录',
-    value: 'claim' as const,
-  },
-  {
-    label: '编辑',
-    note: '写入 / 整理 / 奖池',
-    value: 'editor' as const,
-  },
-]
-
-const rewardPoolScopeTabs = [
-  {
-    label: '我的',
-    note: '可管理',
-    value: 'mine' as const,
-  },
-  {
-    label: '对方',
-    note: '只读',
-    value: 'others' as const,
-  },
+  { label: REWARD_KEYWORD_STATUS_FILTER_LABELS.all, value: 'all' },
+  { label: REWARD_KEYWORD_STATUS_FILTER_LABELS.claimable, value: 'claimable' },
+  { label: REWARD_KEYWORD_STATUS_FILTER_LABELS.depositable, value: 'depositable' },
 ]
 
 const accessPanelTabs = computed(() => {
@@ -97,7 +70,7 @@ const accessPanelTabs = computed(() => {
     },
     {
       label: '邮箱',
-      note: space.authStore.isAuthenticated ? '已进入' : '未进入',
+      note: space.authStore.isAuthenticated ? ENTRY_STATUS_LABELS.entered : ENTRY_STATUS_LABELS.notEntered,
       value: 'email' as const,
     },
     ...(space.canBindFixedEmail
@@ -112,26 +85,6 @@ const accessPanelTabs = computed(() => {
   ]
 })
 
-const spaceToolsPanelTabs = computed(() => {
-  return [
-    {
-      label: '进入',
-      note: space.accountSummary,
-      value: 'access' as const,
-    },
-    {
-      label: '备份',
-      note: `已用 ${space.storageSummary.usagePercent}%`,
-      value: 'storage' as const,
-    },
-    {
-      label: '同步',
-      note: space.syncStatusLabel,
-      value: 'sync' as const,
-    },
-  ]
-})
-
 watchEffect(() => {
   if (activeAccessPanel.value === 'fixedEmail' && !space.canBindFixedEmail) {
     activeAccessPanel.value = 'email'
@@ -140,18 +93,23 @@ watchEffect(() => {
 
 watchEffect(() => {
   if (!isRewardManagePanelOpen.value) {
-    rewardHubTab.value = 'claim'
     isRewardShelfManaging.value = false
-    isRewardRangeFilterOpen.value = false
   }
 })
 
+const rewardPageMode = computed<'action' | 'manage'>({
+  get: () => (isRewardManagePanelOpen.value ? 'manage' : 'action'),
+  set: (mode) => {
+    isRewardManagePanelOpen.value = mode === 'manage'
+  },
+})
+
 const activeRewardHubTitle = computed(() => {
-  return rewardHubTab.value === 'claim' ? '领奖与兑换' : '编辑奖励池'
+  return rewardPageMode.value === 'action' ? '领奖与兑换' : '编辑奖励池'
 })
 
 const activeRewardHubLead = computed(() => {
-  if (rewardHubTab.value === 'claim') {
+  if (rewardPageMode.value === 'action') {
     return '愿望推进得到的星星币，会在这里换成真正想要的奖励。'
   }
 
@@ -183,71 +141,26 @@ function createRewardDisplayEntries(rewards: RewardPoolItem[], tier: RewardEdito
 
 const currentSpaceMemberId = computed(() => space.authStore.currentMemberId || space.authStore.currentMember?.id || null)
 
-const rewardPoolViewerMembers = computed(() => {
-  return space.rewardPoolByMember.map((item) => ({
-    ...item,
-    isCurrentMember: item.member.id === currentSpaceMemberId.value,
-    rewardCount: item.premiumRewards.length,
-  }))
-})
-
-const rewardPoolOtherMembers = computed(() => rewardPoolViewerMembers.value.filter((item) => !item.isCurrentMember))
-
-const activeRewardPoolViewerMember = computed(() => {
-  const members = rewardPoolOtherMembers.value
-  const selectedMember = members.find((item) => item.member.id === rewardPoolViewerMemberId.value)
-
-  return selectedMember || members[0] || null
-})
-
 const activeRewardPoolEntries = computed(() => {
-  if (rewardPoolScope.value === 'mine') {
-    return createRewardDisplayEntries(
-      [
-        ...space.currentMemberPremiumRewards,
-        ...space.sharedPremiumRewards.filter((item) => item.ownerId === currentSpaceMemberId.value),
-      ],
-      'premium',
-    )
-  }
-
-  const activeMember = activeRewardPoolViewerMember.value
-
-  if (!activeMember) {
-    return []
-  }
-
-  return createRewardDisplayEntries(activeMember.premiumRewards, 'premium')
+  return createRewardDisplayEntries(
+    [
+      ...space.currentMemberPremiumRewards,
+      ...space.sharedPremiumRewards.filter((item) => item.ownerId === currentSpaceMemberId.value),
+    ],
+    'premium',
+  )
 })
 
 const activeRewardPoolMemberName = computed(() => {
-  return rewardPoolScope.value === 'mine'
-    ? space.authStore.currentMember?.displayName || '我的奖池'
-    : activeRewardPoolViewerMember.value?.member.displayName || '对方奖池'
+  return space.authStore.currentMember?.displayName || '我的奖池'
 })
 
-const activeRewardPoolEyebrow = computed(() => {
-  if (rewardPoolScope.value === 'mine') {
-    return '我的星币奖励'
-  }
-
-  return '对方星币奖励'
-})
+const activeRewardPoolEyebrow = computed(() => '我的星币奖励')
 
 const activeRewardPoolEmpty = computed(() => {
-  if (rewardPoolScope.value === 'others' && !activeRewardPoolViewerMember.value) {
-    return {
-      copy: '邀请对方加入后，就能在这里查看对方的奖池。',
-      title: '还没有其他成员',
-    }
-  }
-
-  const ownerLabel = rewardPoolScope.value === 'mine' ? '你' : '对方'
-  const tierLabel = '星币奖励'
-
   return {
-    copy: `${ownerLabel}还没有${tierLabel}。`,
-    title: `还没有${tierLabel}`,
+    copy: '你还没有星币奖励。',
+    title: '还没有星币奖励',
   }
 })
 
@@ -387,6 +300,56 @@ const canToggleRewardKeywordExpansion = computed(() => {
   return !isRewardManagePanelOpen.value && visibleRewardKeywordEntries.value.length > REWARD_DEFAULT_VISIBLE_COUNT
 })
 
+const claimableVisibleRewardEntries = computed(() => {
+  return visibleRewardKeywordEntries.value.filter((entry) => isRewardEntryClaimable(entry))
+})
+
+const rewardKeywordHeadline = computed(() => {
+  const visibleCount = visibleRewardKeywordEntries.value.length
+
+  if (!visibleCount) {
+    return '这一组筛选下还没有匹配项，换个角度再看看。'
+  }
+
+  if (rewardKeywordStatusFilter.value === 'claimable') {
+    return `这 ${visibleCount} 条已经可以领取，先兑现一条。`
+  }
+
+  if (rewardKeywordStatusFilter.value === 'depositable') {
+    return `先从这 ${visibleCount} 条可存入的奖励里，给最想要的一条加一把劲。`
+  }
+
+  if (rewardKeywordOwnerFilter.value === 'assist') {
+    return '这些是对方的奖励，选一条给对方悄悄加油。'
+  }
+
+  if (rewardKeywordOwnerFilter.value === 'shared') {
+    return '这些是共同奖励，挑一条一起推进会更有感觉。'
+  }
+
+  if (rewardKeywordSortMode.value === 'remaining') {
+    return '已经按快满排序，先把最接近的一条点亮。'
+  }
+
+  if (rewardKeywordSortMode.value === 'cost') {
+    return '已经按币数排好，先从最容易兑现的一条开始。'
+  }
+
+  if (rewardKeywordSortMode.value === 'deposited') {
+    return '先看看哪条已经存得最多，顺手把它推到可领取。'
+  }
+
+  if (rewardKeywordSortMode.value === 'popular') {
+    return '按热门排在前面的，往往是你最愿意兑现的。'
+  }
+
+  if (rewardKeywordSortMode.value === 'newest') {
+    return '新写下的奖励排在前面，看看最近最想实现哪条。'
+  }
+
+  return '点一个奖励，看它现在能不能兑现。'
+})
+
 watchEffect(() => {
   if (!visibleRewardKeywordEntries.value.length) {
     selectedRewardKeywordId.value = null
@@ -411,21 +374,13 @@ const activeRewardEditor = computed(() => {
 })
 
 function openRewardEditor(itemId: string, tier: 'daily' | 'premium') {
-  rewardHubTab.value = 'editor'
+  rewardPageMode.value = 'manage'
   space.startEditingReward(itemId, tier)
 }
 
 function editRewardFromShelf(itemId: string, tier: 'daily' | 'premium') {
   isRewardShelfManaging.value = false
   openRewardEditor(itemId, tier)
-}
-
-function chooseRewardPoolScope(scope: RewardPoolScope) {
-  rewardPoolScope.value = scope
-
-  if (scope === 'others') {
-    isRewardShelfManaging.value = false
-  }
 }
 
 function submitActiveRewardDraft() {
@@ -437,12 +392,36 @@ function resetActiveRewardDraft() {
 }
 
 function openRewardManager() {
-  isRewardManagePanelOpen.value = true
-  rewardHubTab.value = 'editor'
+  rewardPageMode.value = 'manage'
 }
 
-function toggleRewardManageMode() {
-  isRewardManagePanelOpen.value = !isRewardManagePanelOpen.value
+async function jumpToClaimableReward() {
+  if (!space.claimableRewardEntries.length) {
+    return
+  }
+
+  rewardKeywordStatusFilter.value = 'claimable'
+  rewardKeywordOwnerFilter.value = 'all'
+  isRewardKeywordExpanded.value = true
+
+  await nextTick()
+
+  const claimableEntry = claimableVisibleRewardEntries.value[0]
+
+  if (!claimableEntry) {
+    return
+  }
+
+  selectedRewardKeywordId.value = claimableEntry.item.id
+
+  await nextTick()
+
+  if (typeof document !== 'undefined') {
+    document.querySelector('.reward-selected-card')?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+    })
+  }
 }
 
 function selectRewardKeyword(entry: RewardKeywordEntry) {
@@ -547,32 +526,41 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
         </div>
       </article>
 
-      <article class="page-card space-shell-card space-main-card space-reward-hub">
-        <div class="space-reward-hub-head">
-          <div class="space-reward-hub-copy">
-            <p class="eyebrow">奖励中心</p>
-            <h2 class="space-panel-title space-reward-hub-title">{{ activeRewardHubTitle }}</h2>
-            <p class="space-reward-hub-lead">{{ activeRewardHubLead }}</p>
+      <PageModeFrame
+        v-model:mode="rewardPageMode"
+        class="space-mode-frame"
+        title="空间页主模式切换"
+        action-label="领奖与兑换"
+        manage-label="整理与工具"
+        :switch-only="true"
+      >
+        <template #head-meta>
+          <div class="badge-row space-mode-badges">
+            <span class="badge">{{ space.accountSummary }}</span>
+            <span class="badge">{{ space.syncStatusLabel }}</span>
           </div>
-        </div>
+        </template>
+      </PageModeFrame>
 
-        <div v-if="isRewardManagePanelOpen" class="space-reward-hub-tabs" role="tablist" aria-label="奖励中心切换">
+      <component
+        :is="rewardPageMode === 'manage' ? ManagePanel : ActionCard"
+        class="space-shell-card space-main-card space-reward-hub"
+        eyebrow="奖励中心"
+        :summary="activeRewardHubLead"
+        :title="activeRewardHubTitle"
+      >
+        <template #actions>
           <button
-            v-for="tab in rewardHubTabs"
-            :key="tab.value"
+            v-if="rewardPageMode === 'manage'"
+            class="button-subtle"
             type="button"
-            class="space-reward-hub-tab"
-            :class="{ active: rewardHubTab === tab.value }"
-            @click="rewardHubTab = tab.value"
+            @click="rewardPageMode = 'action'"
           >
-            <span class="space-reward-hub-tab-copy">
-              <span class="space-reward-hub-tab-label">{{ tab.label }}</span>
-              <span class="space-reward-hub-tab-note">{{ tab.note }}</span>
-            </span>
+            回到领奖
           </button>
-        </div>
+        </template>
 
-        <template v-if="rewardHubTab === 'claim'">
+        <template v-if="rewardPageMode === 'action'">
           <section class="reward-command-panel">
             <div class="reward-command-summary">
               <article class="reward-command-stat reward-command-stat-primary">
@@ -583,20 +571,29 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
                 <span>奖池词条</span>
                 <strong>{{ visibleRewardKeywordEntries.length }} / {{ rewardKeywordEntries.length }}</strong>
               </article>
-              <article class="reward-command-stat reward-command-stat-wide">
+              <button
+                class="reward-command-stat reward-command-stat-wide reward-command-stat-claim"
+                :class="{ 'is-enabled': space.claimableRewardEntries.length > 0 }"
+                type="button"
+                :disabled="!space.claimableRewardEntries.length"
+                @click="void jumpToClaimableReward()"
+              >
                 <span>现在可领</span>
                 <strong>{{ space.claimableRewardEntries.length }}</strong>
-              </article>
+              </button>
             </div>
 
             <div v-if="!rewardKeywordEntries.length" class="reward-command-actions">
-              <button class="button-solid" type="button" @click="openRewardManager">写一条奖励</button>
+              <button v-if="!rewardKeywordEntries.length" class="button-solid" type="button" @click="openRewardManager">写一条奖励</button>
             </div>
           </section>
 
-          <p v-if="space.rewardMessage" :class="['feedback-message', 'space-reward-feedback', space.rewardTone]">{{ space.rewardMessage }}</p>
-
-          <section v-if="isRewardManagePanelOpen && rewardKeywordEntries.length" class="reward-keyword-controls" aria-label="奖励奖池筛选排序">
+          <section
+            v-if="isRewardFilterPanelOpen && rewardKeywordEntries.length"
+            :id="rewardFilterPanelId"
+            class="reward-keyword-controls"
+            aria-label="奖励奖池筛选排序"
+          >
             <div class="reward-keyword-control-row">
               <span class="reward-keyword-control-label">排序</span>
               <div class="reward-keyword-pill-row" role="list" aria-label="排序方式">
@@ -671,9 +668,23 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
             <div class="reward-keyword-head">
               <div>
                 <p class="eyebrow">奖池</p>
-                <h3>点一个奖励，看它现在能不能兑现</h3>
+                <h3>{{ rewardKeywordHeadline }}</h3>
               </div>
-              <span class="badge">{{ visibleRewardKeywordEntriesForDisplay.length }} / {{ visibleRewardKeywordEntries.length }} 条</span>
+              <div class="reward-keyword-head-actions">
+                <span class="badge">{{ visibleRewardKeywordEntriesForDisplay.length }} / {{ visibleRewardKeywordEntries.length }} 条</span>
+                <button
+                  class="space-manage-link reward-filter-trigger"
+                  :class="{ 'is-active': isRewardFilterPanelOpen }"
+                  type="button"
+                  aria-label="筛选与排序"
+                  :aria-controls="rewardFilterPanelId"
+                  :aria-expanded="isRewardFilterPanelOpen"
+                  @click="isRewardFilterPanelOpen = !isRewardFilterPanelOpen"
+                >
+                  <span>筛选</span>
+                  <span class="space-manage-link-icon" aria-hidden="true"></span>
+                </button>
+              </div>
             </div>
 
             <template v-if="visibleRewardKeywordEntries.length">
@@ -698,15 +709,12 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
                 <button v-if="canToggleRewardKeywordExpansion" class="reward-text-link" type="button" @click="isRewardKeywordExpanded = !isRewardKeywordExpanded">
                   {{ isRewardKeywordExpanded ? '收起奖励' : '查看更多奖励' }}
                 </button>
-                <button class="space-manage-link" type="button" @click="toggleRewardManageMode">
-                  {{ isRewardManagePanelOpen ? '完成管理' : '管理' }}
-                </button>
               </div>
             </template>
 
             <div v-else class="space-empty-card reward-filter-empty">
               <strong>没有符合条件的奖励</strong>
-              <button v-if="isRewardManagePanelOpen" class="reward-text-link reward-empty-text-link" type="button" @click="clearRewardKeywordFilters">清空筛选</button>
+              <button v-if="isRewardFilterPanelOpen" class="reward-text-link reward-empty-text-link" type="button" @click="clearRewardKeywordFilters">清空筛选</button>
             </div>
           </section>
 
@@ -755,6 +763,7 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
                   +{{ amount }}
                 </button>
               </div>
+              <p v-if="space.rewardMessage" :class="['feedback-message', 'space-reward-feedback', space.rewardTone]">{{ space.rewardMessage }}</p>
             </div>
           </article>
 
@@ -789,7 +798,7 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
           </section>
         </template>
 
-        <template v-else-if="isRewardManagePanelOpen">
+        <template v-else>
           <div class="space-reward-workbench">
             <div class="space-reward-stage-head">
               <div class="space-reward-stage-copy">
@@ -854,47 +863,12 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
               </div>
 
               <div class="space-reward-hub-pills">
-                <span class="badge">{{ rewardPoolScope === 'mine' ? '我的奖池' : '对方只读' }}</span>
+                <span class="badge">我的奖池</span>
                 <span class="badge">{{ activeRewardPoolEntries.length }} 条</span>
               </div>
             </div>
 
             <div class="reward-pool-viewer-shell reward-pool-unified-shell">
-              <div class="reward-editor-tier-tabs reward-pool-scope-tabs" role="tablist" aria-label="奖池范围切换">
-                <button
-                  v-for="tab in rewardPoolScopeTabs"
-                  :key="tab.value"
-                  type="button"
-                  class="reward-editor-tier-tab"
-                  :class="{ active: rewardPoolScope === tab.value }"
-                  :aria-selected="rewardPoolScope === tab.value"
-                  role="tab"
-                  @click="chooseRewardPoolScope(tab.value)"
-                >
-                  <span class="reward-editor-tier-label">{{ tab.label }}</span>
-                  <span class="reward-editor-tier-note">{{ tab.note }}</span>
-                </button>
-              </div>
-
-              <div v-if="rewardPoolScope === 'others' && rewardPoolOtherMembers.length" class="reward-member-strip-list reward-pool-viewer-members" role="list" aria-label="选择要查看的成员奖池">
-                <button
-                  v-for="item in rewardPoolOtherMembers"
-                  :key="item.member.id"
-                  class="reward-member-strip reward-pool-viewer-member"
-                  :class="{ active: activeRewardPoolViewerMember?.member.id === item.member.id }"
-                  type="button"
-                  @click="rewardPoolViewerMemberId = item.member.id"
-                >
-                  <div class="reward-member-strip-person">
-                    <span class="reward-member-strip-mark">{{ item.member.displayName.slice(0, 1) }}</span>
-                    <div>
-                      <h3>{{ item.member.displayName }}</h3>
-                      <p class="space-member-summary">对方 · {{ item.starCoins }} 枚星星币 · {{ item.rewardCount }} 条奖励</p>
-                    </div>
-                  </div>
-                </button>
-              </div>
-
               <article class="reward-shelf-card reward-pool-unified-card">
                 <div class="space-subsection-heading">
                   <div>
@@ -905,7 +879,6 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
                   <div class="reward-shelf-heading-actions">
                     <span class="badge">{{ activeRewardPoolEntries.length }} 条</span>
                     <button
-                      v-if="rewardPoolScope === 'mine'"
                       class="reward-shelf-manage-button"
                       type="button"
                       :disabled="!activeRewardPoolEntries.length"
@@ -913,14 +886,13 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
                     >
                       {{ isRewardShelfManaging ? '完成' : '管理' }}
                     </button>
-                    <span v-else class="badge">只读查看</span>
                   </div>
                 </div>
 
                 <div v-if="activeRewardPoolEntries.length" class="reward-compact-list">
                   <article
                     v-for="entry in activeRewardPoolEntries"
-                    :key="`${rewardPoolScope}:${entry.tier}:${entry.item.id}`"
+                    :key="`mine:${entry.tier}:${entry.item.id}`"
                     class="reward-compact-row"
                     :class="{
                       'reward-compact-row-premium': entry.tier === 'premium',
@@ -936,7 +908,7 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
                       <span v-for="line in entry.metaLines" :key="line">{{ line }}</span>
                     </div>
 
-                    <div v-if="rewardPoolScope === 'mine' && isRewardShelfManaging" class="reward-compact-manage-actions">
+                    <div v-if="isRewardShelfManaging" class="reward-compact-manage-actions">
                       <button class="reward-compact-manage-button" type="button" @click="editRewardFromShelf(entry.item.id, entry.tier)">编辑</button>
                       <button
                         class="reward-compact-manage-button danger-button"
@@ -958,7 +930,7 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
             </div>
           </div>
         </template>
-      </article>
+      </component>
     </div>
 
     <div class="space-utility-band-head">
@@ -966,42 +938,22 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
       </div>
     </div>
 
-    <div class="space-utility-grid">
-      <details class="page-card space-shell-card space-fold-card space-utility-card space-utility-card-tools">
-        <summary class="space-fold-summary space-utility-summary">
-          <div class="space-fold-copy-block">
-            <h3>进入、备份与同步</h3>
+    <div v-if="rewardPageMode === 'manage'" class="space-utility-grid">
+      <ManagePanel
+        class="space-shell-card space-fold-card space-utility-card space-utility-card-tools"
+        eyebrow="进入与邀请"
+        summary="先把两个人都稳定进到同一间空间。"
+        title="进入方式"
+      >
+        <template #actions>
+          <div class="badge-row">
+            <span class="badge">{{ space.accountSummary }}</span>
+            <span class="badge">{{ space.syncStatusLabel }}</span>
           </div>
-
-          <div class="space-fold-meta">
-            <div class="badge-row">
-              <span class="badge">{{ space.syncStatusLabel }}</span>
-              <span class="badge">{{ space.authStore.usesSupabaseSpace ? '云端数据' : '本地体验' }}</span>
-            </div>
-            <div class="space-fold-toggle" aria-hidden="true">
-              <span class="space-fold-arrow"></span>
-            </div>
-          </div>
-        </summary>
+        </template>
 
         <div class="space-fold-body space-tools-fold-body">
-          <div class="space-tools-tabs" role="tablist" aria-label="后页工具切换">
-            <button
-              v-for="tab in spaceToolsPanelTabs"
-              :key="tab.value"
-              type="button"
-              class="space-tools-tab"
-              :class="{ active: activeSpaceToolsPanel === tab.value }"
-              :aria-selected="activeSpaceToolsPanel === tab.value"
-              role="tab"
-              @click="activeSpaceToolsPanel = tab.value"
-            >
-              <span>{{ tab.label }}</span>
-              <small>{{ tab.note }}</small>
-            </button>
-          </div>
-
-          <section v-if="activeSpaceToolsPanel === 'access'" class="space-tools-section">
+          <section class="space-tools-section">
             <div class="space-subsection-heading">
               <div>
                 <p class="eyebrow">进入与邀请</p>
@@ -1066,7 +1018,7 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
                   <div>
                     <h3>邮箱进入</h3>
                   </div>
-                  <span class="badge">{{ space.authStore.isAuthenticated ? '已进入' : '未进入' }}</span>
+                  <span class="badge">{{ space.authStore.isAuthenticated ? ENTRY_STATUS_LABELS.entered : ENTRY_STATUS_LABELS.notEntered }}</span>
                 </div>
 
                 <div class="space-fold-card tools-mini-fold">
@@ -1128,7 +1080,24 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
             <p v-if="space.inviteMessage" :class="['feedback-message', space.inviteTone]">{{ space.inviteMessage }}</p>
           </section>
 
-          <section v-else-if="activeSpaceToolsPanel === 'storage'" class="space-tools-section">
+        </div>
+      </ManagePanel>
+
+      <ManagePanel
+        class="space-shell-card space-fold-card space-utility-card space-utility-card-tools"
+        eyebrow="照片与备份"
+        summary="整理空间容量，定期留一份备份。"
+        title="备份与容量"
+      >
+        <template #actions>
+          <div class="badge-row">
+            <span class="badge">已用 {{ space.storageSummary.usagePercent }}%</span>
+            <span class="badge">{{ space.authStore.usesSupabaseSpace ? '云端空间' : '本地体验空间' }}</span>
+          </div>
+        </template>
+
+        <div class="space-fold-body space-tools-fold-body">
+          <section class="space-tools-section">
             <div class="space-subsection-heading">
               <div>
                 <p class="eyebrow">照片与备份</p>
@@ -1214,7 +1183,21 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
             <p v-if="space.backupMessage" :class="['feedback-message', space.backupTone]">{{ space.backupMessage }}</p>
           </section>
 
-          <section v-else class="space-tools-section">
+        </div>
+      </ManagePanel>
+
+      <ManagePanel
+        class="space-shell-card space-fold-card space-utility-card space-utility-card-tools"
+        eyebrow="同步与退出"
+        summary="确认连接状态，必要时安全退出。"
+        title="同步状态"
+      >
+        <template #actions>
+          <span class="badge">{{ space.syncStatusLabel }}</span>
+        </template>
+
+        <div class="space-fold-body space-tools-fold-body">
+          <section class="space-tools-section">
             <div class="space-subsection-heading">
               <div>
                 <p class="eyebrow">同步与退出</p>
@@ -1267,7 +1250,8 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
             </div>
           </section>
         </div>
-      </details>
+
+      </ManagePanel>
     </div>
   </section>
 </template>
@@ -1331,6 +1315,7 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
     linear-gradient(142deg, var(--card-bg-popover), var(--card-bg-soft));
   border-color: var(--active-item-border);
   box-shadow: var(--shadow-raised);
+  padding-block: 0.82rem;
 }
 
 .space-reward-hub {
@@ -1338,7 +1323,24 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
     radial-gradient(circle at top right, var(--danger-panel), transparent 22%),
     radial-gradient(circle at top left, var(--sage-glow), transparent 24%),
     linear-gradient(180deg, var(--card-bg), var(--card-bg-soft));
-  gap: 0.95rem;
+  gap: 0.72rem;
+}
+
+.space-reward-hub .button-solid,
+.space-reward-hub .button-subtle,
+.space-reward-hub .button-link {
+  gap: 0.28rem;
+  padding: 0.62rem 0.86rem;
+  font-size: var(--type-meta-size);
+  line-height: 1.2;
+}
+
+.space-mode-frame {
+  gap: 0.52rem;
+}
+
+.space-mode-badges {
+  justify-content: flex-end;
 }
 
 .space-utility-card-tools {
@@ -1510,22 +1512,47 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
 
 .space-manage-link {
   margin: 0;
-  padding: 0.1rem 0;
-  border: 0;
-  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.34rem;
+  min-height: 2rem;
+  padding: 0.26rem 0.64rem;
+  border: 1px solid color-mix(in srgb, var(--card-border) 78%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card-bg-raised) 74%, transparent);
   color: var(--text-soft);
   font-family: var(--font-body);
   font-size: var(--type-eyebrow-size);
-  font-weight: 500;
+  font-weight: 700;
   line-height: 1.2;
   letter-spacing: 0;
-  text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--text-soft) 55%, transparent);
-  text-underline-offset: 2px;
+  text-decoration: none;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease, box-shadow 160ms ease;
 }
 
 .space-manage-link:hover {
   color: var(--text-muted);
+  border-color: color-mix(in srgb, var(--active-item-border) 78%, transparent);
+}
+
+.space-manage-link.is-active {
+  color: var(--text-main);
+  border-color: color-mix(in srgb, var(--active-item-border) 84%, transparent);
+  background: color-mix(in srgb, var(--accent-panel) 56%, var(--card-bg-raised));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-ring) 70%, transparent);
+}
+
+.space-manage-link-icon {
+  width: 0.38rem;
+  height: 0.38rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translateY(-1px);
+  transition: transform 160ms ease;
+}
+
+.space-manage-link.is-active .space-manage-link-icon {
+  transform: rotate(-135deg) translateY(-1px);
 }
 
 .reward-keyword-inline-links {
@@ -1759,10 +1786,11 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
 .space-hero-title {
   max-width: 20ch;
   font-family: var(--font-display);
-  font-size: var(--type-page-title-size);
+  font-size: var(--type-section-title-size);
   font-weight: 400;
-  line-height: var(--type-page-title-line);
-  letter-spacing: var(--type-page-title-tracking);
+  line-height: var(--type-section-title-line);
+  letter-spacing: var(--type-section-title-tracking);
+  color: color-mix(in srgb, var(--text-main) 82%, var(--text-soft));
 }
 
 .space-page {
@@ -1798,13 +1826,13 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
 }
 
 .space-main-summary-shell {
-  gap: 0.78rem;
+  gap: 0.42rem;
 }
 
 .space-main-summary-intro {
   display: grid;
   grid-template-columns: minmax(0, 1.32fr) minmax(260px, 0.78fr);
-  gap: 1rem;
+  gap: 0.56rem;
   align-items: center;
 }
 
@@ -2630,7 +2658,7 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
 
 .space-reward-form-grid {
   grid-template-columns: minmax(0, 1fr);
-  gap: 0.85rem;
+  gap: 0.62rem;
 }
 
 .reward-form-support {
@@ -2654,11 +2682,11 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
 
 .reward-form-fields {
   display: grid;
-  gap: 0.72rem;
+  gap: 0.48rem;
 }
 
 .reward-form-fields-premium {
-  gap: 0.56rem;
+  gap: 0.42rem;
 }
 
 .reward-editor-card .space-field-block > .muted {
@@ -2687,8 +2715,8 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
 }
 
 .reward-form-submit-row {
-  gap: 0.5rem;
-  padding-top: 0.56rem;
+  gap: 0.34rem;
+  padding-top: 0.42rem;
   border-top: 1px dashed var(--card-border-soft);
 }
 
@@ -2699,13 +2727,14 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
 
 .reward-form-card .button-solid,
 .reward-form-card .button-subtle {
-  min-height: 2.36rem;
-  padding: 0.68rem 0.94rem;
-  font-size: var(--type-l4-size);
-  line-height: var(--type-l4-line);
+  min-height: 2.08rem;
+  padding: 0.56rem 0.78rem;
+  font-size: var(--type-meta-size);
+  line-height: 1.2;
 }
 
 .space-reward-feedback {
+  margin: 0;
   padding: 0.02rem 0.1rem 0;
 }
 
@@ -2717,6 +2746,20 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
 
 .reward-shelf-card {
   background: linear-gradient(180deg, var(--panel-bg-strong), var(--card-bg-soft));
+}
+
+.reward-pool-unified-card {
+  gap: 0.58rem;
+}
+
+.reward-pool-unified-card .space-subsection-heading {
+  margin-bottom: 0;
+}
+
+.reward-pool-unified-card .reward-compact-list {
+  max-height: min(44vh, 24rem);
+  overflow: auto;
+  padding-right: 0.22rem;
 }
 
 .reward-shelf-heading-actions {
@@ -2732,8 +2775,8 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 2rem;
-  padding: 0.34rem 0.68rem;
+  min-height: 1.78rem;
+  padding: 0.22rem 0.54rem;
   border: 1px solid var(--card-border);
   border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--card-bg-raised) 62%, transparent);
@@ -2842,8 +2885,8 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
   align-items: center;
   justify-content: center;
   width: 100%;
-  min-height: 2.32rem;
-  padding: 0.46rem 0.7rem;
+  min-height: 2.02rem;
+  padding: 0.3rem 0.52rem;
   border: 1px solid var(--card-border);
   border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--card-bg-raised) 62%, transparent);
@@ -2950,11 +2993,33 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
   color: var(--accent-strong, var(--accent-dark));
 }
 
+.reward-command-stat-claim {
+  text-align: left;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.reward-command-stat-claim.is-enabled {
+  cursor: pointer;
+}
+
+.reward-command-stat-claim.is-enabled:hover,
+.reward-command-stat-claim.is-enabled:focus-visible {
+  border-color: color-mix(in srgb, var(--active-item-border) 78%, transparent);
+  background: color-mix(in srgb, var(--accent-panel) 40%, rgba(255, 255, 255, 0.42));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-ring) 66%, transparent);
+}
+
 .reward-command-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  align-items: center;
   gap: 0.58rem;
   flex-wrap: wrap;
+}
+
+.reward-filter-trigger {
+  min-height: 2.08rem;
+  padding: 0.34rem 0.72rem;
 }
 
 .reward-keyword-controls {
@@ -3083,6 +3148,14 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.82rem;
+}
+
+.reward-keyword-head-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.46rem;
+  flex-wrap: wrap;
 }
 
 .reward-keyword-head h3 {
@@ -3371,7 +3444,7 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
 
 .reward-compact-list,
 .reward-member-strip-list {
-  gap: 0.68rem;
+  gap: 0.48rem;
 }
 
 .reward-member-strip-list {
@@ -3382,9 +3455,9 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
 .reward-compact-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(8.2rem, auto) auto;
-  gap: 0.82rem;
+  gap: 0.56rem;
   align-items: center;
-  padding: 0.76rem 0.86rem;
+  padding: 0.58rem 0.66rem;
   border-radius: 20px;
   border: 1px solid var(--card-border-soft);
   background: var(--panel-bg);
@@ -3400,16 +3473,16 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
 
 .reward-compact-main {
   display: grid;
-  gap: 0.18rem;
+  gap: 0.08rem;
   min-width: 0;
 }
 
 .reward-compact-main strong {
   overflow-wrap: anywhere;
   font-family: var(--font-heading);
-  font-size: var(--type-l5-size);
+  font-size: var(--type-meta-size);
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.26;
   letter-spacing: -0.02em;
 }
 
@@ -3850,12 +3923,22 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
   }
 
   .space-main-summary-shell {
-    gap: 0.96rem;
+    gap: 0.56rem;
   }
 
   .space-main-card,
   .space-utility-card {
-    padding: 1rem;
+    padding: 0.82rem;
+  }
+
+  .space-reward-hub,
+  .space-reward-workbench,
+  .space-reward-stage,
+  .space-reward-form-grid,
+  .reward-form-submit-row,
+  .reward-shelf-card,
+  .reward-pool-unified-card {
+    gap: 0.52rem;
   }
 
   .space-main-summary-intro,
@@ -4043,9 +4126,13 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
     align-items: stretch;
   }
 
-  .reward-command-actions > *,
   .reward-task-section-head .badge {
     width: 100%;
+  }
+
+  .reward-keyword-head-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .reward-keyword-shell,
@@ -4202,7 +4289,33 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
   .space-pending-card,
   .space-pending-item,
   .space-claim-fold {
-    padding: 0.9rem;
+    padding: 0.72rem;
+  }
+
+  .reward-form-card input,
+  .reward-form-card select,
+  .reward-form-card textarea,
+  .reward-form-card .button-solid,
+  .reward-form-card .button-subtle,
+  .reward-shelf-manage-button,
+  .reward-compact-manage-button {
+    min-height: 1.76rem;
+  }
+
+  .reward-pool-unified-card .reward-compact-list {
+    max-height: min(36vh, 17.5rem);
+  }
+
+  .reward-compact-row {
+    padding: 0.5rem 0.56rem;
+    border-radius: 14px;
+  }
+
+  .reward-compact-main p {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 
   .space-claim-fold,
