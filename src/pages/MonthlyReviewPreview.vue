@@ -158,14 +158,9 @@ const starCoinWaterfallKinds: Array<{ kind: StarCoinWaterfallKind; label: string
 ]
 
 const progressTouchEventKinds = new Set<ReviewEventKind>(['message', 'step', 'count_progress'])
-const trueProgressEventKinds = new Set<ReviewEventKind>(['step', 'count_progress'])
 
 function isProgressTouchEvent(event: ReviewEvent) {
   return progressTouchEventKinds.has(event.kind)
-}
-
-function isTrueProgressEvent(event: ReviewEvent) {
-  return trueProgressEventKinds.has(event.kind)
 }
 
 const currentMember = computed(() => authStore.currentMember)
