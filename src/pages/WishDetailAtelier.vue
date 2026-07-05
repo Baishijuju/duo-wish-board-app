@@ -42,7 +42,6 @@ const {
   getClaimToneLabel,
   getCompletionStarCoinLabel,
   getCommentImageFileKey,
-  getCountStarCoinLabel,
   getMemberName,
   getStepActionLabel,
   getStepStarCoinLabel,
@@ -76,7 +75,6 @@ const {
   isThreadReactionPickerOpen,
   isThreadReactionRowPending,
   isTogglingThreadReaction,
-  isUploadingImages,
   lightboxImages,
   openImagePreview,
   openThreadReactionPicker,
@@ -150,7 +148,6 @@ const detailPreviewImages = computed(() => {
 
   return images
 })
-const detailImageCount = computed(() => detailPreviewImages.value.length)
 const wishImageIds = computed(() => new Set(selectedWish.value?.images.map((image) => image.id) ?? []))
 const canManagePreviewImage = computed(() => !!previewImage.value && wishImageIds.value.has(previewImage.value.id))
 const mobileVisibleThreads = computed(() => visibleThreads.value.slice(0, MOBILE_THREAD_PREVIEW_COUNT))
