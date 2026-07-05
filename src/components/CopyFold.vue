@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, useAttrs, withDefaults } from 'vue'
+import { computed, useAttrs } from 'vue'
 import { trackAnalyticsEvent } from '../utils/analytics'
 import { getCopyPolicyRule, normalizeCopyText, shouldCollapseCopy, truncateCopyText, type CopyLayer } from '../utils/copyPolicy'
 

@@ -72,17 +72,6 @@ export function buildWishStarCoinSummary(params: {
     .filter((claim) => claim.sourceWishId === wish.id && starCoinClaimKinds.has(claim.claimKind))
     .reduce((total, claim) => total + Math.max(0, claim.starCoinDelta), 0)
 
-  const pendingStepCoins = params.pendingStepRewards
-    .filter((reward) => reward.wishId === wish.id)
-    .reduce((total, reward) => {
-      const step = wish.steps.find((item) => item.id === reward.stepId)
-      return total + Math.max(0, step?.starCoinValue ?? 0)
-    }, 0)
-
-  const pendingCountCoins = params.pendingCountRewardSummaries
-    .filter((summary) => summary.wishId === wish.id)
-    .reduce((total, summary) => total + summary.pendingUnits * Math.max(0, wish.progressStarCoinValue), 0)
-
   let remaining = 0
 
   if (wish.status !== 'done') {

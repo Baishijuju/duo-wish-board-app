@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { getThreadEventKindLabel } from '../shared/statusSemantics'
-import { buildVisibleStarCoinLedger, type StarCoinVisibleLedger, type StarCoinWaterfallKind } from '../shared/starCoinLedger'
+import { buildVisibleStarCoinLedger, type StarCoinWaterfallKind } from '../shared/starCoinLedger'
 import { useAuthStore } from '../stores/auth'
 import { useWishStore, type RewardClaimKind, type WishRecord, type WishThreadEntry } from '../stores/wishes'
 
@@ -232,22 +232,6 @@ const periodTouchedWishes = computed(() => {
     .map((wishId) => wishStore.findById(wishId))
     .filter((wish): wish is WishRecord => !!wish)
 })
-const periodProgressedWishes = computed(() => {
-  const progressedWishIds = new Set<string>()
-
-  periodEvents.value.forEach((event) => {
-    if (event.wishId && isTrueProgressEvent(event)) progressedWishIds.add(event.wishId)
-  })
-
-  return [...progressedWishIds]
-    .map((wishId) => wishStore.findById(wishId))
-    .filter((wish): wish is WishRecord => !!wish)
-})
-const periodCompletedSteps = computed(() => {
-  return wishStore.wishes.flatMap((wish) => wish.steps
-    .filter((step) => step.isDone && activePeriodDateSet.value.has(getBeijingDateKey(step.updatedAt)))
-    .map((step) => ({ ...step, wishId: wish.id, wishTitle: wish.title })))
-})
 const starCoinLedger = computed(() => buildVisibleStarCoinLedger({
   claims: wishStore.rewardClaims,
   endDateKey: periodEndDateKey.value,
@@ -256,9 +240,6 @@ const starCoinLedger = computed(() => buildVisibleStarCoinLedger({
   sourceKinds: starCoinWaterfallKinds.map((source) => source.kind),
   startDateKey: periodStartDateKey.value,
 }))
-const periodStarCoinIncome = computed(() => starCoinLedger.value.income)
-const periodStarCoinSpending = computed(() => starCoinLedger.value.spending)
-const periodStarCoinNet = computed(() => starCoinLedger.value.net)
 const periodStarCoinEndBalance = computed(() => starCoinLedger.value.endBalance)
 const periodStarCoinStartBalance = computed(() => starCoinLedger.value.startBalance)
 const reviewEvents = computed<ReviewEvent[]>(() => {
