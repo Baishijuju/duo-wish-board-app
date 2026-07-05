@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
+import CopyFold from '../components/CopyFold.vue'
 import type { WishRecord } from '../stores/wishes'
 import { useListWishBoardState } from '../composables/useListWishBoardState'
 
@@ -190,7 +191,13 @@ onBeforeUnmount(() => {
     <article class="page-card list-board-hero-card list-board-workbench-hero">
       <div class="list-board-hero-copy list-board-workbench-copy">
         <h1>{{ viewerName }}，选 1 件推进</h1>
-        <p>{{ heroSummary }}</p>
+        <CopyFold
+          as="p"
+          layer="secondary"
+          page="list"
+          target="hero-summary"
+          :text="heroSummary"
+        />
       </div>
     </article>
 
@@ -393,6 +400,13 @@ onBeforeUnmount(() => {
 
       <div v-else class="list-board-empty">
         <h3>当前筛选下暂无愿望</h3>
+        <CopyFold
+          as="p"
+          layer="supporting"
+          page="list"
+          target="list-empty-note"
+          text="清空筛选，或写下一条新的愿望。"
+        />
         <div class="list-board-inline-actions">
           <button class="list-board-button is-ghost" type="button" @click="filterStore.reset()">清空筛选</button>
           <RouterLink class="list-board-button is-solid" :to="{ name: 'compose' }">写下新愿望</RouterLink>

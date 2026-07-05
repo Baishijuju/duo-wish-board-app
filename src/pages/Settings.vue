@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watchEffect } from 'vue'
+import CopyFold from '../components/CopyFold.vue'
 import { useSpacePageState } from '../composables/useSpacePageState'
 import type { RewardPoolItem } from '../stores/wishes'
 
@@ -1140,7 +1141,14 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
             </div>
 
             <div class="storage-compact-panel">
-              <p class="section-copy storage-lead">{{ space.storageLead }}</p>
+              <CopyFold
+                as="p"
+                class="section-copy storage-lead"
+                layer="supporting"
+                page="space"
+                target="storage-lead"
+                :text="space.storageLead"
+              />
 
               <div class="storage-meter" :aria-label="`照片空间已使用 ${space.storageSummary.usagePercent}%`">
                 <div
@@ -1180,14 +1188,24 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
 
               <div class="storage-backup-row">
                 <div class="storage-backup-copy">
-                  <p class="section-copy">
-                    {{ space.estimatedRemainingImageCount === null
+                  <CopyFold
+                    as="p"
+                    class="section-copy"
+                    layer="supporting"
+                    page="space"
+                    target="storage-remaining-hint"
+                    :text="space.estimatedRemainingImageCount === null
                       ? '再多传几张后，这里会显示还能放多少。'
-                      : `按现在的大小，大约还能放 ${space.estimatedRemainingImageCount} 张。` }}
-                  </p>
-                  <p class="space-meta-line">
-                    <span>备份会带上清单、星币奖励和记录，建议两个人各留一份。</span>
-                  </p>
+                      : `按现在的大小，大约还能放 ${space.estimatedRemainingImageCount} 张。`"
+                  />
+                  <CopyFold
+                    as="p"
+                    class="space-meta-line"
+                    layer="supporting"
+                    page="space"
+                    target="storage-backup-note"
+                    text="备份会带上清单、星币奖励和记录，建议两个人各留一份。"
+                  />
                 </div>
                 <button class="button-subtle" type="button" @click="space.downloadBackup">备份清单</button>
               </div>

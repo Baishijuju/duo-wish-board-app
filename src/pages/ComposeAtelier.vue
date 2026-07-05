@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
+import CopyFold from '../components/CopyFold.vue'
 import { useComposePreviewState } from '../composables/useComposePreviewState'
 
 interface ComposePreviewStateWithLastSavedWishId {
@@ -206,7 +207,13 @@ const previewStageTitle = computed(() => {
 
               <div v-else-if="draft.progressMode === 'steps' && editingWish" class="compose-preview-step-notice">
                 <strong>这条愿望已经有步骤管理区了</strong>
-                <p>这里只整理基本信息；想继续拆步骤，回详情页会更顺。</p>
+                <CopyFold
+                  as="p"
+                  layer="supporting"
+                  page="compose"
+                  target="steps-editing-notice"
+                  text="这里只整理基本信息；想继续拆步骤，回详情页会更顺。"
+                />
                 <RouterLink class="compose-inline-action" :to="{ name: 'wish-detail', params: { id: editingWish.id } }">
                   去详情页管理步骤
                 </RouterLink>
@@ -247,7 +254,14 @@ const previewStageTitle = computed(() => {
         <aside class="compose-preview-summary-stage">
           <p class="compose-preview-summary-kicker">{{ previewStageTitle }}</p>
           <h2>{{ draftTitlePreview }}</h2>
-          <p class="compose-preview-summary-note">{{ draftNotePreview }}</p>
+          <CopyFold
+            as="p"
+            class="compose-preview-summary-note"
+            layer="supporting"
+            page="compose"
+            target="preview-summary-note"
+            :text="draftNotePreview"
+          />
 
           <dl class="compose-preview-meta-list">
             <div>
@@ -265,7 +279,13 @@ const previewStageTitle = computed(() => {
             <div class="compose-preview-mini-card">
               <span>{{ draft.category || '生活' }}</span>
               <strong>{{ draftTitlePreview }}</strong>
-              <p>{{ progressSummary }}</p>
+              <CopyFold
+                as="p"
+                layer="supporting"
+                page="compose"
+                target="preview-progress-summary"
+                :text="progressSummary"
+              />
             </div>
           </section>
 

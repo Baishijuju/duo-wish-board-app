@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
+import CopyFold from '../components/CopyFold.vue'
 import { useAuthStore } from '../stores/auth'
 import type { WishRecord } from '../stores/wishes'
 import { useWishStore } from '../stores/wishes'
@@ -902,7 +903,13 @@ function formatRecentThreadTime(timestamp: string) {
             <div v-if="card.highlight" class="journal-member-highlight">
               <p class="journal-feature-meta">{{ card.highlight.timeLabel }}</p>
               <strong>{{ card.highlight.headlineText }}</strong>
-              <p>{{ card.highlight.detailText }}</p>
+              <CopyFold
+                as="p"
+                layer="supporting"
+                page="home"
+                :target="`journal-highlight-${card.memberId}`"
+                :text="card.highlight.detailText"
+              />
             </div>
 
             <div v-if="card.followUp" class="journal-member-followup">
@@ -948,7 +955,13 @@ function formatRecentThreadTime(timestamp: string) {
               </div>
               <div class="lane-head-copy">
                 <h3>最近推进</h3>
-                <p>先回到刚有动静的几条愿望。</p>
+                <CopyFold
+                  as="p"
+                  layer="supporting"
+                  page="home"
+                  target="agenda-recent-progress"
+                  text="先回到刚有动静的几条愿望。"
+                />
               </div>
             </div>
 
@@ -966,7 +979,13 @@ function formatRecentThreadTime(timestamp: string) {
 
             <div v-else class="lane-empty">
               <h3>这里还没有推进中的愿望</h3>
-              <p>写下一条愿望，或给已有愿望添一步进展。</p>
+              <CopyFold
+                as="p"
+                layer="supporting"
+                page="home"
+                target="agenda-recent-progress-empty"
+                text="写下一条愿望，或给已有愿望添一步进展。"
+              />
             </div>
           </section>
 
@@ -980,7 +999,13 @@ function formatRecentThreadTime(timestamp: string) {
               </div>
               <div class="lane-head-copy">
                 <h3>最近该推进哪里</h3>
-                <p>先看哪几条还在路上，顺手接着往前走一点。</p>
+                <CopyFold
+                  as="p"
+                  layer="supporting"
+                  page="home"
+                  target="agenda-next-progress"
+                  text="先看哪几条还在路上，顺手接着往前走一点。"
+                />
               </div>
             </div>
 
@@ -998,7 +1023,13 @@ function formatRecentThreadTime(timestamp: string) {
 
             <div v-else class="lane-empty">
               <h3>这里还没有正在推进的愿望</h3>
-              <p>写下一条愿望，或者给它补一点进度，这里就会亮起来。</p>
+              <CopyFold
+                as="p"
+                layer="supporting"
+                page="home"
+                target="agenda-next-progress-empty"
+                text="写下一条愿望，或者给它补一点进度，这里就会亮起来。"
+              />
             </div>
           </section>
         </div>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import CopyFold from '../components/CopyFold.vue'
 import WishCompletionFireworks from '../components/WishCompletionFireworks.vue'
 import WishBottleStarDrop from '../components/WishBottleStarDrop.vue'
 import { getWishBottleColorTier as getWishBottleColorTierModule } from '../modules/wishes/wish.progress'
@@ -807,7 +808,15 @@ async function runStickyCtaSecondaryAction() {
                 </div>
               </label>
 
-              <p v-else class="detail-atelier-thread-message">{{ getThreadMessageCopy(thread) }}</p>
+              <CopyFold
+                v-else
+                as="p"
+                class="detail-atelier-thread-message"
+                layer="supporting"
+                page="wish-detail"
+                :target="`thread-message-${thread.id}`"
+                :text="getThreadMessageCopy(thread)"
+              />
 
               <div v-if="thread.images.length" class="detail-atelier-thread-images">
                 <button
@@ -968,7 +977,15 @@ async function runStickyCtaSecondaryAction() {
                 </div>
               </label>
 
-              <p v-else class="detail-atelier-thread-message detail-atelier-thread-message-mobile">{{ getThreadMessageCopy(thread) }}</p>
+              <CopyFold
+                v-else
+                as="p"
+                class="detail-atelier-thread-message detail-atelier-thread-message-mobile"
+                layer="supporting"
+                page="wish-detail"
+                :target="`mobile-thread-message-${thread.id}`"
+                :text="getThreadMessageCopy(thread)"
+              />
 
               <div v-if="thread.images.length" class="detail-atelier-thread-images">
                 <button
@@ -1074,7 +1091,15 @@ async function runStickyCtaSecondaryAction() {
                   </div>
                 </label>
 
-                <p v-else class="detail-atelier-thread-message detail-atelier-thread-message-mobile">{{ getThreadMessageCopy(thread) }}</p>
+                <CopyFold
+                  v-else
+                  as="p"
+                  class="detail-atelier-thread-message detail-atelier-thread-message-mobile"
+                  layer="supporting"
+                  page="wish-detail"
+                  :target="`mobile-thread-overflow-message-${thread.id}`"
+                  :text="getThreadMessageCopy(thread)"
+                />
 
                 <div v-if="thread.images.length" class="detail-atelier-thread-images">
                   <button
