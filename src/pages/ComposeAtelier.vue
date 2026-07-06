@@ -169,7 +169,7 @@ const previewStageTitle = computed(() => {
                 </label>
                 <label class="compose-field compact">
                   <span>每单位星星币</span>
-                  <input v-model.number="draft.progressStarCoinValue" type="number" min="0" step="0.5" />
+                  <input v-model.number="draft.progressStarCoinValue" type="number" min="0" step="0.1" />
                 </label>
               </div>
 
@@ -194,7 +194,7 @@ const previewStageTitle = computed(() => {
                         class="compose-preview-step-coin-input"
                         type="number"
                         min="0"
-                        step="0.5"
+                        step="0.1"
                         placeholder="星币数"
                       />
                       <button type="button" class="compose-inline-action subtle" @click="removeInitialStepField(index - 1)">
@@ -230,7 +230,7 @@ const previewStageTitle = computed(() => {
               <div class="compose-preview-bottom-row compose-form-finish-row">
                 <label class="compose-field compact">
                   <span>最终完成额外星星币</span>
-                  <input v-model.number="draft.completionStarCoinBonus" type="number" min="0" step="0.5" />
+                  <input v-model.number="draft.completionStarCoinBonus" type="number" min="0" step="0.1" />
                 </label>
 
                 <div class="compose-preview-actions">

@@ -49,6 +49,28 @@ const spaceSummaryLabel = computed(() => {
   return `${currentMemberName} 当前在本地演示空间 · ${syncLabel.value} · ${authStore.members.length} 位成员`
 })
 
+const syncActionLabel = computed(() => {
+  if (wishStore.isLoading) {
+    return '同步中...'
+  }
+
+  if (wishStore.realtimeStatus === 'error') {
+    return '重试同步'
+  }
+
+  return '立即同步'
+})
+
+const canManualSync = computed(() => authStore.usesSupabaseSpace && !wishStore.isLoading)
+
+async function handleManualSync() {
+  if (!canManualSync.value) {
+    return
+  }
+
+  await wishStore.syncFromSupabase()
+}
+
 function isActivePath(targetPath: string) {
   if (targetPath === '/') {
     return route.path === '/'
@@ -67,7 +89,18 @@ function isActivePath(targetPath: string) {
           <div class="shell-brand-row">
             <h1>人生愿望清单</h1>
           </div>
-          <p class="shell-status">{{ spaceSummaryLabel }}</p>
+          <p class="shell-status shell-status-inline">
+            <span>{{ spaceSummaryLabel }}</span>
+            <button
+              v-if="authStore.usesSupabaseSpace"
+              class="shell-sync-inline-button"
+              type="button"
+              :disabled="!canManualSync"
+              @click="void handleManualSync()"
+            >
+              {{ syncActionLabel }}
+            </button>
+          </p>
         </div>
 
         <nav class="top-nav" aria-label="桌面端主导航">
@@ -150,6 +183,37 @@ function isActivePath(targetPath: string) {
   font-size: var(--type-l7-size);
   line-height: 1.4;
   letter-spacing: var(--type-supporting-spacing);
+}
+
+.shell-status-inline {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.46rem;
+}
+
+.shell-sync-inline-button {
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--text-main);
+  font-family: var(--font-body);
+  font-size: var(--type-nav-size);
+  line-height: 1;
+  letter-spacing: var(--type-button-tracking);
+  padding: 0.42rem 0.78rem;
+  transition: transform 180ms ease, background 180ms ease, border-color 180ms ease;
+}
+
+.shell-sync-inline-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: var(--accent-border);
+  background: var(--accent-panel);
+}
+
+.shell-sync-inline-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .top-nav {

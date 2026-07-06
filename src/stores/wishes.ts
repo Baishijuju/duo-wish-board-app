@@ -246,6 +246,11 @@ export interface ThreadReactionRecord {
   createdAt: string
 }
 
+export interface RetryableAction {
+  label: string
+  retry: () => Promise<unknown>
+}
+
 export interface WishThreadEntry {
   id: string
   spaceId: string | null
@@ -1124,6 +1129,8 @@ export const useWishStore = defineStore('wishes', () => {
   const isLoading = ref(false)
   const syncMessage = ref('当前使用本地演示数据。')
   const lastLoadedSpaceId = ref<string | null>(null)
+  const lastFailedAction = ref<RetryableAction | null>(null)
+  const isRetryingLastFailedAction = ref(false)
   const realtimeStatus = ref<'idle' | 'connecting' | 'subscribed' | 'error'>('idle')
   const recentLocalWishDeletes = new Map<string, number>()
   const recentLocalWishUpdates = new Map<string, number>()
@@ -1131,6 +1138,8 @@ export const useWishStore = defineStore('wishes', () => {
   const recentLocalReactionDeletes = new Map<string, number>()
 
   const isUsingCloudWishes = computed(() => authStore.usesSupabaseSpace && !!authStore.currentSpaceId)
+  const hasRetryableAction = computed(() => !!lastFailedAction.value)
+  const lastFailedActionLabel = computed(() => lastFailedAction.value?.label ?? '')
   const realtimeMessage = computed(() => {
     if (!isUsingCloudWishes.value) {
       return 'Realtime 未启用，当前显示本地演示数据。'
@@ -2050,6 +2059,65 @@ export const useWishStore = defineStore('wishes', () => {
     })
   }
 
+  function isActionResult(value: unknown): value is { ok: boolean } {
+    return typeof value === 'object' && value !== null && 'ok' in value && typeof (value as { ok: unknown }).ok === 'boolean'
+  }
+
+  function isActionSuccessful(value: unknown) {
+    if (typeof value === 'boolean') {
+      return value
+    }
+
+    if (isActionResult(value)) {
+      return value.ok
+    }
+
+    return !!value
+  }
+
+  function setRetryableAction(label: string, retry: () => Promise<unknown>) {
+    lastFailedAction.value = { label, retry }
+  }
+
+  function clearRetryableAction() {
+    lastFailedAction.value = null
+  }
+
+  function trackRetryableActionResult(result: unknown, label: string, retry: () => Promise<unknown>) {
+    if (!isUsingCloudWishes.value) {
+      return
+    }
+
+    if (isActionSuccessful(result)) {
+      clearRetryableAction()
+      return
+    }
+
+    setRetryableAction(label, retry)
+  }
+
+  async function retryLastFailedAction() {
+    if (!lastFailedAction.value || isRetryingLastFailedAction.value) {
+      return false
+    }
+
+    const action = lastFailedAction.value
+    isRetryingLastFailedAction.value = true
+
+    try {
+      const result = await action.retry()
+      const ok = isActionSuccessful(result)
+
+      if (ok) {
+        clearRetryableAction()
+      }
+
+      return ok
+    } finally {
+      isRetryingLastFailedAction.value = false
+    }
+  }
+
   function removeWishLocally(id: string) {
     wishes.value = deleteWishLocal(id, wishes.value)
     rewardClaims.value = rewardClaims.value.map((claim) => {
@@ -2338,6 +2406,7 @@ export const useWishStore = defineStore('wishes', () => {
         starCoinDelta: bonus,
         titleSnapshot: `${formatStarCoinAmount(bonus)} 星星币`,
       }))
+      clearRetryableAction()
       return rewardResult(true, `这条愿望已经完成，${formatStarCoinAmount(bonus)} 枚星星币已经自动到账。`)
     }
 
@@ -2367,8 +2436,11 @@ export const useWishStore = defineStore('wishes', () => {
     if (result && typeof result === 'object' && 'localWish' in result) {
       wishes.value = wishes.value.map((wish) => wish.id === wishId ? result.localWish : wish)
       rewardClaims.value.unshift(result.localClaim)
+      clearRetryableAction()
       return result.result
     }
+
+    trackRetryableActionResult(result, '重试完成愿望', () => completeWishWithReward(wishId, rewardItemId))
 
     return result
   }
@@ -2415,8 +2487,15 @@ export const useWishStore = defineStore('wishes', () => {
 
     if (result && typeof result === 'object' && 'localClaim' in result) {
       rewardClaims.value.unshift(result.localClaim)
+      clearRetryableAction()
       return result.result
     }
+
+    trackRetryableActionResult(
+      result,
+      '重试领取步骤奖励',
+      () => claimCompletedStepReward(wishId, stepId, selection),
+    )
 
     return result
   }
@@ -2455,8 +2534,15 @@ export const useWishStore = defineStore('wishes', () => {
 
     if (result && typeof result === 'object' && 'localClaim' in result) {
       rewardClaims.value.unshift(result.localClaim)
+      clearRetryableAction()
       return result.result
     }
+
+    trackRetryableActionResult(
+      result,
+      '重试领取进度奖励',
+      () => claimCountProgressReward(wishId, selection),
+    )
 
     return result
   }
@@ -2487,8 +2573,11 @@ export const useWishStore = defineStore('wishes', () => {
 
     if ('localClaim' in result) {
       rewardClaims.value.unshift(result.localClaim)
+      clearRetryableAction()
       return result.result
     }
+
+    trackRetryableActionResult(result, '重试兑换奖励', () => redeemPremiumReward(rewardItemId))
 
     return result
   }
@@ -2521,8 +2610,11 @@ export const useWishStore = defineStore('wishes', () => {
 
     if ('localClaim' in result) {
       rewardClaims.value.unshift(result.localClaim)
+      clearRetryableAction()
       return result.result
     }
+
+    trackRetryableActionResult(result, '重试存入星星币', () => depositRewardStarCoins(rewardItemId, amount))
 
     return result
   }
@@ -2604,8 +2696,11 @@ export const useWishStore = defineStore('wishes', () => {
         }))
       }
       syncMessage.value = result.message
+      clearRetryableAction()
       return true
     }
+
+    trackRetryableActionResult(result, '重试推进数字进度', () => setWishCountProgress(id, nextCurrent))
 
     return result
   }
@@ -2717,8 +2812,11 @@ export const useWishStore = defineStore('wishes', () => {
         }))
       }
       syncMessage.value = result.message
+      clearRetryableAction()
       return true
     }
+
+    trackRetryableActionResult(result, '重试更新步骤状态', () => toggleWishStep(wishId, stepId))
 
     return result
   }
@@ -3385,8 +3483,11 @@ export const useWishStore = defineStore('wishes', () => {
     hasWishRewardClaim,
     incrementWishCountProgress,
     imageStorageSummary,
+    isRetryingLastFailedAction,
     isLoading,
     isUsingCloudWishes,
+    hasRetryableAction,
+    lastFailedActionLabel,
     latestComments,
     latestRewardClaims,
     monthlyJournalSnapshots,
@@ -3401,6 +3502,7 @@ export const useWishStore = defineStore('wishes', () => {
     redeemPremiumReward,
     rewardClaims,
     rewardPoolItems,
+    retryLastFailedAction,
     setWishCoverImage,
     syncFromSupabase,
     syncMessage,

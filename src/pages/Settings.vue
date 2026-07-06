@@ -451,11 +451,11 @@ function clearRewardKeywordFilters() {
 
 function getRewardKeywordMetricLabel(entry: RewardKeywordEntry) {
   if (rewardKeywordSortMode.value === 'deposited') {
-    return `已存 ${getRewardDepositedAmount(entry)}`
+    return `已存 ${formatStarCoinAmount(getRewardDepositedAmount(entry))}`
   }
 
   if (rewardKeywordSortMode.value === 'remaining') {
-    return getRewardRemainingAmount(entry) > 0 ? `还差 ${getRewardRemainingAmount(entry)}` : '可领'
+    return getRewardRemainingAmount(entry) > 0 ? `还差 ${formatStarCoinAmount(getRewardRemainingAmount(entry))}` : '可领'
   }
 
   if (rewardKeywordSortMode.value === 'popular') {
@@ -467,7 +467,7 @@ function getRewardKeywordMetricLabel(entry: RewardKeywordEntry) {
     return days <= 0 ? '今天新' : `${days}天新`
   }
 
-  return `${entry.item.starCoinCost}星星币`
+  return `${formatStarCoinAmount(entry.item.starCoinCost)}星星币`
 }
 
 function getRewardKeywordOwnerLabel(entry: RewardKeywordEntry) {
@@ -533,14 +533,7 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
         action-label="领奖与兑换"
         manage-label="整理与工具"
         :switch-only="true"
-      >
-        <template #head-meta>
-          <div class="badge-row space-mode-badges">
-            <span class="badge">{{ space.accountSummary }}</span>
-            <span class="badge">{{ space.syncStatusLabel }}</span>
-          </div>
-        </template>
-      </PageModeFrame>
+      />
 
       <component
         :is="rewardPageMode === 'manage' ? ManagePanel : ActionCard"
@@ -734,7 +727,7 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
 
             <p class="space-meta-line reward-card-meta">
               <span>已预存 {{ formatStarCoinAmount(getRewardDepositedAmount(selectedRewardEntry)) }} / {{ formatStarCoinAmount(selectedRewardEntry.item.starCoinCost) }}</span>
-              <span>{{ space.getRewardRemainingStarCoins(selectedRewardEntry.item) > 0 ? `还差 ${space.getRewardRemainingStarCoins(selectedRewardEntry.item)} 枚` : '已经存满' }}</span>
+              <span>{{ space.getRewardRemainingStarCoins(selectedRewardEntry.item) > 0 ? `还差 ${formatStarCoinAmount(space.getRewardRemainingStarCoins(selectedRewardEntry.item))} 枚` : '已经存满' }}</span>
               <span>已领 {{ space.wishStore.getRewardItemClaimCount(selectedRewardEntry.item) }} 份</span>
             </p>
 
@@ -753,17 +746,26 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
                 :aria-label="selectedRewardEntry.kind === 'assist' ? '快捷助力金额' : '快捷存入金额'"
               >
                 <button
-                  v-for="amount in [1, 3, 5]"
+                  v-for="amount in [0.1, 0.5, 1]"
                   :key="amount"
                   class="reward-quick-chip"
                   type="button"
                   :disabled="space.processingRewardItemId === selectedRewardEntry.item.id || !space.canDepositReward(selectedRewardEntry.item, amount)"
                   @click="void space.depositRewardStarCoins(selectedRewardEntry.item.id, amount)"
                 >
-                  +{{ amount }}
+                  +{{ formatStarCoinAmount(amount) }}
                 </button>
               </div>
               <p v-if="space.rewardMessage" :class="['feedback-message', 'space-reward-feedback', space.rewardTone]">{{ space.rewardMessage }}</p>
+              <button
+                v-if="space.wishStore.hasRetryableAction"
+                class="button-subtle"
+                type="button"
+                :disabled="space.wishStore.isRetryingLastFailedAction"
+                @click="void space.wishStore.retryLastFailedAction()"
+              >
+                {{ space.wishStore.isRetryingLastFailedAction ? '重试中...' : `重试上次操作（${space.wishStore.lastFailedActionLabel || '立即重试'}）` }}
+              </button>
             </div>
           </article>
 
@@ -849,6 +851,15 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
                     </div>
 
                     <p v-if="space.rewardMessage" :class="['feedback-message', 'space-reward-feedback-inline', space.rewardTone]">{{ space.rewardMessage }}</p>
+                    <button
+                      v-if="space.wishStore.hasRetryableAction"
+                      class="button-subtle"
+                      type="button"
+                      :disabled="space.wishStore.isRetryingLastFailedAction"
+                      @click="void space.wishStore.retryLastFailedAction()"
+                    >
+                      {{ space.wishStore.isRetryingLastFailedAction ? '重试中...' : `重试上次操作（${space.wishStore.lastFailedActionLabel || '立即重试'}）` }}
+                    </button>
                   </div>
                 </form>
               </article>

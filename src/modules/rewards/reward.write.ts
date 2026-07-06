@@ -282,10 +282,15 @@ export async function depositRewardStarCoinsWrite(options: {
   }
 
   const remainingAmount = Math.max(options.rewardItem.starCoinCost - options.depositedAmount, 0)
-  const normalizedAmount = Math.min(Math.max(1, Math.trunc(Number(options.amount) || 0)), remainingAmount)
+  const normalizedInput = Math.round((Number(options.amount) || 0) * 10) / 10
+  const normalizedAmount = Math.min(Math.max(0.1, normalizedInput), remainingAmount)
 
   if (remainingAmount <= 0) {
     return options.onResult({ ok: false, message: '这条奖励已经存满了，现在已满足领取条件。' })
+  }
+
+  if (normalizedAmount <= 0) {
+    return options.onResult({ ok: false, message: '请至少存入 0.1 枚星星币。' })
   }
 
   if (options.currentBalance < normalizedAmount) {

@@ -583,6 +583,16 @@ async function runStickyCtaSecondaryAction() {
           </div>
 
           <p v-if="rewardFeedback && !stepRewardFeedbackTargetId && !isCountProgressFeedback" :class="['detail-atelier-feedback', rewardFeedbackTone]" role="status" aria-live="polite">{{ rewardFeedback }}</p>
+          <div v-if="wishStore.hasRetryableAction" class="detail-atelier-inline-buttons">
+            <button
+              class="detail-atelier-secondary"
+              type="button"
+              :disabled="wishStore.isRetryingLastFailedAction"
+              @click="void wishStore.retryLastFailedAction()"
+            >
+              {{ wishStore.isRetryingLastFailedAction ? '重试中...' : `重试上次操作（${wishStore.lastFailedActionLabel || '立即重试'}）` }}
+            </button>
+          </div>
         </article>
 
         <article v-if="coverImageUrl && coverImageEntry" class="page-card detail-atelier-cover-card detail-atelier-desktop-only">
@@ -1270,7 +1280,7 @@ async function runStickyCtaSecondaryAction() {
               </label>
               <label>
                 <span>完成可得星星币</span>
-                <input v-model.number="stepStarCoinDraft" type="number" min="0" step="0.5" />
+                <input v-model.number="stepStarCoinDraft" type="number" min="0" step="0.1" />
               </label>
               <div class="detail-atelier-inline-buttons detail-atelier-tools-actions">
                 <button class="detail-atelier-secondary" type="submit" :disabled="isSubmittingStep || !stepDraft.trim()">

@@ -552,7 +552,9 @@ export function useSpaceState() {
       return '星币不足'
     }
 
-    return entry.kind === 'assist' ? `助力 ${amount} 枚` : `存入 ${amount} 枚`
+    return entry.kind === 'assist'
+      ? `助力 ${formatStarCoinAmountLabel(amount)} 枚`
+      : `存入 ${formatStarCoinAmountLabel(amount)} 枚`
   }
 
   function getPendingRewardSelection(sourceKey: string) {
@@ -718,7 +720,7 @@ export function useSpaceState() {
     }
 
     if (claim.claimKind === 'reward_deposit') {
-      return `往「${rewardTitle}」助力存入了 ${formatStarCoinAmountLabel(Math.max(1, claim.quantity))} 枚星星币。`
+      return `往「${rewardTitle}」助力存入了 ${formatStarCoinAmountLabel(Math.max(0, claim.quantity))} 枚星星币。`
     }
 
     return `用星星币兑换到了「${rewardTitle}」。`
