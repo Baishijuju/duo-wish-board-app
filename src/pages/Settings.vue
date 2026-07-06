@@ -823,7 +823,7 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
                     </label>
                     <label class="space-field-block reward-form-cost-field">
                       <span class="muted">星星币兑换价</span>
-                      <input v-model.number="space.premiumRewardCostDraft" type="number" min="1" max="999" />
+                      <input v-model.number="space.premiumRewardCostDraft" type="number" min="1" max="99999" />
                     </label>
                     <div class="space-field-block reward-scope-field">
                       <span class="muted">奖励归属</span>
