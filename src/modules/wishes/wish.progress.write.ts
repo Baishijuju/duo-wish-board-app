@@ -289,12 +289,37 @@ export async function setWishCountProgressWrite(options: {
 
   if (options.supabase && options.isUsingCloudWishes) {
     return options.runCloudMutation(
-      async () =>
-        options.supabase!.rpc('set_wish_count_progress_with_star_coin', {
+      async () => {
+        const rpcResult = await options.supabase!.rpc('set_wish_count_progress_with_star_coin', {
           next_current: options.normalizedCurrent,
           target_wish_id: options.wishId,
-        }),
-      '进度和星星币已同步到 Supabase。',
+        })
+
+        if (!rpcResult.error) {
+          return rpcResult
+        }
+
+        const errorMessage = `${rpcResult.error.message || ''} ${rpcResult.error.details || ''} ${rpcResult.error.hint || ''}`
+        const canFallbackToDirectProgress = rpcResult.error.code === '42883'
+          || /set_wish_count_progress_with_star_coin/i.test(errorMessage)
+          || /upsert_wish_thread/i.test(errorMessage)
+          || /does not exist|No function matches/i.test(errorMessage)
+
+        if (!canFallbackToDirectProgress) {
+          return rpcResult
+        }
+
+        const { error: legacyUpdateError } = await options.supabase!
+          .from('wishes')
+          .update({
+            progress_current: options.normalizedCurrent,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', options.wishId)
+
+        return { error: legacyUpdateError }
+      },
+      '进度已同步到 Supabase。',
     )
   }
 

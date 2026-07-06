@@ -271,6 +271,8 @@ begin
     ),
     'reward_claims',
     new.id,
+    'reward_claim:' || new.id::text,
+    timezone('utc', now()),
     timezone('utc', now())
   );
 

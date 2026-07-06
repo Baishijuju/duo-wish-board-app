@@ -2063,6 +2063,29 @@ export const useWishStore = defineStore('wishes', () => {
     return typeof value === 'object' && value !== null && 'ok' in value && typeof (value as { ok: unknown }).ok === 'boolean'
   }
 
+  function getActionMessage(value: unknown) {
+    if (typeof value !== 'object' || value === null || !('message' in value)) {
+      return ''
+    }
+
+    const message = (value as { message?: unknown }).message
+    return typeof message === 'string' ? message : ''
+  }
+
+  function isTransientFailure(value: unknown) {
+    if (!isActionResult(value) || value.ok) {
+      return false
+    }
+
+    const message = getActionMessage(value)
+
+    if (!message) {
+      return false
+    }
+
+    return /(失败|异常|超时|网络|稍后|重试|同步)/.test(message)
+  }
+
   function isActionSuccessful(value: unknown) {
     if (typeof value === 'boolean') {
       return value
@@ -2093,6 +2116,11 @@ export const useWishStore = defineStore('wishes', () => {
       return
     }
 
+    if (!isTransientFailure(result)) {
+      clearRetryableAction()
+      return
+    }
+
     setRetryableAction(label, retry)
   }
 
@@ -2108,7 +2136,7 @@ export const useWishStore = defineStore('wishes', () => {
       const result = await action.retry()
       const ok = isActionSuccessful(result)
 
-      if (ok) {
+      if (ok || !isTransientFailure(result)) {
         clearRetryableAction()
       }
 
