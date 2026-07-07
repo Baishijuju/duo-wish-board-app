@@ -107,11 +107,20 @@ export function useListWishBoardState() {
   const listWorkbenchStats = computed(() => {
     const activeWishes = wishStore.sortedWishes.filter((wish) => wish.status === 'active')
     const currentMemberId = authStore.currentMember?.id
+    const currentMemberActiveWishes = currentMemberId
+      ? activeWishes.filter((wish) => wish.ownerId === currentMemberId)
+      : []
+    const otherMemberActiveWishes = currentMemberId
+      ? activeWishes.filter((wish) => wish.ownerId !== currentMemberId)
+      : activeWishes
     const recentlyUpdatedWishes = activeWishes.filter((wish) => getDaysSince(wish.updatedAt) <= 7)
 
     return {
       activeCount: activeWishes.length,
-      currentMemberActiveCount: activeWishes.filter((wish) => wish.ownerId === currentMemberId).length,
+      currentMemberActiveCount: currentMemberActiveWishes.length,
+      currentMemberRemainingStarCoins: currentMemberActiveWishes.reduce((total, wish) => total + getWishRemainingStarCoins(wish), 0),
+      otherMemberActiveCount: otherMemberActiveWishes.length,
+      otherMemberRemainingStarCoins: otherMemberActiveWishes.reduce((total, wish) => total + getWishRemainingStarCoins(wish), 0),
       nearlyDoneCount: activeWishes.filter((wish) => {
         const progress = wishStore.getWishProgressSnapshot(wish)
         return progress.percent >= 70 || progress.isReady

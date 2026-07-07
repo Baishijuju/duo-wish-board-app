@@ -5,6 +5,7 @@ import CopyFold from '../components/CopyFold.vue'
 import ActionCard from '../components/page/ActionCard.vue'
 import ManagePanel from '../components/page/ManagePanel.vue'
 import PageModeFrame from '../components/page/PageModeFrame.vue'
+import { formatStarCoinAmountLabel } from '../shared/starCoinLedger'
 import { getWishStatusSemantic } from '../shared/statusSemantics'
 import WishCompletionFireworks from '../components/WishCompletionFireworks.vue'
 import WishBottleStarDrop from '../components/WishBottleStarDrop.vue'
@@ -177,6 +178,34 @@ const isProgressAutoCompleted = computed(() => {
 })
 const isProgressVisualComplete = computed(() => (progressSnapshot.value?.percent ?? 0) >= 100)
 const progressBarColorTier = computed(() => getWishBottleColorTierModule(progressSnapshot.value?.percent ?? 0))
+const progressRewardMetaLabel = computed(() => {
+  if (!selectedWish.value || !progressSnapshot.value) {
+    return ''
+  }
+
+  const wish = selectedWish.value
+  const remaining = currentWishStarCoinSummary.value.remaining
+  const completionBonus = formatStarCoinAmountLabel(Math.max(0, wish.completionStarCoinBonus))
+
+  if (progressSnapshot.value.mode === 'count') {
+    const unitLabel = wish.progressUnit || '次'
+    const current = Math.max(0, wish.progressCurrent)
+    const target = Math.max(1, wish.progressTarget)
+    const perUnit = formatStarCoinAmountLabel(Math.max(0, wish.progressStarCoinValue))
+    return `${current}/${target} ${unitLabel} · 每${unitLabel} ${perUnit} 星币 · 额外 ${completionBonus} 星币 · 剩余可得 ${remaining} 枚`
+  }
+
+  if (progressSnapshot.value.mode === 'steps') {
+    const doneSteps = wish.steps.filter((step) => step.isDone).length
+    const totalSteps = wish.steps.length
+    const stepTotal = formatStarCoinAmountLabel(
+      wish.steps.reduce((sum, step) => sum + Math.max(0, Number(step.starCoinValue) || 0), 0),
+    )
+    return `${doneSteps}/${totalSteps} 步 · 步骤合计 ${stepTotal} 星币 · 额外 ${completionBonus} 星币 · 剩余可得 ${remaining} 枚`
+  }
+
+  return `额外 ${completionBonus} 星币 · 剩余可得 ${remaining} 枚`
+})
 const shouldShowStickyCtaDock = computed(() => Boolean(selectedWish.value))
 const stickyCtaPrimaryLabel = computed(() => {
   if (!selectedWish.value) {
@@ -579,7 +608,7 @@ async function runStickyCtaSecondaryAction() {
 
           <div class="detail-atelier-story-focus" role="group" aria-label="奖励进度">
             <strong>已入账 {{ currentWishStarCoinSummary.earned }} 枚</strong>
-            <p>剩余可得 {{ currentWishStarCoinSummary.remaining }} 枚</p>
+            <p>{{ progressRewardMetaLabel }}</p>
           </div>
 
           <p v-if="rewardFeedback && !stepRewardFeedbackTargetId && !isCountProgressFeedback" :class="['detail-atelier-feedback', rewardFeedbackTone]" role="status" aria-live="polite">{{ rewardFeedback }}</p>

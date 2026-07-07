@@ -93,11 +93,23 @@ const heroSummary = computed(() => {
   }
 
   if (filterStore.status === 'all') {
+    if (filterStore.visibility === 'mine') {
+      return `我这边共 ${filteredWishes.value.length} 条 · 可得 ${stats.currentMemberRemainingStarCoins} 星星币`
+    }
+
+    if (filterStore.visibility === 'others') {
+      return `对方共 ${filteredWishes.value.length} 条 · 可得 ${stats.otherMemberRemainingStarCoins} 星星币`
+    }
+
     return `共 ${filteredWishes.value.length} 条 · 可得 ${stats.remainingStarCoins} 星星币`
   }
 
   if (filterStore.visibility === 'mine') {
-    return `我在推进 ${stats.currentMemberActiveCount} 条 · 可得 ${stats.remainingStarCoins} 星星币`
+    return `我在推进 ${stats.currentMemberActiveCount} 条 · 可得 ${stats.currentMemberRemainingStarCoins} 星星币`
+  }
+
+  if (filterStore.visibility === 'others') {
+    return `对方在推进 ${stats.otherMemberActiveCount} 条 · 可得 ${stats.otherMemberRemainingStarCoins} 星星币`
   }
 
   return `正在推进 ${stats.activeCount} 条 · 可得 ${stats.remainingStarCoins} 星星币`
