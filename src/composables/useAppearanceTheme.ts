@@ -81,6 +81,17 @@ function applyAppearanceTokens(id: AppearanceThemeId) {
   }
 }
 
+export function clearAppearanceThemeTokens() {
+  if (!canUseBrowserStorage()) {
+    return
+  }
+
+  const root = document.documentElement
+  for (const name of appearanceTokenNames) {
+    root.style.removeProperty(name)
+  }
+}
+
 export function applyStoredAppearanceTheme() {
   selectedAppearanceId.value = readStoredAppearanceId()
   if (canUseBrowserStorage()) {

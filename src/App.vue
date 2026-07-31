@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
-import { applyStoredAppearanceTheme } from './composables/useAppearanceTheme'
+import { applyStoredAppearanceTheme, clearAppearanceThemeTokens } from './composables/useAppearanceTheme'
 import { ENTRY_STATUS_LABELS, getSyncStatusLabel } from './shared/statusSemantics'
 import { useAuthStore } from './stores/auth'
 import { useWishStore } from './stores/wishes'
@@ -19,6 +19,44 @@ type NavItem = {
 
 void authStore.initializeAuthSession()
 applyStoredAppearanceTheme()
+
+const COLOR_MODE_STORAGE_KEY = 'duo-wish-board-color-mode:v1'
+const isDarkMode = ref(false)
+
+function applyColorMode(isDark: boolean) {
+  if (typeof document === 'undefined') {
+    return
+  }
+
+  if (isDark) {
+    clearAppearanceThemeTokens()
+  } else {
+    applyStoredAppearanceTheme()
+  }
+
+  document.documentElement.dataset.theme = isDark ? 'dark' : 'light'
+}
+
+function initializeColorMode() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const savedMode = window.localStorage.getItem(COLOR_MODE_STORAGE_KEY)
+  isDarkMode.value = savedMode === 'dark'
+  applyColorMode(isDarkMode.value)
+}
+
+function toggleColorMode() {
+  isDarkMode.value = !isDarkMode.value
+  applyColorMode(isDarkMode.value)
+
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(COLOR_MODE_STORAGE_KEY, isDarkMode.value ? 'dark' : 'light')
+  }
+}
+
+initializeColorMode()
 
 const navItems: NavItem[] = [
   { label: '首页', to: '/' },
@@ -61,6 +99,10 @@ const syncActionLabel = computed(() => {
   return '立即同步'
 })
 
+const colorModeLabel = computed(() => {
+  return isDarkMode.value ? '日间' : '黑夜'
+})
+
 const canManualSync = computed(() => authStore.usesSupabaseSpace && !wishStore.isLoading)
 
 async function handleManualSync() {
@@ -91,6 +133,9 @@ function isActivePath(targetPath: string) {
           </div>
           <p class="shell-status shell-status-inline">
             <span>{{ spaceSummaryLabel }}</span>
+            <button class="shell-theme-inline-button" type="button" @click="toggleColorMode">
+              {{ colorModeLabel }}
+            </button>
             <button
               v-if="authStore.usesSupabaseSpace"
               class="shell-sync-inline-button"
@@ -216,6 +261,25 @@ function isActivePath(targetPath: string) {
   opacity: 0.6;
 }
 
+.shell-theme-inline-button {
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card-bg-raised) 72%, transparent);
+  color: var(--text-main);
+  font-family: var(--font-body);
+  font-size: var(--type-nav-size);
+  line-height: 1;
+  letter-spacing: var(--type-button-tracking);
+  padding: 0.42rem 0.72rem;
+  transition: transform 180ms ease, background 180ms ease, border-color 180ms ease;
+}
+
+.shell-theme-inline-button:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent-border);
+  background: var(--accent-panel);
+}
+
 .top-nav {
   display: flex;
   flex-wrap: wrap;
@@ -258,6 +322,18 @@ function isActivePath(targetPath: string) {
   background: linear-gradient(135deg, var(--accent), var(--accent-dark));
   color: var(--accent-contrast);
   box-shadow: 0 10px 22px var(--accent-shadow);
+}
+
+:global(:root[data-theme='dark']) .bottom-nav-link.active,
+:global(:root[data-theme='dark']) .nav-link.active,
+:global(:root[data-theme='dark']) .nav-link.primary {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent) 62%, var(--surface-strong)),
+    color-mix(in srgb, var(--accent-dark) 70%, var(--surface-strong))
+  );
+  color: var(--accent-contrast);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--accent-shadow) 56%, transparent);
 }
 
 .subtle-link {

@@ -154,6 +154,220 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+:root[data-theme='dark'] {
+  --bg: #050607;
+  --bg-deep: #0b0d10;
+  --paper: #101214;
+  --paper-solid: #0f1113;
+  --paper-soft: #14181c;
+  --surface-base: #0d0f12;
+  --surface: #101214;
+  --surface-card: #121519;
+  --surface-raised: #171b20;
+  --surface-strong: #1b2026;
+  --surface-soft: #15191d;
+  --surface-popover: #1a1f24;
+  --card-bg: #121519;
+  --card-bg-raised: #171b20;
+  --card-bg-soft: #15191d;
+  --card-bg-popover: #1a1f24;
+  --card-border: rgba(255, 246, 236, 0.14);
+  --card-border-soft: rgba(255, 246, 236, 0.1);
+  --panel-bg: rgba(12, 14, 17, 0.78);
+  --panel-bg-strong: rgba(16, 19, 23, 0.9);
+  --input-bg: #171c21;
+  --input-focus-bg: #1e252d;
+  --active-item-bg: #1f262d;
+  --active-item-border: rgba(222, 139, 101, 0.5);
+  --line: rgba(255, 246, 236, 0.18);
+  --line-strong: rgba(255, 246, 236, 0.28);
+  --line-soft: rgba(255, 246, 236, 0.1);
+  --warm-border-soft: rgba(237, 196, 167, 0.14);
+  --warm-border: rgba(237, 196, 167, 0.2);
+  --warm-border-strong: rgba(237, 196, 167, 0.28);
+  --warm-panel: rgba(21, 18, 16, 0.8);
+  --warm-panel-strong: rgba(26, 22, 19, 0.9);
+  --warm-glow: rgba(222, 139, 101, 0.16);
+  --cool-glow: rgba(118, 147, 173, 0.1);
+  --accent-glow: rgba(222, 139, 101, 0.2);
+  --sage-glow: rgba(109, 151, 120, 0.12);
+  --shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  --shadow-soft: 0 8px 18px rgba(0, 0, 0, 0.4);
+  --shadow-card: 0 4px 14px rgba(0, 0, 0, 0.32);
+  --shadow-raised: 0 16px 34px rgba(0, 0, 0, 0.56);
+  --accent: #de8b65;
+  --accent-dark: #c97754;
+  --accent-strong: #b96b4a;
+  --accent-soft: #382a23;
+  --accent-sun: #e59b78;
+  --accent-coral: #d48967;
+  --accent-gradient-end: #b96b4a;
+  --accent-panel: #31231d;
+  --accent-border: rgba(222, 139, 101, 0.5);
+  --accent-ring: rgba(222, 139, 101, 0.24);
+  --accent-shadow-soft: rgba(185, 107, 74, 0.35);
+  --accent-shadow: rgba(185, 107, 74, 0.46);
+  --accent-contrast: #fff7f1;
+  --text-main: #dbe2e8;
+  --text-soft: #b3bdc7;
+  --text-muted: #97a3af;
+  --text-faint: #7d8894;
+  --success: #7db98f;
+  --success-panel: rgba(40, 61, 49, 0.62);
+  --success-border: rgba(125, 185, 143, 0.34);
+  --warning: #e2b06a;
+  --warning-panel: rgba(73, 54, 29, 0.6);
+  --warning-border: rgba(226, 176, 106, 0.36);
+  --danger: #d18a7a;
+  --danger-panel: rgba(72, 42, 36, 0.62);
+  --danger-border: rgba(209, 138, 122, 0.36);
+}
+
+:root[data-theme='dark'] body {
+  background:
+    radial-gradient(circle at 20% -10%, rgba(222, 139, 101, 0.1), transparent 30%),
+    linear-gradient(180deg, #050607 0%, #0b0d10 100%) !important;
+}
+
+:root[data-theme='dark'] body::before,
+:root[data-theme='dark'] body::after {
+  opacity: 0.08 !important;
+}
+
+:root[data-theme='dark'] :is(article, section, aside, nav, div, details, fieldset)[class*='card'],
+:root[data-theme='dark'] :is(article, section, aside, nav, div, details, fieldset)[class*='panel'],
+:root[data-theme='dark'] :is(article, section, aside, nav, div, details, fieldset)[class*='stage'],
+:root[data-theme='dark'] :is(article, section, aside, nav, div, details, fieldset)[class*='toolbar'],
+:root[data-theme='dark'] :is(article, section, aside, nav, div, details, fieldset)[class*='workbench'],
+:root[data-theme='dark'] :is(article, section, aside, nav, div, details, fieldset)[class*='tab'],
+:root[data-theme='dark'] :is(article, section, aside, nav, div, details, fieldset)[class*='fold'],
+:root[data-theme='dark'] :is(article, section, aside, nav, div, details, fieldset)[class*='item'] {
+  background: var(--surface-card) !important;
+  border-color: var(--line) !important;
+  color: var(--text-main) !important;
+  box-shadow: var(--shadow-card) !important;
+}
+
+:root[data-theme='dark'] [class*='hero'],
+:root[data-theme='dark'] [class*='summary'],
+:root[data-theme='dark'] [class*='empty'] {
+  background: var(--surface-soft) !important;
+  border-color: var(--line) !important;
+}
+
+:root[data-theme='dark'] input,
+:root[data-theme='dark'] textarea,
+:root[data-theme='dark'] select {
+  background: var(--input-bg) !important;
+  border-color: var(--line) !important;
+  color: var(--text-main) !important;
+}
+
+:root[data-theme='dark'] .list-board-grid {
+  background: #12161b !important;
+  border-color: rgba(255, 246, 236, 0.12) !important;
+}
+
+:root[data-theme='dark'] .list-board-side-stat {
+  background: #23282e !important;
+  border-color: rgba(222, 139, 101, 0.22) !important;
+}
+
+:root[data-theme='dark'] .list-board-side-stat strong {
+  color: #d0d6dd !important;
+}
+
+:root[data-theme='dark'] .list-board-side-stat.is-done .list-board-side-glyph {
+  border-color: rgba(222, 139, 101, 0.72) !important;
+  background: linear-gradient(165deg, #7e4f3a 0%, #9a6247 58%, #8b5a42 100%) !important;
+}
+
+:root[data-theme='dark'] .bottom-nav-link.primary,
+:root[data-theme='dark'] .bottom-nav-link.active {
+  background: #2f231d !important;
+  border-color: rgba(222, 139, 101, 0.38) !important;
+  color: #e6b39a !important;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.34) !important;
+}
+
+:root[data-theme='dark'] .reward-command-panel,
+:root[data-theme='dark'] .reward-keyword-controls,
+:root[data-theme='dark'] .reward-keyword-shell,
+:root[data-theme='dark'] .reward-selected-card,
+:root[data-theme='dark'] .reward-task-card,
+:root[data-theme='dark'] .reward-recent-item,
+:root[data-theme='dark'] .reward-recent-empty,
+:root[data-theme='dark'] .reward-compact-row,
+:root[data-theme='dark'] .reward-shelf-card,
+:root[data-theme='dark'] .reward-pool-unified-card,
+:root[data-theme='dark'] .space-empty-card.reward-filter-empty,
+:root[data-theme='dark'] .space-empty-card.reward-command-empty,
+:root[data-theme='dark'] .space-empty-card.reward-recent-empty {
+  background: #151a20 !important;
+  border-color: rgba(255, 246, 236, 0.12) !important;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.32) !important;
+}
+
+:root[data-theme='dark'] .reward-filter-pill,
+:root[data-theme='dark'] .reward-quick-chip,
+:root[data-theme='dark'] .reward-keyword-chip {
+  background: #222830 !important;
+  border-color: rgba(255, 246, 236, 0.16) !important;
+  color: #d8dee6 !important;
+}
+
+:root[data-theme='dark'] .reward-filter-pill.active,
+:root[data-theme='dark'] .reward-keyword-chip.active {
+  background: #2d241f !important;
+  border-color: rgba(222, 139, 101, 0.46) !important;
+  box-shadow: 0 0 0 2px rgba(222, 139, 101, 0.16) !important;
+}
+
+:root[data-theme='dark'] .reward-keyword-chip-personal,
+:root[data-theme='dark'] .reward-keyword-chip-assist,
+:root[data-theme='dark'] .reward-keyword-chip-shared {
+  background: #222830 !important;
+}
+
+:root[data-theme='dark'] .list-board-head h2,
+:root[data-theme='dark'] .list-board-hero-name,
+:root[data-theme='dark'] .list-board-item h3 {
+  color: var(--text-main) !important;
+}
+
+:root[data-theme='dark'] .list-board-sort-context em,
+:root[data-theme='dark'] .list-board-item p,
+:root[data-theme='dark'] .list-board-starcoin-line {
+  color: var(--text-soft) !important;
+}
+
+:root[data-theme='dark'] .space-utility-card-tools .section-copy,
+:root[data-theme='dark'] .space-utility-card-tools .muted,
+:root[data-theme='dark'] .space-utility-card-tools .space-meta-line,
+:root[data-theme='dark'] .space-utility-card-tools .eyebrow,
+:root[data-theme='dark'] .space-utility-card-tools .space-card-intro,
+:root[data-theme='dark'] .space-utility-card-tools .space-access-form-note,
+:root[data-theme='dark'] .storage-lead,
+:root[data-theme='dark'] .storage-backup-copy .section-copy,
+:root[data-theme='dark'] .storage-more-summary .space-fold-copy-block .eyebrow {
+  color: var(--text-soft) !important;
+}
+
+:root[data-theme='dark'] .space-utility-card-tools h2,
+:root[data-theme='dark'] .space-utility-card-tools h3,
+:root[data-theme='dark'] .storage-stat-item dd,
+:root[data-theme='dark'] .storage-backup-copy .space-meta-line {
+  color: var(--text-main) !important;
+}
+
+:root[data-theme='dark'] .space-utility-card-tools .manage-panel-shell-summary,
+:root[data-theme='dark'] .storage-compact-panel .storage-lead,
+:root[data-theme='dark'] .storage-backup-copy .section-copy,
+:root[data-theme='dark'] .storage-more-summary .eyebrow,
+:root[data-theme='dark'] .storage-more-fold .space-fold-summary {
+  color: var(--text-main) !important;
+}
+
 * {
   box-sizing: border-box;
 }

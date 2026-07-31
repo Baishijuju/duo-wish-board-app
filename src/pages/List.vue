@@ -2112,4 +2112,80 @@ onBeforeUnmount(() => {
     line-height: 1.32;
   }
 }
+
+:global(:root[data-theme='dark']) .list-board-badge {
+  border-color: var(--line-soft);
+  background: color-mix(in srgb, var(--surface-strong) 86%, transparent);
+  color: var(--text-muted);
+}
+
+:global(:root[data-theme='dark']) .list-board-grid {
+  border-color: var(--line-soft);
+  background: color-mix(in srgb, var(--surface-base) 92%, transparent);
+}
+
+:global(:root[data-theme='dark']) .list-board-hero-name,
+:global(:root[data-theme='dark']) .list-board-head h2,
+:global(:root[data-theme='dark']) .list-board-item h3,
+:global(:root[data-theme='dark']) .list-board-empty h3 {
+  color: var(--text-main) !important;
+}
+
+:global(:root[data-theme='dark']) .list-board-item p,
+:global(:root[data-theme='dark']) .list-board-toolbar-copy p,
+:global(:root[data-theme='dark']) .list-board-summary-card p,
+:global(:root[data-theme='dark']) .list-board-data-block p,
+:global(:root[data-theme='dark']) .list-board-card-meta span,
+:global(:root[data-theme='dark']) .list-board-progress-summary em {
+  color: var(--text-soft) !important;
+}
+
+:global(:root[data-theme='dark']) .list-board-summary-card > span,
+:global(:root[data-theme='dark']) .list-board-hero-focus-card > span,
+:global(:root[data-theme='dark']) .list-board-search-field > span,
+:global(:root[data-theme='dark']) .list-board-data-block > span {
+  color: var(--text-muted) !important;
+}
+
+:global(:root[data-theme='dark']) .list-board-sort-context em,
+:global(:root[data-theme='dark']) .list-board-starcoin-line {
+  color: var(--text-soft) !important;
+}
+
+:global(:root[data-theme='dark']) .list-board-sort-context strong {
+  color: var(--text-main) !important;
+}
+
+:global(:root[data-theme='dark']) .list-board-item {
+  border-bottom-color: color-mix(in srgb, var(--line-soft) 88%, transparent);
+}
+
+:global(:root[data-theme='dark']) .list-board-side-stat {
+  border-color: color-mix(in srgb, var(--owner-progress-end) 38%, var(--line-soft));
+  background: color-mix(in srgb, var(--surface-strong) 86%, transparent);
+}
+
+:global(:root[data-theme='dark']) .list-board-side-stat strong {
+  color: color-mix(in srgb, var(--owner-progress-end) 66%, var(--text-soft));
+}
+
+:global(:root[data-theme='dark']) .list-board-side-stat.is-active .list-board-side-glyph {
+  border-color: color-mix(in srgb, var(--owner-progress-end) 66%, var(--text-soft));
+}
+
+:global(:root[data-theme='dark']) .list-board-side-stat.is-done .list-board-side-glyph {
+  border-color: color-mix(in srgb, var(--owner-progress-end) 70%, var(--text-soft));
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--owner-progress-end) 68%, var(--surface-strong)) 0%,
+    color-mix(in srgb, var(--owner-progress-end) 80%, var(--surface-strong)) 58%,
+    color-mix(in srgb, var(--owner-progress-end) 72%, var(--surface-strong)) 100%
+  );
+}
+
+:global(:root[data-theme='dark']) .list-board-side-stat.is-done .list-board-side-glyph::after {
+  border-left-color: rgba(255, 255, 255, 0.84);
+  border-bottom-color: rgba(255, 255, 255, 0.84);
+  filter: none;
+}
 </style>
