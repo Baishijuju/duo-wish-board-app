@@ -12,6 +12,8 @@ const wishStore = useWishStore()
 const BEIJING_TIME_OFFSET_MS = 8 * 60 * 60 * 1000
 
 const weekdayLabels = ['一', '二', '三', '四', '五', '六', '日']
+const WEEK_CHART_HEIGHT_REM = 8.2
+const WEEK_CHART_AXIS_SPACE_REM = 1.64
 
 type ReviewMetric = 'messages' | 'progress' | 'coins' | 'claims' | 'completed'
 type ReviewScope = 'all' | 'me' | 'partner'
@@ -82,6 +84,7 @@ type ProgressRow = {
   id: string
   category: string
   commentCount: number
+  completedCount: number
   doneSteps: number
   label: string
   numericProgressAmount: number
@@ -98,6 +101,25 @@ type ProgressCategoryRow = {
   touchedCount: number
   wishRows: ProgressRow[]
 }
+
+type ProgressUsageEvent = {
+  id: string
+  dateKey: string
+  ownerId: string
+  wishId: string
+  category: string
+  title: string
+  units: number
+}
+
+type ProgressUsageWishRow = {
+  wishId: string
+  title: string
+  category: string
+  units: number
+}
+
+type UsagePalette = 'ocean' | 'candy' | 'sunset' | 'aurora' | 'neon' | 'tropical' | 'macaron'
 
 type ClaimStatRow = {
   claimCount: number
@@ -127,14 +149,35 @@ type StarCoinWaterfallChart = {
 }
 
 const activeMetric = ref<ReviewMetric>('progress')
-const activeScope = ref<ReviewScope>('all')
-const activeRange = ref<ReviewRange>('month')
+const activeScope = ref<ReviewScope>('me')
+const activeRange = ref<ReviewRange>('week')
 const anchorDateKey = ref(getBeijingDateKey())
 const bubbleDateKey = ref<string | null>(null)
 const isProgressListExpanded = ref(false)
 const isCompletedListExpanded = ref(false)
 const isMessageListExpanded = ref(false)
 const rewardClaimHeatKinds = new Set<RewardClaimKind>(['count_reward', 'step_reward', 'wish_reward', 'premium_redeem'])
+
+const usagePaletteOptions: Array<{ value: UsagePalette; label: string }> = [
+  { value: 'ocean', label: '海风蓝' },
+  { value: 'candy', label: '糖果霓虹' },
+  { value: 'sunset', label: '落日汽水' },
+  { value: 'aurora', label: '极光薄荷' },
+  { value: 'neon', label: '电光果冻' },
+  { value: 'tropical', label: '热带拼色' },
+  { value: 'macaron', label: '马卡龙雾彩' },
+]
+
+const usagePaletteCycle: UsagePalette[] = ['ocean', 'candy', 'sunset', 'aurora', 'neon', 'tropical', 'macaron']
+const activeUsagePalette = computed<UsagePalette>(() => {
+  const { year, month, day } = parseDateKey(todayDateKey.value)
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay()
+  const mondayFirstIndex = (weekday + 6) % 7
+  return usagePaletteCycle[mondayFirstIndex]
+})
+const activeUsagePaletteLabel = computed(() => {
+  return usagePaletteOptions.find((option) => option.value === activeUsagePalette.value)?.label ?? '海风蓝'
+})
 
 const metricOptions: SwitchOption<ReviewMetric>[] = [
   { value: 'messages', label: '留言', note: '看人写下的话' },
@@ -157,7 +200,7 @@ const starCoinWaterfallKinds: Array<{ kind: StarCoinWaterfallKind; label: string
   { kind: 'reward_deposit', label: '存入奖励' },
 ]
 
-const progressTouchEventKinds = new Set<ReviewEventKind>(['message', 'step', 'count_progress'])
+const progressTouchEventKinds = new Set<ReviewEventKind>(['message', 'step', 'count_progress', 'wish_complete'])
 
 function isProgressTouchEvent(event: ReviewEvent) {
   return progressTouchEventKinds.has(event.kind)
@@ -292,29 +335,6 @@ const reviewEvents = computed<ReviewEvent[]>(() => {
       })
     })
 
-    if (wish.progressMode === 'count' && wish.progressCurrent > 0) {
-      const progressUnits = Math.min(Math.max(1, wish.progressCurrent), Math.max(1, wish.progressTarget))
-
-      events.push({
-        id: `count-progress-${wish.id}`,
-        kind: 'count_progress',
-        createdAt: wish.updatedAt,
-        dateKey: getBeijingDateKey(wish.updatedAt),
-        memberId: wish.ownerId,
-        memberName: getMemberName(wish.ownerId),
-        wishId: wish.id,
-        wishTitle: wish.title,
-        title: '更新了数字进度',
-        detail: `${formatNumber(wish.progressCurrent)} / ${formatNumber(wish.progressTarget)} ${wish.progressUnit}`,
-        messageText: '',
-        activityScore: 2,
-        messageScore: 0,
-        progressScore: Math.min(8, progressUnits),
-        coinScore: 0,
-        coinDelta: 0,
-      })
-    }
-
     if (wish.completedAt) {
       events.push({
         id: `wish-complete-${wish.id}`,
@@ -330,7 +350,7 @@ const reviewEvents = computed<ReviewEvent[]>(() => {
         messageText: '',
         activityScore: 6,
         messageScore: 0,
-        progressScore: 4,
+        progressScore: 1,
         coinScore: 0,
         coinDelta: 0,
       })
@@ -344,6 +364,28 @@ const reviewEvents = computed<ReviewEvent[]>(() => {
   wishStore.rewardClaims.forEach((claim) => {
     const amount = Math.abs(claim.starCoinDelta)
     const isRewardClaimEvent = rewardClaimHeatKinds.has(claim.claimKind)
+    const countProgressUnits = Math.max(0, claim.quantity)
+
+    if (claim.claimKind === 'count_star_coin' && countProgressUnits > 0) {
+      events.push({
+        id: `count-progress-claim-${claim.id}`,
+        kind: 'count_progress',
+        createdAt: claim.createdAt,
+        dateKey: getBeijingDateKey(claim.createdAt),
+        memberId: claim.ownerId,
+        memberName: getMemberName(claim.ownerId),
+        wishId: claim.sourceWishId,
+        wishTitle: getWishTitle(claim.sourceWishId),
+        title: '推进了数字进度',
+        detail: `+${formatNumber(countProgressUnits)} 点`,
+        messageText: '',
+        activityScore: Math.min(8, countProgressUnits),
+        messageScore: 0,
+        progressScore: countProgressUnits,
+        coinScore: 0,
+        coinDelta: 0,
+      })
+    }
 
     if (!amount && !isRewardClaimEvent) return
 
@@ -521,21 +563,220 @@ const starCoinWaterfallChart = computed<StarCoinWaterfallChart>(() => {
 })
 const starCoinWaterfallSteps = computed(() => starCoinWaterfallChart.value.steps)
 const hasStarCoinWaterfall = computed(() => starCoinWaterfallSteps.value.some((step) => step.amount > 0) || currentPeriodRewardClaims.value.length > 0)
+const periodCountProgressUnitsByWishId = computed(() => {
+  const unitsByWishId = new Map<string, number>()
+
+  wishStore.rewardClaims.forEach((claim) => {
+    if (claim.claimKind !== 'count_star_coin' || !claim.sourceWishId) return
+    if (!activePeriodDateSet.value.has(getBeijingDateKey(claim.createdAt))) return
+    if (!activeLedgerMemberIdSet.value.has(claim.ownerId)) return
+
+    const quantity = Math.max(0, claim.quantity)
+    if (!quantity) return
+
+    unitsByWishId.set(claim.sourceWishId, (unitsByWishId.get(claim.sourceWishId) ?? 0) + quantity)
+  })
+
+  return unitsByWishId
+})
+const progressUsageEvents = computed<ProgressUsageEvent[]>(() => {
+  const events: ProgressUsageEvent[] = []
+
+  wishStore.rewardClaims.forEach((claim) => {
+    if (claim.claimKind !== 'count_star_coin' || !claim.sourceWishId) return
+    if (!activePeriodDateSet.value.has(getBeijingDateKey(claim.createdAt))) return
+    if (!activeLedgerMemberIdSet.value.has(claim.ownerId)) return
+
+    const wish = wishStore.findById(claim.sourceWishId)
+    if (!wish) return
+
+    const units = Math.max(0, claim.quantity)
+    if (!units) return
+
+    events.push({
+      id: `count-${claim.id}`,
+      dateKey: getBeijingDateKey(claim.createdAt),
+      ownerId: claim.ownerId,
+      wishId: wish.id,
+      category: wish.category || '未分类',
+      title: wish.title,
+      units,
+    })
+  })
+
+  wishStore.wishes.forEach((wish) => {
+    if (!activeLedgerMemberIdSet.value.has(wish.ownerId)) return
+
+    wish.steps.forEach((step) => {
+      const dateKey = getBeijingDateKey(step.updatedAt)
+      if (!step.isDone || !activePeriodDateSet.value.has(dateKey)) return
+      events.push({
+        id: `step-${step.id}`,
+        dateKey,
+        ownerId: wish.ownerId,
+        wishId: wish.id,
+        category: wish.category || '未分类',
+        title: wish.title,
+        units: 1,
+      })
+    })
+
+    if (wish.completedAt) {
+      const dateKey = getBeijingDateKey(wish.completedAt)
+      if (activePeriodDateSet.value.has(dateKey)) {
+        events.push({
+          id: `complete-${wish.id}`,
+          dateKey,
+          ownerId: wish.ownerId,
+          wishId: wish.id,
+          category: wish.category || '未分类',
+          title: wish.title,
+          units: 1,
+        })
+      }
+    }
+  })
+
+  return events.sort((left, right) => right.dateKey.localeCompare(left.dateKey))
+})
+const previousProgressDateKeys = computed(() => {
+  if (activeRange.value === 'week') return buildPeriodDateKeys('week', addDaysToDateKey(anchorDateKey.value, -7))
+  if (activeRange.value === 'month') return buildPeriodDateKeys('month', addMonthsToDateKey(anchorDateKey.value, -1))
+  return []
+})
+const previousProgressDateSet = computed(() => new Set(previousProgressDateKeys.value.filter((dateKey) => dateKey <= todayDateKey.value)))
+const previousProgressUnits = computed(() => {
+  let total = 0
+
+  wishStore.rewardClaims.forEach((claim) => {
+    if (claim.claimKind !== 'count_star_coin' || !claim.sourceWishId) return
+    if (!previousProgressDateSet.value.has(getBeijingDateKey(claim.createdAt))) return
+    if (!activeLedgerMemberIdSet.value.has(claim.ownerId)) return
+    total += Math.max(0, claim.quantity)
+  })
+
+  wishStore.wishes.forEach((wish) => {
+    if (!activeLedgerMemberIdSet.value.has(wish.ownerId)) return
+    total += wish.steps.filter((step) => step.isDone && previousProgressDateSet.value.has(getBeijingDateKey(step.updatedAt))).length
+    if (wish.completedAt && previousProgressDateSet.value.has(getBeijingDateKey(wish.completedAt))) total += 1
+  })
+
+  return total
+})
+const progressUsageTotalUnits = computed(() => progressUsageEvents.value.reduce((sum, event) => sum + event.units, 0))
+const progressUsageSelectedDateKey = ref<string | null>(null)
+const progressUsageSummaryLabel = computed(() => progressUsageSelectedDateKey.value ? formatDateLabel(progressUsageSelectedDateKey.value) : activePeriodLabel.value)
+const progressUsageFocusedEvents = computed(() => {
+  if (!progressUsageSelectedDateKey.value) return progressUsageEvents.value
+  return progressUsageEvents.value.filter((event) => event.dateKey === progressUsageSelectedDateKey.value)
+})
+const progressUsageFocusedTotalUnits = computed(() => progressUsageFocusedEvents.value.reduce((sum, event) => sum + event.units, 0))
+const progressUsageCompareLine = computed(() => {
+  const diff = progressUsageTotalUnits.value - previousProgressUnits.value
+  if (!diff) return '与上一周期持平'
+  const prefix = diff > 0 ? '比上一周期多' : '比上一周期少'
+  const amount = Math.abs(diff)
+  if (previousProgressUnits.value <= 0) return `${prefix} ${formatNumber(amount)} 次`
+  const ratio = Math.round((amount / previousProgressUnits.value) * 100)
+  return `${prefix} ${formatNumber(amount)} 次（${ratio}%）`
+})
+const progressUsageAverageLine = computed(() => `日均 ${(progressUsageTotalUnits.value / Math.max(1, activePeriodDateKeys.value.length)).toFixed(1)} 次`)
+const progressUsageCategorySummary = computed(() => {
+  const grouped = new Map<string, number>()
+  progressUsageFocusedEvents.value.forEach((event) => {
+    grouped.set(event.category, (grouped.get(event.category) ?? 0) + event.units)
+  })
+  const total = progressUsageFocusedTotalUnits.value
+  return [...grouped.entries()]
+    .map(([category, units]) => ({ category, units, percent: total ? Math.round((units / total) * 100) : 0 }))
+    .sort((left, right) => right.units - left.units)
+})
+const progressUsageTopCategories = computed(() => progressUsageCategorySummary.value.slice(0, 3).map((row) => row.category))
+const progressUsageLegend = computed(() => {
+  const base = progressUsageTopCategories.value.map((label, index) => ({ label, className: `review-usage-dot-${index}` }))
+  if (progressUsageCategorySummary.value.length > progressUsageTopCategories.value.length) {
+    base.push({ label: '其他', className: 'review-usage-dot-other' })
+  }
+  return base
+})
+function buildProgressUsageLayers(categoryUnits: Map<string, number>, maxUnits: number) {
+  if (!maxUnits) return [] as Array<{ key: string; className: string; ratio: number }>
+
+  const layers = progressUsageTopCategories.value.map((category, index) => ({
+    key: category,
+    className: `review-usage-layer-${index}`,
+    ratio: ((categoryUnits.get(category) ?? 0) / maxUnits) * 100,
+  }))
+  const others = [...categoryUnits.entries()]
+    .filter(([category]) => !progressUsageTopCategories.value.includes(category))
+    .reduce((sum, [, units]) => sum + units, 0)
+  if (others > 0) layers.push({ key: '其他', className: 'review-usage-layer-other', ratio: (others / maxUnits) * 100 })
+  return layers.filter((layer) => layer.ratio > 0)
+}
+const progressUsageBars = computed(() => {
+  const grouped = new Map<string, { total: number; categories: Map<string, number> }>()
+  activePeriodDateKeys.value.forEach((dateKey) => grouped.set(dateKey, { total: 0, categories: new Map<string, number>() }))
+  progressUsageEvents.value.forEach((event) => {
+    const row = grouped.get(event.dateKey)
+    if (!row) return
+    row.total += event.units
+    row.categories.set(event.category, (row.categories.get(event.category) ?? 0) + event.units)
+  })
+  const max = Math.max(1, ...[...grouped.values()].map((row) => row.total))
+  return activePeriodDateKeys.value.map((dateKey) => {
+    const row = grouped.get(dateKey) ?? { total: 0, categories: new Map<string, number>() }
+    return {
+      dateKey,
+      total: row.total,
+      weekdayLabel: weekdayLabels[getMondayBasedWeekdayIndex(dateKey)] ?? '-',
+      dayLabel: `${parseDateKey(dateKey).day}`,
+      hasValue: row.total > 0,
+      active: progressUsageSelectedDateKey.value === dateKey,
+      layers: buildProgressUsageLayers(row.categories, max),
+    }
+  })
+})
+const progressUsageAverageAxis = computed(() => {
+  const max = Math.max(1, ...progressUsageBars.value.map((row) => row.total))
+  const ratio = Math.min(100, (progressUsageTotalUnits.value / Math.max(1, activePeriodDateKeys.value.length) / max) * 100)
+  return { bottom: `${WEEK_CHART_AXIS_SPACE_REM + (ratio / 100) * (WEEK_CHART_HEIGHT_REM - WEEK_CHART_AXIS_SPACE_REM)}rem`, label: '平均' }
+})
+const progressUsageAxisTicks = computed(() => {
+  const max = Math.max(1, ...progressUsageBars.value.map((row) => row.total))
+  const mid = Math.round(max / 2)
+  const levels = [max, mid, 0]
+  return levels.map((value, index) => ({
+    key: `${value}-${index}`,
+    label: `${value}`,
+    bottom: `${WEEK_CHART_AXIS_SPACE_REM + ((value / max) * (WEEK_CHART_HEIGHT_REM - WEEK_CHART_AXIS_SPACE_REM))}rem`,
+  }))
+})
+const progressUsageWishRows = computed<ProgressUsageWishRow[]>(() => {
+  const grouped = new Map<string, ProgressUsageWishRow>()
+  progressUsageFocusedEvents.value.forEach((event) => {
+    const current = grouped.get(event.wishId) ?? { wishId: event.wishId, title: event.title, category: event.category, units: 0 }
+    current.units += event.units
+    grouped.set(event.wishId, current)
+  })
+  return [...grouped.values()].sort((left, right) => right.units - left.units)
+})
+const progressUsageMaxWishUnits = computed(() => Math.max(1, ...progressUsageWishRows.value.map((row) => row.units)))
+const showProgressUsageCopy = computed(() => activeMetric.value === 'progress' && activeRange.value !== 'year')
 const allProgressRows = computed<ProgressRow[]>(() => {
   return periodTouchedWishes.value
     .map((wish) => {
       const snapshot = wishStore.getWishProgressSnapshot(wish)
       const doneSteps = wish.steps.filter((step) => step.isDone && activePeriodDateSet.value.has(getBeijingDateKey(step.updatedAt))).length
       const commentCount = wish.comments.filter((comment) => activePeriodDateSet.value.has(getBeijingDateKey(comment.createdAt)) && comment.message.trim()).length
-      const numericProgressAmount = wish.progressMode === 'count' && activePeriodDateSet.value.has(getBeijingDateKey(wish.updatedAt))
-        ? Math.min(Math.max(0, wish.progressCurrent), Math.max(1, wish.progressTarget))
-        : 0
-      const progressAmount = doneSteps + numericProgressAmount
+      const completedCount = wish.completedAt && activePeriodDateSet.value.has(getBeijingDateKey(wish.completedAt)) ? 1 : 0
+      const numericProgressAmount = periodCountProgressUnitsByWishId.value.get(wish.id) ?? 0
+      const progressAmount = doneSteps + numericProgressAmount + completedCount
 
       return {
         id: wish.id,
         category: wish.category || '未分类',
         commentCount,
+        completedCount,
         doneSteps,
         label: snapshot.label,
         numericProgressAmount,
@@ -656,7 +897,12 @@ watch([activeMetric, activeScope, activeRange, anchorDateKey], () => {
   bubbleDateKey.value = null
   isCompletedListExpanded.value = false
   isMessageListExpanded.value = false
+  progressUsageSelectedDateKey.value = null
 })
+
+function toggleProgressUsageDate(dateKey: string) {
+  progressUsageSelectedDateKey.value = progressUsageSelectedDateKey.value === dateKey ? null : dateKey
+}
 
 function createImageEvent(id: string, createdAt: string, memberId: string, wish: WishRecord, title: string): ReviewEvent {
   return {
@@ -924,14 +1170,6 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 
 <template>
   <section class="monthly-preview-page palette-sage">
-    <section class="monthly-preview-hero">
-      <div class="monthly-preview-kicker">月度记录 · 只读热力图</div>
-      <div class="monthly-preview-hero-copy">
-        <h1>{{ currentMonthKey }} 的月度记录</h1>
-        <p>热力图只看强弱。切换周、月、年和成员后，下方用当前范围的统计和留言解释发生了什么。</p>
-      </div>
-    </section>
-
     <section class="monthly-switch-panel" aria-label="热力图切换器">
       <div class="monthly-switch-group">
         <span>看什么</span>
@@ -1013,34 +1251,84 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
       <p class="monthly-heat-inline-summary">{{ compactInsightLine }}</p>
     </section>
 
-    <section v-if="activeMetric === 'progress'" class="monthly-fact-layout">
-      <article class="monthly-preview-panel monthly-progress-panel">
+    <section v-if="showProgressUsageCopy" :class="['review-usage-layout', `theme-${activeUsagePalette}`]">
+      <article class="monthly-preview-panel review-usage-panel">
+        <div class="review-usage-header">
+          <strong>{{ activeRange === 'week' ? '本周推进分布' : '本月推进分布' }}</strong>
+          <div class="review-usage-header-summary">
+            <span class="review-usage-caption">{{ progressUsageSummaryLabel }} · <strong class="review-usage-caption-strong">{{ progressUsageSelectedDateKey ? progressUsageFocusedTotalUnits : progressUsageTotalUnits }} 次推进</strong></span>
+            <div class="review-usage-palette-switch" role="tablist" aria-label="推进图配色">
+              <button
+                v-for="option in usagePaletteOptions"
+                :key="option.value"
+                type="button"
+                :class="{ 'is-active': activeUsagePalette === option.value }"
+                :aria-pressed="activeUsagePalette === option.value"
+              >
+                {{ option.label }}
+              </button>
+            </div>
+            <span class="review-usage-palette-note">每日自动轮换，今天是 {{ activeUsagePaletteLabel }}</span>
+          </div>
+        </div>
+        <div class="review-usage-summary">
+          <div v-if="!progressUsageSelectedDateKey" class="review-usage-summary-inline">
+            <p class="review-usage-compare">{{ progressUsageCompareLine }}</p>
+            <p class="review-usage-avg">{{ progressUsageAverageLine }}</p>
+          </div>
+          <p v-else class="review-usage-avg">点击同一柱可返回{{ activeRange === 'week' ? '本周' : '本月' }}视图</p>
+        </div>
+
+        <div class="review-usage-week-panel">
+          <div class="review-usage-week-axis" aria-hidden="true">
+            <span class="review-usage-week-axis-average" :style="{ bottom: progressUsageAverageAxis.bottom }">{{ progressUsageAverageAxis.label }}</span>
+            <span v-for="tick in progressUsageAxisTicks" :key="tick.key" :style="{ bottom: tick.bottom }">{{ tick.label }}</span>
+          </div>
+
+          <div class="review-usage-week-chart-wrap">
+            <div class="review-usage-average-line" :style="{ bottom: progressUsageAverageAxis.bottom }" aria-hidden="true"></div>
+            <div :class="['review-usage-week-chart', { 'has-selection': progressUsageSelectedDateKey !== null, 'is-month': activeRange === 'month' }]" :style="{ gridTemplateColumns: `repeat(${activePeriodDateKeys.length}, minmax(0, 1fr))` }">
+              <article
+                v-for="bar in progressUsageBars"
+                :key="bar.dateKey"
+                :class="['review-usage-week-bar', { active: bar.active, empty: !bar.hasValue }]"
+                :title="`${formatDateLabel(bar.dateKey)} · ${bar.total} 次`"
+                @click="bar.hasValue && toggleProgressUsageDate(bar.dateKey)"
+              >
+                <i>
+                  <b v-for="layer in bar.layers" :key="layer.key" :class="['review-usage-layer', layer.className]" :style="{ height: `${layer.ratio}%` }"></b>
+                </i>
+                <span v-if="activeRange === 'week'">{{ bar.weekdayLabel }}</span>
+                <em v-if="activeRange === 'week'">{{ bar.dayLabel }}</em>
+              </article>
+            </div>
+          </div>
+        </div>
+
+        <div class="review-usage-meta">
+          <div class="review-usage-legend" aria-hidden="true">
+            <span v-for="layer in progressUsageLegend" :key="layer.label"><i :class="layer.className"></i>{{ layer.label }}</span>
+          </div>
+          <p v-if="progressUsageCategorySummary.length" class="review-usage-category-inline">
+            <span v-for="row in progressUsageCategorySummary" :key="row.category">{{ row.category }} {{ formatNumber(row.units) }} 次（{{ row.percent }}%）</span>
+          </p>
+          <p v-else class="monthly-empty-note">这个范围里还没有推进记录。</p>
+        </div>
+      </article>
+
+      <article class="monthly-preview-panel review-usage-panel">
         <div class="monthly-section-head">
-          <div><p>分类推进</p><h2>精力主要落点</h2></div>
-          <span>{{ progressCategoryRows.length }} 类</span>
+          <div><h2>愿望明细</h2></div>
+          <span>{{ progressUsageWishRows.length }} 个</span>
         </div>
-        <div class="monthly-category-list">
-          <article v-for="row in progressCategoryRows" :key="row.category" class="monthly-category-row">
-            <div class="monthly-category-copy">
-              <strong>{{ row.category }}</strong>
-              <span>推进 {{ formatNumber(row.progressAmount) }} · {{ row.touchedCount }} 个愿望 · {{ row.commentCount }} 条留言</span>
-            </div>
-            <div class="monthly-category-meter" aria-hidden="true"><i :style="{ width: `${row.percent}%` }"></i></div>
-            <em>{{ row.percent }}%</em>
-          </article>
-          <p v-if="!progressCategoryRows.length" class="monthly-empty-note">这个范围里还没有推进记录。</p>
-        </div>
-        <button v-if="allProgressRows.length" type="button" class="monthly-progress-more" :aria-expanded="isProgressListExpanded" @click="isProgressListExpanded = !isProgressListExpanded">
-          {{ isProgressListExpanded ? '收起愿望明细' : `展开 ${allProgressRows.length} 个愿望明细` }}
-        </button>
-        <div v-if="isProgressListExpanded" class="monthly-progress-list">
-          <article v-for="row in allProgressRows" :key="row.id" class="monthly-progress-row">
-            <div class="monthly-progress-copy">
-              <span>{{ row.category }}</span>
+        <div class="review-usage-wish-list">
+          <p v-if="!progressUsageWishRows.length" class="monthly-empty-note">这个范围里还没有愿望推进。</p>
+          <article v-for="row in progressUsageWishRows" :key="row.wishId" class="review-usage-wish-row">
+            <div class="review-usage-wish-copy">
               <strong>{{ row.title }}</strong>
-              <p>{{ row.label }} · 推进 {{ formatNumber(row.progressAmount) }} · {{ row.doneSteps }} 步 · {{ row.commentCount }} 条留言</p>
+              <span>{{ row.category }} · {{ formatNumber(row.units) }} 次</span>
             </div>
-            <div class="monthly-progress-track" aria-hidden="true"><i :style="{ width: `${row.percent}%` }"></i></div>
+            <i><b :style="{ width: `${Math.round((row.units / progressUsageMaxWishUnits) * 100)}%` }"></b></i>
           </article>
         </div>
       </article>
@@ -1549,6 +1837,440 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
   font-family: var(--font-body);
   font-size: 0.78rem;
   line-height: 1.42;
+}
+
+.review-usage-layout {
+  display: grid;
+  gap: 0.88rem;
+}
+
+.review-usage-panel {
+  --usage-accent: #5f8b62;
+  --usage-accent-soft: #91b875;
+  --usage-accent-pale: #c8dba5;
+  --usage-accent-deep: #365f4f;
+  --usage-accent-other: #7ea06f;
+  --usage-layer-0: var(--usage-accent);
+  --usage-layer-1: var(--usage-accent-soft);
+  --usage-layer-2: var(--usage-accent-pale);
+  --usage-layer-other: var(--usage-accent-other);
+  --usage-muted: #7f927f;
+  --usage-track: color-mix(in srgb, var(--usage-accent-pale) 42%, white);
+  display: grid;
+  gap: 0.56rem;
+}
+
+.review-usage-layout.theme-ocean .review-usage-panel {
+  --usage-accent: #447cae;
+  --usage-accent-soft: #6ba8d4;
+  --usage-accent-pale: #a8cee8;
+  --usage-accent-deep: #2f5f8f;
+  --usage-accent-other: #6e93c2;
+  --usage-layer-0: #447cae;
+  --usage-layer-1: #6ba8d4;
+  --usage-layer-2: #a8cee8;
+  --usage-layer-other: #6e93c2;
+  --usage-muted: #6f849e;
+}
+
+.review-usage-layout.theme-candy .review-usage-panel {
+  --usage-accent: #ff4f87;
+  --usage-accent-soft: #6b79ff;
+  --usage-accent-pale: #35c7c0;
+  --usage-accent-deep: #9f2f61;
+  --usage-accent-other: #ff9d3d;
+  --usage-layer-0: #ff4f87;
+  --usage-layer-1: #6b79ff;
+  --usage-layer-2: #35c7c0;
+  --usage-layer-other: #ff9d3d;
+  --usage-muted: #7a6282;
+}
+
+.review-usage-layout.theme-sunset .review-usage-panel {
+  --usage-accent: #ff6d3a;
+  --usage-accent-soft: #ff9f43;
+  --usage-accent-pale: #ffd166;
+  --usage-accent-deep: #b84f2f;
+  --usage-accent-other: #ff5e7e;
+  --usage-layer-0: #ff6d3a;
+  --usage-layer-1: #ff9f43;
+  --usage-layer-2: #ffd166;
+  --usage-layer-other: #ff5e7e;
+  --usage-muted: #8f6d5f;
+}
+
+.review-usage-layout.theme-aurora .review-usage-panel {
+  --usage-accent: #1ca8a1;
+  --usage-accent-soft: #49cc7e;
+  --usage-accent-pale: #9ee467;
+  --usage-accent-deep: #176f76;
+  --usage-accent-other: #5f8bff;
+  --usage-layer-0: #1ca8a1;
+  --usage-layer-1: #49cc7e;
+  --usage-layer-2: #9ee467;
+  --usage-layer-other: #5f8bff;
+  --usage-muted: #5f7f78;
+}
+
+.review-usage-layout.theme-neon .review-usage-panel {
+  --usage-accent: #7a3cff;
+  --usage-accent-soft: #00c2ff;
+  --usage-accent-pale: #00e0b8;
+  --usage-accent-deep: #4f2bb0;
+  --usage-accent-other: #ff5e6c;
+  --usage-layer-0: #7a3cff;
+  --usage-layer-1: #00c2ff;
+  --usage-layer-2: #00e0b8;
+  --usage-layer-other: #ff5e6c;
+  --usage-muted: #6f6698;
+}
+
+.review-usage-layout.theme-tropical .review-usage-panel {
+  --usage-accent: #1f9f7a;
+  --usage-accent-soft: #00b7c7;
+  --usage-accent-pale: #ffd15a;
+  --usage-accent-deep: #1a6f65;
+  --usage-accent-other: #ff7b54;
+  --usage-layer-0: #1f9f7a;
+  --usage-layer-1: #00b7c7;
+  --usage-layer-2: #ffd15a;
+  --usage-layer-other: #ff7b54;
+  --usage-muted: #607f78;
+}
+
+.review-usage-layout.theme-macaron .review-usage-panel {
+  --usage-accent: #8b8fd8;
+  --usage-accent-soft: #93bfd4;
+  --usage-accent-pale: #c8deaf;
+  --usage-accent-deep: #6569b1;
+  --usage-accent-other: #d3a4b8;
+  --usage-layer-0: #8b8fd8;
+  --usage-layer-1: #93bfd4;
+  --usage-layer-2: #c8deaf;
+  --usage-layer-other: #d3a4b8;
+  --usage-muted: #7f8198;
+}
+
+.review-usage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  color: var(--text-main);
+}
+
+.review-usage-header strong {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.review-usage-header-summary {
+  display: grid;
+  justify-items: end;
+  gap: 0.26rem;
+}
+
+.review-usage-palette-switch {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.24rem;
+}
+
+.review-usage-palette-switch button {
+  border: 1px solid color-mix(in srgb, var(--usage-accent) 34%, white);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--usage-accent-pale) 22%, white);
+  color: color-mix(in srgb, var(--usage-accent-deep) 86%, #1f1f1f);
+  font: inherit;
+  font-size: 0.66rem;
+  line-height: 1;
+  padding: 0.2rem 0.46rem;
+  cursor: default;
+  transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.review-usage-palette-switch button:hover {
+  transform: none;
+}
+
+.review-usage-palette-switch button.is-active {
+  border-color: color-mix(in srgb, var(--usage-accent-deep) 56%, white);
+  background: color-mix(in srgb, var(--usage-accent) 16%, white);
+  color: var(--usage-accent-deep);
+  font-weight: 700;
+}
+
+.review-usage-palette-note {
+  color: var(--text-soft);
+  font-size: 0.66rem;
+  line-height: 1.2;
+}
+
+.review-usage-caption {
+  color: var(--text-soft);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.review-usage-caption-strong {
+  color: var(--text-main);
+  font-weight: 700;
+}
+
+.review-usage-summary-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.review-usage-compare,
+.review-usage-avg {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.review-usage-compare {
+  color: var(--usage-accent);
+}
+
+.review-usage-avg {
+  color: var(--text-soft);
+}
+
+.review-usage-week-panel {
+  display: grid;
+  grid-template-columns: 1.8rem minmax(0, 1fr);
+  gap: 0.38rem;
+  align-items: stretch;
+}
+
+.review-usage-week-axis {
+  position: relative;
+  height: 8.2rem;
+}
+
+.review-usage-week-axis span {
+  position: absolute;
+  right: 0;
+  transform: translateY(50%);
+  color: color-mix(in srgb, var(--usage-accent-deep) 40%, white);
+  font-size: 0.66rem;
+  line-height: 1;
+}
+
+.review-usage-week-axis span.review-usage-week-axis-average {
+  color: #be5f86;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.review-usage-week-chart-wrap {
+  position: relative;
+}
+
+.review-usage-average-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background-image: repeating-linear-gradient(to right, color-mix(in srgb, #d9799a 74%, transparent) 0 10px, transparent 10px 18px);
+  z-index: 3;
+  pointer-events: none;
+}
+
+.review-usage-week-chart {
+  display: grid;
+  gap: 0.28rem;
+  height: 8.2rem;
+  align-items: end;
+  justify-items: stretch;
+}
+
+.review-usage-week-chart.is-month {
+  justify-items: center;
+}
+
+.review-usage-week-bar {
+  display: grid;
+  grid-template-rows: 1fr auto auto;
+  gap: 0.18rem;
+  justify-items: center;
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  cursor: pointer;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.review-usage-week-chart.is-month .review-usage-week-bar {
+  width: min(100%, 0.96rem);
+}
+
+.review-usage-week-bar.empty {
+  cursor: default;
+}
+
+.review-usage-week-bar i {
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-start;
+  align-self: stretch;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 0.3rem;
+  transition: box-shadow 180ms ease, filter 180ms ease;
+}
+
+.review-usage-week-chart.has-selection .review-usage-week-bar:not(.active) {
+  opacity: 0.34;
+}
+
+.review-usage-week-bar.active {
+  transform: translateY(-1px);
+}
+
+.review-usage-week-bar.active i {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--usage-accent) 28%, transparent);
+  filter: brightness(1.1);
+}
+
+.review-usage-layer {
+  display: block;
+  width: 100%;
+}
+
+.review-usage-layer:first-child {
+  border-bottom-left-radius: 0.3rem;
+  border-bottom-right-radius: 0.3rem;
+}
+
+.review-usage-layer:last-child {
+  border-top-left-radius: 0.3rem;
+  border-top-right-radius: 0.3rem;
+}
+
+.review-usage-layer-0,
+.review-usage-dot-0 { background: var(--usage-layer-0); }
+
+.review-usage-layer-1,
+.review-usage-dot-1 { background: var(--usage-layer-1); }
+
+.review-usage-layer-2,
+.review-usage-dot-2 { background: var(--usage-layer-2); }
+
+.review-usage-layer-other,
+.review-usage-dot-other { background: var(--usage-layer-other); }
+
+.review-usage-week-bar span,
+.review-usage-week-bar em {
+  font-size: 0.64rem;
+  color: var(--usage-muted);
+  font-style: normal;
+  line-height: 1;
+  transition: color 180ms ease, font-weight 180ms ease;
+}
+
+.review-usage-week-bar.active span,
+.review-usage-week-bar.active em {
+  color: var(--usage-accent-deep);
+  font-weight: 600;
+}
+
+.review-usage-week-bar.empty span,
+.review-usage-week-bar.empty em {
+  color: color-mix(in srgb, var(--usage-muted) 65%, white);
+}
+
+.review-usage-meta {
+  display: grid;
+  gap: 0.24rem;
+}
+
+.review-usage-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  color: var(--usage-muted);
+  font-size: 0.72rem;
+}
+
+.review-usage-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+
+.review-usage-legend i {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+}
+
+.review-usage-category-inline {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  line-height: 1.6;
+}
+
+.review-usage-category-inline span + span::before {
+  content: ' · ';
+  color: color-mix(in srgb, var(--usage-muted) 65%, white);
+}
+
+.review-usage-wish-list {
+  display: grid;
+  gap: 0.52rem;
+}
+
+.review-usage-wish-row {
+  display: grid;
+  gap: 0.24rem;
+  padding: 0.5rem;
+  border-radius: 12px;
+  border: 1px solid var(--line-soft);
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.review-usage-wish-copy {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.review-usage-wish-copy strong {
+  color: var(--text-main);
+  font-family: var(--font-heading);
+  font-size: 0.88rem;
+  line-height: 1.2;
+}
+
+.review-usage-wish-copy span {
+  color: var(--text-soft);
+  font-size: 0.74rem;
+}
+
+.review-usage-wish-row i {
+  display: block;
+  width: 100%;
+  height: 0.42rem;
+  border-radius: 999px;
+  background: var(--usage-track);
+  overflow: hidden;
+}
+
+.review-usage-wish-row b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--usage-accent-soft), var(--usage-accent-deep));
 }
 
 .monthly-heat-legend i {
