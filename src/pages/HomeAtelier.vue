@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import CopyFold from '../components/CopyFold.vue'
 import { WISH_BOTTLE_STATUS_LABELS } from '../shared/statusSemantics'
 import { useAuthStore } from '../stores/auth'
 import { type WishThreadEntry, useWishStore } from '../stores/wishes'
@@ -365,7 +364,6 @@ const yesterdayHomeThreads = computed<HomeThreadSummary[]>(() => {
   const yesterdayDateKey = getBeijingDateKey(new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
   return buildHomeThreadSummariesByDateKey(yesterdayDateKey)
 })
-const latestMoment = computed(() => todayHomeThreads.value[0] ?? null)
 const todayMemberCards = computed(() => {
   return authStore.members.slice(0, 2).map((member, index) => {
     const memberThreads = todayHomeThreads.value.filter((thread) => thread.actorId === member.id)
@@ -634,7 +632,7 @@ function getHomeThreadHeadline(
     const rewardTitle = getMetaString(thread.meta, 'titleSnapshot')
     const stepTitle = getMetaString(thread.meta, 'stepTitle')
     const quantityRaw = getMetaNumber(thread.meta, 'quantity')
-    const quantity = Number.isFinite(quantityRaw) ? Math.max(1, Math.trunc(quantityRaw)) : 1
+    const quantity = quantityRaw === null ? 1 : Math.max(1, Math.trunc(quantityRaw))
     const starCoinDelta = Math.abs(getMetaNumber(thread.meta, 'starCoinDelta') ?? 0)
     const starCoinLabel = starCoinDelta > 0 ? `${formatHomeDecimal(starCoinDelta)} 星币` : ''
     const wishTarget = wishTitle || getMetaString(thread.meta, 'wishTitle') || '这条愿望'
@@ -708,7 +706,7 @@ function getHomeThreadDetail(
     const claimKind = getMetaString(thread.meta, 'claimKind')
     const rewardTitle = getMetaString(thread.meta, 'titleSnapshot')
     const quantityRaw = getMetaNumber(thread.meta, 'quantity')
-    const quantity = Number.isFinite(quantityRaw) ? Math.max(1, Math.trunc(quantityRaw)) : 1
+    const quantity = quantityRaw === null ? 1 : Math.max(1, Math.trunc(quantityRaw))
     const stepTitle = getMetaString(thread.meta, 'stepTitle') || '这个小步骤'
 
     if (claimKind === 'wish_completion_bonus' || claimKind === 'wish_reward') {

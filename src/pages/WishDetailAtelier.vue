@@ -1372,7 +1372,7 @@ async function runStickyCtaSecondaryAction() {
                 :title="cell.title"
                 :role="!cell.isBlank && cell.count > 0 ? 'button' : undefined"
                 :tabindex="!cell.isBlank && cell.count > 0 ? 0 : undefined"
-                :aria-pressed="!cell.isBlank && cell.count > 0 ? String(selectedHeatDateKey === cell.dateKey) : undefined"
+                :aria-pressed="!cell.isBlank && cell.count > 0 ? (selectedHeatDateKey === cell.dateKey) : undefined"
                 @click="toggleHeatDateFocus(cell)"
                 @keydown.enter.prevent="toggleHeatDateFocus(cell)"
                 @keydown.space.prevent="toggleHeatDateFocus(cell)"
