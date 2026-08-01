@@ -100,7 +100,9 @@ export function buildWishThreadEntriesFromRows(
     }),
   )
 
-  return attachThreadReactions(baseEntries, reactions)
+  const normalizedEntries = mergeCountStarCoinThreadEntries(baseEntries)
+
+  return attachThreadReactions(normalizedEntries, reactions)
 }
 
 export function buildCommentRowsFromThreadEntries(threadEntries: WishThreadEntry[]): WishCommentRowLike[] {
@@ -172,4 +174,150 @@ function attachThreadReactions(entries: WishThreadEntry[], reactions: ThreadReac
       }),
     )
     .sort((left, right) => compareIsoAscending(left.createdAt, right.createdAt) || left.id.localeCompare(right.id))
+}
+
+function mergeCountStarCoinThreadEntries(entries: WishThreadEntry[]) {
+  const groupByKey = new Map<string, { index: number; quantity: number; starCoinDelta: number }>()
+  const normalizedEntries: WishThreadEntry[] = []
+
+  for (const entry of [...entries].sort((left, right) => compareIsoAscending(left.createdAt, right.createdAt) || left.id.localeCompare(right.id))) {
+    if (!isCountStarCoinThreadEntry(entry)) {
+      normalizedEntries.push(entry)
+      continue
+    }
+
+    const groupKey = `${getBeijingDateKey(entry.createdAt)}:${entry.wishId ?? 'no-wish'}:${entry.actorId ?? 'no-actor'}`
+    const quantity = Math.max(1, getNumericMetaValue(entry.meta, 'quantity') ?? 1)
+    const starCoinDelta = Math.max(0, getNumericMetaValue(entry.meta, 'starCoinDelta') ?? 0)
+    const existingGroup = groupByKey.get(groupKey)
+
+    if (!existingGroup) {
+      const claimIds = mergeClaimIds([], entry.id, entry.meta)
+      normalizedEntries.push(
+        createWishThreadEntry({
+          ...entry,
+          meta: {
+            ...entry.meta,
+            claimIds,
+            claimKind: 'count_star_coin',
+            quantity,
+            starCoinDelta,
+          },
+          messageText: mergeCountStarCoinMessage(entry.messageText, quantity, starCoinDelta),
+        }),
+      )
+
+      groupByKey.set(groupKey, {
+        index: normalizedEntries.length - 1,
+        quantity,
+        starCoinDelta,
+      })
+      continue
+    }
+
+    const mergedQuantity = existingGroup.quantity + quantity
+    const mergedStarCoinDelta = existingGroup.starCoinDelta + starCoinDelta
+    const currentEntry = normalizedEntries[existingGroup.index]!
+    const claimIds = mergeClaimIds(currentEntry.meta.claimIds, entry.id, entry.meta)
+
+    normalizedEntries[existingGroup.index] = createWishThreadEntry({
+      ...currentEntry,
+      messageText: mergeCountStarCoinMessage(currentEntry.messageText, mergedQuantity, mergedStarCoinDelta),
+      meta: {
+        ...currentEntry.meta,
+        claimIds,
+        claimKind: 'count_star_coin',
+        quantity: mergedQuantity,
+        starCoinDelta: mergedStarCoinDelta,
+      },
+      updatedAt: compareIsoAscending(currentEntry.updatedAt, entry.updatedAt) < 0 ? entry.updatedAt : currentEntry.updatedAt,
+    })
+
+    groupByKey.set(groupKey, {
+      index: existingGroup.index,
+      quantity: mergedQuantity,
+      starCoinDelta: mergedStarCoinDelta,
+    })
+  }
+
+  return normalizedEntries
+}
+
+function isCountStarCoinThreadEntry(entry: WishThreadEntry) {
+  if (entry.eventKind !== 'reward_claimed') {
+    return false
+  }
+
+  const claimKind = entry.meta.claimKind
+  return claimKind === 'count_star_coin'
+}
+
+function getNumericMetaValue(meta: Record<string, unknown>, key: string) {
+  const value = meta[key]
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+
+  return null
+}
+
+function mergeClaimIds(existingClaimIds: unknown, threadId: string, meta: Record<string, unknown>) {
+  const ids = new Set<string>()
+
+  if (Array.isArray(existingClaimIds)) {
+    existingClaimIds.forEach((id) => {
+      if (typeof id === 'string' && id.trim()) {
+        ids.add(id)
+      }
+    })
+  }
+
+  const metaClaimIds = meta.claimIds
+  if (Array.isArray(metaClaimIds)) {
+    metaClaimIds.forEach((id) => {
+      if (typeof id === 'string' && id.trim()) {
+        ids.add(id)
+      }
+    })
+  }
+
+  ids.add(threadId)
+  return [...ids]
+}
+
+function mergeCountStarCoinMessage(messageText: string, quantity: number, starCoinDelta: number) {
+  const quantityText = formatDecimal(quantity)
+  const starCoinText = formatDecimal(starCoinDelta)
+  const conciseMessage = `今天前进了 ${quantityText} 点，收下 ${starCoinText} 星币。`
+
+  if (/数字进度往前推进了\s*[0-9.]+\s*点，收下了\s*[0-9.]+\s*枚星星币。?/u.test(messageText)) {
+    return conciseMessage
+  }
+
+  if (/数字进度往前推进了\s*[0-9.]+\s*点，并存下了\s*[0-9.]+\s*枚星星币。?/u.test(messageText)) {
+    return conciseMessage
+  }
+
+  return conciseMessage
+}
+
+function getBeijingDateKey(dateValue: string | Date = new Date()) {
+  const timestamp = dateValue instanceof Date ? dateValue.getTime() : new Date(dateValue).getTime()
+  const shiftedDate = new Date((Number.isNaN(timestamp) ? Date.now() : timestamp) + 8 * 60 * 60 * 1000)
+  const year = shiftedDate.getUTCFullYear()
+  const month = `${shiftedDate.getUTCMonth() + 1}`.padStart(2, '0')
+  const day = `${shiftedDate.getUTCDate()}`.padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+function formatDecimal(value: number) {
+  const roundedValue = Math.round(value * 10) / 10
+  return Number.isInteger(roundedValue) ? `${roundedValue}` : roundedValue.toFixed(1)
 }

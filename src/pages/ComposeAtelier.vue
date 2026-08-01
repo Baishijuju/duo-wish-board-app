@@ -151,9 +151,9 @@ const previewStageTitle = computed(() => {
               </div>
 
               <div v-if="draft.progressMode === 'count'" class="compose-preview-count-grid">
-                <label v-if="editingWish" class="compose-field compact">
+                <label v-if="editingWish" class="compose-field compact compose-field-readonly">
                   <span>当前</span>
-                  <input v-model.number="draft.progressCurrent" type="number" min="0" />
+                  <input :value="draft.progressCurrent" type="number" min="0" readonly />
                 </label>
                 <label v-else class="compose-field compact compose-field-readonly">
                   <span>当前</span>

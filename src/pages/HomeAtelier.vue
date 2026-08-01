@@ -1,12 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { RouterLink } from 'vue-router'
 import CopyFold from '../components/CopyFold.vue'
-import ActionCard from '../components/page/ActionCard.vue'
 import { WISH_BOTTLE_STATUS_LABELS } from '../shared/statusSemantics'
 import { useAuthStore } from '../stores/auth'
-import type { WishRecord } from '../stores/wishes'
-import { useWishStore } from '../stores/wishes'
+import { type WishThreadEntry, useWishStore } from '../stores/wishes'
 
 const authStore = useAuthStore()
 const wishStore = useWishStore()
@@ -159,7 +156,6 @@ type HomeThreadSummary = {
 }
 
 const viewerName = computed(() => authStore.currentMember?.displayName ?? '我们')
-const recentlyUpdatedWishes = computed(() => wishStore.sortedWishes.filter((wish) => wish.status === 'active').slice(0, 3))
 const wishBottleSnapshot = computed(() => wishStore.wishBottleSnapshot)
 const wishBottleCountStarCount = computed(() => {
   return wishBottleSnapshot.value.completedCountUnits
@@ -167,13 +163,40 @@ const wishBottleCountStarCount = computed(() => {
 const wishBottleDisplayStarCount = computed(() => {
   return wishBottleSnapshot.value.completedStepStarCount + wishBottleCountStarCount.value
 })
+const todayLitStarCount = computed(() => {
+  const todayKey = getBeijingDateKey(new Date().toISOString())
+
+  if (!todayKey) {
+    return 0
+  }
+
+  let score = 0
+
+  wishStore.wishes.forEach((wish) => {
+    wish.steps.forEach((step) => {
+      if (!step.isDone) {
+        return
+      }
+
+      if (getBeijingDateKey(step.updatedAt) === todayKey) {
+        score += 1
+      }
+    })
+
+    // 数字进度当前缺少逐次历史，先按“今天有过一次正向推进”记 1 次。
+    if (wish.progressMode === 'count' && wish.progressCurrent > 0 && getBeijingDateKey(wish.updatedAt) === todayKey) {
+      score += 1
+    }
+  })
+
+  return score
+})
 const wishBottleDisplayedStarsPlan = computed(() => {
   return buildWishBottleDisplayedStars(wishBottleDisplayStarCount.value)
 })
 const visibleWishBottleStars = computed(() => {
   return wishBottleDisplayedStarsPlan.value.stars
 })
-const RECENT_THREAD_WINDOW_DAYS = 14
 const wishBottleUsesCompoundStars = computed(() => {
   return wishBottleDisplayedStarsPlan.value.usesCompoundStars
 })
@@ -183,18 +206,21 @@ const wishBottleHiddenStarCount = computed(() => {
 const memberDisplayNameMap = computed(() => {
   return new Map(authStore.members.map((member) => [member.id, member.displayName]))
 })
-const latestHomeThreads = computed<HomeThreadSummary[]>(() => {
-  const wishTitleMap = new Map(wishStore.wishes.map((wish) => [wish.id, wish.title]))
-  const now = Date.now()
-  const recentWindowStart = now - RECENT_THREAD_WINDOW_DAYS * 24 * 60 * 60 * 1000
+function buildHomeThreadSummariesByDateKey(dateKey: string | null): HomeThreadSummary[] {
+  if (!dateKey) {
+    return []
+  }
 
-  return [...wishStore.wishThreads]
+  const wishTitleMap = new Map(wishStore.wishes.map((wish) => [wish.id, wish.title]))
+  const dailyThreads = [...wishStore.wishThreads]
     .filter((thread) => {
-      const createdAtTime = new Date(thread.createdAt).getTime()
-      return Number.isFinite(createdAtTime) && createdAtTime >= recentWindowStart
+      return getBeijingDateKey(thread.createdAt) === dateKey
     })
     .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
-    .slice(0, 5)
+
+  const mergedThreads = mergeCompletionMomentThreadsForHome(dailyThreads)
+
+  return mergedThreads
     .map((thread) => ({
       actorId: thread.actorId,
       actorLabel: getThreadActorLabel(thread.actorId),
@@ -203,50 +229,177 @@ const latestHomeThreads = computed<HomeThreadSummary[]>(() => {
       id: thread.id,
       timeLabel: formatRecentThreadTime(thread.createdAt),
     }))
+}
+
+function mergeCompletionMomentThreadsForHome(threads: WishThreadEntry[]) {
+  const consumedThreadIds = new Set<string>()
+  const mergedThreads: WishThreadEntry[] = []
+
+  for (const thread of threads) {
+    if (consumedThreadIds.has(thread.id)) {
+      continue
+    }
+
+    if (thread.eventKind !== 'wish_completed') {
+      mergedThreads.push(thread)
+      continue
+    }
+
+    const completionRewardThread = threads.find((candidate) => {
+      if (candidate.id === thread.id || consumedThreadIds.has(candidate.id)) {
+        return false
+      }
+
+      if (!canMergeAsCompletionMomentForHome(thread, candidate)) {
+        return false
+      }
+
+      return isCompletionRewardClaimForHome(candidate)
+    })
+
+    const progressRewardThread = threads.find((candidate) => {
+      if (candidate.id === thread.id || consumedThreadIds.has(candidate.id)) {
+        return false
+      }
+
+      if (!canMergeAsCompletionMomentForHome(thread, candidate)) {
+        return false
+      }
+
+      return isCountProgressRewardClaimForHome(candidate)
+    })
+
+    if (!completionRewardThread && !progressRewardThread) {
+      mergedThreads.push(thread)
+      continue
+    }
+
+    if (completionRewardThread) {
+      consumedThreadIds.add(completionRewardThread.id)
+    }
+
+    if (progressRewardThread) {
+      consumedThreadIds.add(progressRewardThread.id)
+    }
+
+    const completionRewardCoins = Math.abs(getMetaNumber(completionRewardThread?.meta ?? {}, 'starCoinDelta') ?? 0)
+    const progressRewardCoins = Math.abs(getMetaNumber(progressRewardThread?.meta ?? {}, 'starCoinDelta') ?? 0)
+    const progressQuantity = Math.max(1, getMetaNumber(progressRewardThread?.meta ?? {}, 'quantity') ?? 1)
+
+    mergedThreads.push({
+      ...thread,
+      messageText: buildMergedCompletionMessageForHome(completionRewardCoins, progressQuantity, progressRewardCoins),
+      meta: {
+        ...thread.meta,
+        mergedCompletionMoment: true,
+        mergedCompletionRewardCoins: completionRewardCoins,
+        mergedProgressRewardCoins: progressRewardCoins,
+        mergedProgressQuantity: progressQuantity,
+      },
+    })
+  }
+
+  return mergedThreads
+}
+
+function canMergeAsCompletionMomentForHome(baseThread: WishThreadEntry, candidate: WishThreadEntry) {
+  if (baseThread.wishId !== candidate.wishId || baseThread.actorId !== candidate.actorId) {
+    return false
+  }
+
+  return getHomeThreadMinuteKey(baseThread.createdAt) === getHomeThreadMinuteKey(candidate.createdAt)
+}
+
+function isCompletionRewardClaimForHome(thread: WishThreadEntry) {
+  if (thread.eventKind !== 'reward_claimed') {
+    return false
+  }
+
+  const claimKind = typeof thread.meta.claimKind === 'string' ? thread.meta.claimKind : ''
+  return claimKind === 'wish_completion_bonus' || claimKind === 'wish_reward'
+}
+
+function isCountProgressRewardClaimForHome(thread: WishThreadEntry) {
+  if (thread.eventKind !== 'reward_claimed') {
+    return false
+  }
+
+  const claimKind = typeof thread.meta.claimKind === 'string' ? thread.meta.claimKind : ''
+  const sourceStepId = typeof thread.meta.sourceStepId === 'string' ? thread.meta.sourceStepId : ''
+  return claimKind === 'count_star_coin' || claimKind === 'count_reward' || (claimKind === 'star_coin' && !sourceStepId)
+}
+
+function getHomeThreadMinuteKey(timestamp: string) {
+  const parts = getBeijingDateParts(timestamp)
+
+  if (!parts) {
+    return 'invalid-time'
+  }
+
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`
+}
+
+function buildMergedCompletionMessageForHome(completionRewardCoins: number, progressQuantity: number, progressRewardCoins: number) {
+  const segments = ['这条愿望收官了']
+
+  if (completionRewardCoins > 0) {
+    segments.push(`完成奖励 ${formatHomeDecimal(completionRewardCoins)} 星币已入账`)
+  }
+
+  if (progressQuantity > 0) {
+    if (progressRewardCoins > 0) {
+      segments.push(`最后 ${formatHomeDecimal(progressQuantity)} 点推进也结算了 ${formatHomeDecimal(progressRewardCoins)} 星币`)
+    } else {
+      segments.push(`最后 ${formatHomeDecimal(progressQuantity)} 点推进也已记下`)
+    }
+  }
+
+  return `${segments.join('，')}。`
+}
+
+const todayHomeThreads = computed<HomeThreadSummary[]>(() => {
+  const todayDateKey = getBeijingDateKey(new Date().toISOString())
+  return buildHomeThreadSummariesByDateKey(todayDateKey)
 })
-const latestMoment = computed(() => latestHomeThreads.value[0] ?? null)
-const recentMemberCards = computed(() => {
+const yesterdayHomeThreads = computed<HomeThreadSummary[]>(() => {
+  const yesterdayDateKey = getBeijingDateKey(new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+  return buildHomeThreadSummariesByDateKey(yesterdayDateKey)
+})
+const latestMoment = computed(() => todayHomeThreads.value[0] ?? null)
+const todayMemberCards = computed(() => {
   return authStore.members.slice(0, 2).map((member, index) => {
-    const memberThreads = latestHomeThreads.value.filter((thread) => thread.actorId === member.id).slice(0, 2)
+    const memberThreads = todayHomeThreads.value.filter((thread) => thread.actorId === member.id)
     const highlight = memberThreads[0] ?? null
     const isViewer = authStore.currentMember?.id === member.id
 
     return {
-      followUp: memberThreads[1] ?? null,
+      followUps: memberThreads.slice(1),
       highlight,
       memberId: member.id,
       memberName: member.displayName,
-      roleLabel: isViewer ? '你刚刚捎来一句' : '对方刚刚捎来一句',
+      roleLabel: isViewer ? '你今天捎来一句' : '对方今天捎来一句',
       toneClass: index % 2 === 0 ? 'is-rose' : 'is-sage',
     }
   })
 })
-const sharedLatestMoment = computed(() => latestHomeThreads.value.find((thread) => thread.actorId === null) ?? null)
-const heroPrimaryWish = computed(() => {
-  return recentlyUpdatedWishes.value[0] ?? wishStore.wishes[0] ?? null
-})
-const heroPrimaryWishCaption = computed(() => {
-  if (!heroPrimaryWish.value) {
-    return '先写下一条愿望，让今天先有一件值得关心的事。'
-  }
+const yesterdayMemberCards = computed(() => {
+  return authStore.members.slice(0, 2).map((member, index) => {
+    const memberThreads = yesterdayHomeThreads.value.filter((thread) => thread.actorId === member.id)
+    const highlight = memberThreads[0] ?? null
+    const isViewer = authStore.currentMember?.id === member.id
 
-  return getWishProgressHint(heroPrimaryWish.value)
+    return {
+      followUps: memberThreads.slice(1),
+      highlight,
+      memberId: member.id,
+      memberName: member.displayName,
+      roleLabel: isViewer ? '你昨天捎来一句' : '对方昨天捎来一句',
+      toneClass: index % 2 === 0 ? 'is-rose' : 'is-sage',
+    }
+  })
 })
-const heroPrimaryActionTo = computed(() => {
-  if (!heroPrimaryWish.value) {
-    return '/compose'
-  }
-
-  return {
-    name: 'wish-detail',
-    params: {
-      id: heroPrimaryWish.value.id,
-    },
-  }
-})
-const heroPrimaryActionLabel = computed(() => {
-  return heroPrimaryWish.value ? '打开这条愿望' : '写下第一条愿望'
-})
+const sharedTodayMoment = computed(() => todayHomeThreads.value.find((thread) => thread.actorId === null) ?? null)
+const sharedYesterdayMoment = computed(() => yesterdayHomeThreads.value.find((thread) => thread.actorId === null) ?? null)
 const stageMetrics = computed(() => {
   const snapshot = wishBottleSnapshot.value
   const displayStarCount = wishBottleDisplayStarCount.value
@@ -266,13 +419,6 @@ const stageMetrics = computed(() => {
       label: WISH_BOTTLE_STATUS_LABELS.done,
       note: starNote,
       value: displayStarCount ? `${displayStarCount} 颗` : '等待第一颗',
-    },
-    {
-      label: '最近更新',
-      note: latestMoment.value
-        ? `${latestMoment.value.actorLabel} 刚留下了一笔新记录`
-        : '下一次推进会留在这里',
-      value: latestMoment.value ? latestMoment.value.timeLabel : '等待更新',
     },
   ]
 })
@@ -299,22 +445,6 @@ const bottleMoodChips = computed(() => {
 
   return chips
 })
-
-function getWishProgressHint(wish: WishRecord) {
-  const progressSnapshot = wishStore.getWishProgressSnapshot(wish)
-
-  if (progressSnapshot.mode === 'none') {
-    return wish.note.trim()
-      ? '它先被认真写下来了，接下来只要偶尔回来看一眼，也算在靠近。'
-      : '它先安静住在这里，等你准备好时再往前走也不迟。'
-  }
-
-  if (progressSnapshot.mode === 'steps') {
-    return `已经完成 ${progressSnapshot.current}/${progressSnapshot.target} 个步骤，继续一点点往前就好。`
-  }
-
-  return `已经推进到 ${progressSnapshot.label}，继续一点点往前就好。`
-}
 
 function getWishBottleRevealHeight() {
   const snapshot = wishBottleSnapshot.value
@@ -352,13 +482,23 @@ function getWishBottleHeroHeading() {
 }
 
 function getWishBottleHeroSubcopy() {
-  const snapshot = wishBottleSnapshot.value
+  const todayLitStars = todayLitStarCount.value
 
-  if (!snapshot.activeWishCount) {
-    return '等下一条愿望写下后，这里会先亮起来。'
+  if (!todayLitStars) {
+    return '今天还没有星星被点亮。'
   }
 
-  return `${snapshot.activeWishCount} 个愿望还${WISH_BOTTLE_STATUS_LABELS.active}。`
+  return `今天有 ${todayLitStars} 颗星星被点亮。`
+}
+
+function getBeijingDateKey(timestamp: string) {
+  const parts = getBeijingDateParts(timestamp)
+
+  if (!parts) {
+    return null
+  }
+
+  return `${parts.year}-${parts.month}-${parts.day}`
 }
 
 function getWishBottleDashboardHint() {
@@ -400,6 +540,26 @@ function getMetaString(meta: Record<string, unknown>, key: string) {
   return typeof value === 'string' && value.trim().length > 0 ? value : null
 }
 
+function getMetaNumber(meta: Record<string, unknown>, key: string) {
+  const value = meta[key]
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+
+  return null
+}
+
+function formatHomeDecimal(value: number) {
+  const rounded = Math.round(value * 10) / 10
+  return Number.isInteger(rounded) ? `${rounded}` : rounded.toFixed(1)
+}
+
 function getThreadWishTitle(
   wishId: string | null,
   meta: Record<string, unknown>,
@@ -436,7 +596,29 @@ function getHomeThreadHeadline(
   }
 
   if (thread.eventKind === 'wish_completed') {
-    return wishTitle ? `「${wishTitle}」这页，终于能笑着合上了` : '刚刚有一条愿望，终于能笑着合上了'
+    if (thread.meta.mergedCompletionMoment === true) {
+      const completionRewardCoins = Math.abs(getMetaNumber(thread.meta, 'mergedCompletionRewardCoins') ?? 0)
+      const progressRewardCoins = Math.abs(getMetaNumber(thread.meta, 'mergedProgressRewardCoins') ?? 0)
+      const progressQuantity = Math.max(1, getMetaNumber(thread.meta, 'mergedProgressQuantity') ?? 1)
+
+      if (completionRewardCoins > 0 && progressRewardCoins > 0) {
+        return wishTitle
+          ? `「${wishTitle}」收官，${formatHomeDecimal(completionRewardCoins + progressRewardCoins)} 星币入账`
+          : `这条愿望收官，${formatHomeDecimal(completionRewardCoins + progressRewardCoins)} 星币入账`
+      }
+
+      if (completionRewardCoins > 0) {
+        return wishTitle
+          ? `「${wishTitle}」收官后，${formatHomeDecimal(completionRewardCoins)} 星币已入账`
+          : `愿望收官后，${formatHomeDecimal(completionRewardCoins)} 星币已入账`
+      }
+
+      return wishTitle
+        ? `「${wishTitle}」收官了，最后 ${formatHomeDecimal(progressQuantity)} 点推进已记下`
+        : `愿望收官了，最后 ${formatHomeDecimal(progressQuantity)} 点推进已记下`
+    }
+
+    return wishTitle ? `「${wishTitle}」收官了` : '刚刚有一条愿望收官了'
   }
 
   if (thread.eventKind === 'wish_step_completed') {
@@ -448,9 +630,38 @@ function getHomeThreadHeadline(
   }
 
   if (thread.eventKind === 'reward_claimed') {
+    const claimKind = getMetaString(thread.meta, 'claimKind')
     const rewardTitle = getMetaString(thread.meta, 'titleSnapshot')
+    const stepTitle = getMetaString(thread.meta, 'stepTitle')
+    const quantityRaw = getMetaNumber(thread.meta, 'quantity')
+    const quantity = Number.isFinite(quantityRaw) ? Math.max(1, Math.trunc(quantityRaw)) : 1
+    const starCoinDelta = Math.abs(getMetaNumber(thread.meta, 'starCoinDelta') ?? 0)
+    const starCoinLabel = starCoinDelta > 0 ? `${formatHomeDecimal(starCoinDelta)} 星币` : ''
     const wishTarget = wishTitle || getMetaString(thread.meta, 'wishTitle') || '这条愿望'
-    return rewardTitle ? `「${wishTarget}」推进后，刚领到「${rewardTitle}」` : `「${wishTarget}」推进后，刚接住一份奖励`
+
+    if (claimKind === 'wish_completion_bonus' || claimKind === 'wish_reward') {
+      if (starCoinLabel) {
+        return `「${wishTarget}」收官后，${starCoinLabel}已入账`
+      }
+
+      return rewardTitle ? `「${wishTarget}」收官后，领到「${rewardTitle}」` : `「${wishTarget}」收官后，接住了一份奖励`
+    }
+
+    if (claimKind === 'step_reward' || claimKind === 'step_star_coin' || (claimKind === 'star_coin' && stepTitle)) {
+      if (starCoinLabel) {
+        return `完成「${stepTitle || wishTarget}」后，${starCoinLabel}已入账`
+      }
+
+      return rewardTitle
+        ? `完成「${stepTitle || wishTarget}」后，领到「${rewardTitle}」`
+        : `完成「${stepTitle || wishTarget}」后，接住了一份奖励`
+    }
+
+    if (starCoinLabel) {
+      return `「${wishTarget}」前进 ${quantity} 点，${starCoinLabel}已入账`
+    }
+
+    return rewardTitle ? `「${wishTarget}」前进后，领到「${rewardTitle}」` : `「${wishTarget}」前进后，接住了一份奖励`
   }
 
   if (thread.eventKind === 'premium_redeem') {
@@ -494,9 +705,24 @@ function getHomeThreadDetail(
   }
 
   if (thread.eventKind === 'reward_claimed') {
+    const claimKind = getMetaString(thread.meta, 'claimKind')
     const rewardTitle = getMetaString(thread.meta, 'titleSnapshot')
-    const quantityRaw = Number(thread.meta.quantity)
+    const quantityRaw = getMetaNumber(thread.meta, 'quantity')
     const quantity = Number.isFinite(quantityRaw) ? Math.max(1, Math.trunc(quantityRaw)) : 1
+    const stepTitle = getMetaString(thread.meta, 'stepTitle') || '这个小步骤'
+
+    if (claimKind === 'wish_completion_bonus' || claimKind === 'wish_reward') {
+      return rewardTitle
+        ? `这条愿望已经走完，这次领到了「${rewardTitle}」。`
+        : '这条愿望已经走完，这次接住了一份完成奖励。'
+    }
+
+    if (claimKind === 'step_reward' || claimKind === 'step_star_coin' || (claimKind === 'star_coin' && getMetaString(thread.meta, 'sourceStepId'))) {
+      return rewardTitle
+        ? `完成了「${stepTitle}」，这次领到了「${rewardTitle}」。`
+        : `完成了「${stepTitle}」，这次接住了一份奖励。`
+    }
+
     if (rewardTitle) {
       return quantity > 1
         ? `因为这条愿望推进了 ${quantity} 点，这次领到了「${rewardTitle}」共 ${quantity} 份。`
@@ -572,37 +798,13 @@ function formatRecentThreadTime(timestamp: string) {
   <section class="atelier-home-page">
     <section class="atelier-hero panel">
       <div class="atelier-hero-copy">
-        <p class="atelier-kicker">今天先做</p>
         <h1>
           <span class="atelier-hero-name">{{ viewerName }}</span>
           <span class="atelier-hero-promise">
-            <span class="atelier-hero-line">把最想推进的一条愿望</span>
-            <span class="atelier-hero-line is-tight">摆到眼前。</span>
+            <span class="atelier-hero-line">先看看愿望瓶里</span>
+            <span class="atelier-hero-line is-tight">今天亮了几颗星。</span>
           </span>
         </h1>
-
-        <ActionCard class="focus-card is-primary-focus home-primary-action-shell" :title="''">
-          <div class="focus-head">
-            <div class="section-icon is-quill" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none">
-                <path d="M14 4l6 6" />
-                <path d="M6 18l4-1 10-10-3-3L7 14l-1 4z" />
-              </svg>
-            </div>
-          </div>
-
-          <div class="focus-body">
-            <h2>{{ heroPrimaryWish?.title ?? '先写下一条愿望' }}</h2>
-            <p class="focus-copy">{{ heroPrimaryWishCaption }}</p>
-          </div>
-
-          <div class="focus-footer">
-            <RouterLink class="focus-link" :to="heroPrimaryActionTo">
-              {{ heroPrimaryActionLabel }}
-            </RouterLink>
-          </div>
-        </ActionCard>
-
       </div>
 
       <article
@@ -882,22 +1084,16 @@ function formatRecentThreadTime(timestamp: string) {
 
     <section class="atelier-grid">
       <article class="atelier-journal panel">
-        <div class="section-head">
-          <div class="section-head-copy">
-            <p class="atelier-kicker">最近发生</p>
-            <h2>先看彼此刚说的两句近况</h2>
-          </div>
-        </div>
+        <p class="atelier-kicker">今日发生</p>
 
-        <div class="atelier-journal-layout" :class="{ 'is-single': recentMemberCards.length === 1 }">
+        <div class="atelier-journal-layout" :class="{ 'is-single': todayMemberCards.length === 1 }">
           <article
-            v-for="card in recentMemberCards"
+            v-for="card in todayMemberCards"
             :key="card.memberId"
             :class="['journal-member-card', card.toneClass, { 'is-empty': !card.highlight }]"
           >
             <div class="journal-member-head">
               <div class="journal-member-title">
-                <p class="journal-member-role">{{ card.roleLabel }}</p>
                 <h3>{{ card.memberName }}</h3>
               </div>
             </div>
@@ -905,137 +1101,83 @@ function formatRecentThreadTime(timestamp: string) {
             <div v-if="card.highlight" class="journal-member-highlight">
               <p class="journal-feature-meta">{{ card.highlight.timeLabel }}</p>
               <strong>{{ card.highlight.headlineText }}</strong>
-              <CopyFold
-                as="p"
-                layer="supporting"
-                page="home"
-                :target="`journal-highlight-${card.memberId}`"
-                :text="card.highlight.detailText"
-              />
             </div>
 
-            <div v-if="card.followUp" class="journal-member-followup">
-              <p class="journal-member-followup-label">再补一句</p>
+            <div
+              v-for="followUp in card.followUps"
+              :key="followUp.id"
+              class="journal-member-followup"
+            >
               <div class="journal-member-followup-copy">
-                <strong>{{ card.followUp.headlineText }}</strong>
-                <span>{{ card.followUp.timeLabel }}</span>
+                <strong>{{ followUp.headlineText }}</strong>
+                <span>{{ followUp.timeLabel }}</span>
               </div>
             </div>
 
-            <div v-else-if="!card.highlight" class="journal-member-empty">
-              <p class="journal-feature-meta">最近 14 天还没有新的近况</p>
-              <h3>等下一次推进发生，这里会先替你们把这句招呼留住。</h3>
+            <div v-if="!card.highlight && card.followUps.length === 0" class="journal-member-empty">
+              <p class="journal-feature-meta">今天还没有新的近况</p>
+              <h3>等今天再有推进发生，这里会先替你们把这句招呼留住。</h3>
             </div>
           </article>
 
-          <article v-if="sharedLatestMoment" class="journal-shared-strip">
+          <article v-if="sharedTodayMoment" class="journal-shared-strip">
             <p class="journal-shared-kicker">一起捎来</p>
-            <strong>{{ sharedLatestMoment.headlineText }}</strong>
-            <span>{{ sharedLatestMoment.timeLabel }}</span>
+            <strong>{{ sharedTodayMoment.headlineText }}</strong>
+            <span>{{ sharedTodayMoment.timeLabel }}</span>
           </article>
         </div>
-      </article>
 
-      <article class="atelier-agenda panel">
-        <div class="section-head">
-          <div class="section-head-copy">
-            <p class="atelier-kicker">接下来先往哪靠</p>
-            <h2>下一步往哪里靠</h2>
+        <details class="atelier-journal-yesterday">
+          <summary class="atelier-journal-yesterday-summary">
+            <strong>昨日回看</strong>
+            <span>{{ yesterdayHomeThreads.length ? `共 ${yesterdayHomeThreads.length} 笔` : '没有新增' }}</span>
+          </summary>
+
+          <div class="atelier-journal-yesterday-body">
+            <div class="atelier-journal-layout" :class="{ 'is-single': yesterdayMemberCards.length === 1 }">
+              <article
+                v-for="card in yesterdayMemberCards"
+                :key="`${card.memberId}-yesterday`"
+                :class="['journal-member-card', card.toneClass, { 'is-empty': !card.highlight }]"
+              >
+                <div class="journal-member-head">
+                  <div class="journal-member-title">
+                    <h3>{{ card.memberName }}</h3>
+                  </div>
+                </div>
+
+                <div v-if="card.highlight" class="journal-member-highlight">
+                  <p class="journal-feature-meta">{{ card.highlight.timeLabel }}</p>
+                  <strong>{{ card.highlight.headlineText }}</strong>
+                </div>
+
+                <div
+                  v-for="followUp in card.followUps"
+                  :key="followUp.id"
+                  class="journal-member-followup"
+                >
+                  <div class="journal-member-followup-copy">
+                    <strong>{{ followUp.headlineText }}</strong>
+                    <span>{{ followUp.timeLabel }}</span>
+                  </div>
+                </div>
+
+                <div v-if="!card.highlight && card.followUps.length === 0" class="journal-member-empty">
+                  <p class="journal-feature-meta">昨天还没有新的近况</p>
+                  <h3>昨天没有新增推进，今天有动静时这里会先响一声。</h3>
+                </div>
+              </article>
+
+              <article v-if="sharedYesterdayMoment" class="journal-shared-strip">
+                <p class="journal-shared-kicker">一起捎来</p>
+                <strong>{{ sharedYesterdayMoment.headlineText }}</strong>
+                <span>{{ sharedYesterdayMoment.timeLabel }}</span>
+              </article>
+            </div>
           </div>
-        </div>
-
-        <div class="atelier-agenda-layout">
-          <section class="atelier-lane atelier-lane-due">
-            <div class="lane-head">
-              <div class="section-icon is-calendar" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none">
-                  <rect x="4" y="5" width="16" height="15" rx="2.5" />
-                  <path d="M8 3v4" />
-                  <path d="M16 3v4" />
-                  <path d="M4 10h16" />
-                </svg>
-              </div>
-              <div class="lane-head-copy">
-                <h3>最近推进</h3>
-                <CopyFold
-                  as="p"
-                  layer="supporting"
-                  page="home"
-                  target="agenda-recent-progress"
-                  text="先回到刚有动静的几条愿望。"
-                />
-              </div>
-            </div>
-
-            <div v-if="recentlyUpdatedWishes.length" class="lane-list">
-              <article v-for="wish in recentlyUpdatedWishes" :key="wish.id" class="lane-row">
-                <div class="lane-row-copy">
-                  <strong>{{ wish.title }}</strong>
-                  <p>{{ getWishProgressHint(wish) }}</p>
-                </div>
-                <RouterLink class="lane-link" :to="{ name: 'wish-detail', params: { id: wish.id } }">
-                  查看
-                </RouterLink>
-              </article>
-            </div>
-
-            <div v-else class="lane-empty">
-              <h3>这里还没有推进中的愿望</h3>
-              <CopyFold
-                as="p"
-                layer="supporting"
-                page="home"
-                target="agenda-recent-progress-empty"
-                text="写下一条愿望，或给已有愿望添一步进展。"
-              />
-            </div>
-          </section>
-
-          <section class="atelier-lane atelier-lane-coin">
-            <div class="lane-head">
-              <div class="section-icon is-coin" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="8.5" />
-                  <path d="M12 8.2l1.2 2.6 2.8.4-2 2 .5 2.8-2.5-1.4L9.5 16l.5-2.8-2-2 2.8-.4L12 8.2z" />
-                </svg>
-              </div>
-              <div class="lane-head-copy">
-                <h3>最近该推进哪里</h3>
-                <CopyFold
-                  as="p"
-                  layer="supporting"
-                  page="home"
-                  target="agenda-next-progress"
-                  text="先看哪几条还在路上，顺手接着往前走一点。"
-                />
-              </div>
-            </div>
-
-            <div v-if="recentlyUpdatedWishes.length" class="lane-list">
-              <article v-for="wish in recentlyUpdatedWishes" :key="wish.id" class="lane-row">
-                <div class="lane-row-copy">
-                  <strong>{{ wish.title }}</strong>
-                  <p>{{ getWishProgressHint(wish) }}</p>
-                </div>
-                <RouterLink class="lane-link" :to="{ name: 'wish-detail', params: { id: wish.id } }">
-                  查看
-                </RouterLink>
-              </article>
-            </div>
-
-            <div v-else class="lane-empty">
-              <h3>这里还没有正在推进的愿望</h3>
-              <CopyFold
-                as="p"
-                layer="supporting"
-                page="home"
-                target="agenda-next-progress-empty"
-                text="写下一条愿望，或者给它补一点进度，这里就会亮起来。"
-              />
-            </div>
-          </section>
-        </div>
+        </details>
       </article>
+
     </section>
   </section>
 </template>
@@ -1192,9 +1334,7 @@ function formatRecentThreadTime(timestamp: string) {
 
 .focus-card h2,
 .section-head h2,
-.journal-feature h3,
-.lane-head h3,
-.lane-empty h3 {
+.journal-feature h3 {
   margin: 0;
   font-family: var(--atelier-heading-font);
   font-weight: 600;
@@ -1254,9 +1394,6 @@ function formatRecentThreadTime(timestamp: string) {
 .atelier-stage-copy,
 .atelier-stage-hint,
 .focus-copy,
-.lane-head p,
-.lane-row p,
-.lane-empty p,
 .journal-feature p,
 .journal-entry p,
 .section-head p {
@@ -1268,9 +1405,6 @@ function formatRecentThreadTime(timestamp: string) {
 
 .atelier-stage-copy,
 .atelier-stage-hint,
-.lane-head p,
-.lane-row p,
-.lane-empty p,
 .journal-feature p,
 .journal-entry p,
 .section-head p {
@@ -1280,8 +1414,7 @@ function formatRecentThreadTime(timestamp: string) {
   letter-spacing: var(--type-supporting-spacing);
 }
 
-.focus-link,
-.lane-link {
+.focus-link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1298,15 +1431,13 @@ function formatRecentThreadTime(timestamp: string) {
     box-shadow 180ms ease;
 }
 
-.focus-link,
-.lane-link {
+.focus-link {
   background: var(--warm-panel);
   color: var(--atelier-ink);
   border: 1px solid var(--atelier-line);
 }
 
 .focus-card,
-.atelier-lane,
 .journal-feature,
 .atelier-metric-card {
   border: 1px solid var(--atelier-line);
@@ -1333,17 +1464,14 @@ function formatRecentThreadTime(timestamp: string) {
 
 .focus-head,
 .focus-footer,
-.lane-row,
-.section-head,
-.lane-head {
+.section-head {
   display: flex;
   justify-content: space-between;
   gap: 0.88rem;
   align-items: flex-start;
 }
 
-.section-head-copy,
-.lane-head-copy {
+.section-head-copy {
   display: grid;
   gap: 0.2rem;
 }
@@ -1374,12 +1502,10 @@ function formatRecentThreadTime(timestamp: string) {
   letter-spacing: var(--type-l6-spacing);
 }
 
-.lane-row strong,
 .ritual-row strong,
 .journal-entry strong,
 .journal-feature h3,
-.section-head h2,
-.lane-head h3 {
+.section-head h2 {
   color: var(--atelier-ink);
 }
 
@@ -1392,8 +1518,7 @@ function formatRecentThreadTime(timestamp: string) {
   border-top: 1px solid var(--warm-border-soft);
 }
 
-.focus-link,
-.lane-link {
+.focus-link {
   flex-shrink: 0;
   min-height: 44px;
   padding: 0.64rem 0.96rem;
@@ -1542,17 +1667,9 @@ function formatRecentThreadTime(timestamp: string) {
   gap: 1.08rem;
 }
 
-.atelier-agenda,
 .atelier-journal {
   padding: 1.2rem;
   border-radius: var(--radius-xl);
-}
-
-.atelier-agenda {
-  grid-column: 1 / -1;
-  background:
-    linear-gradient(180deg, var(--surface-card), var(--surface-soft)),
-    radial-gradient(circle at 0% 0%, var(--danger-panel), transparent 34%);
 }
 
 .atelier-journal {
@@ -1584,84 +1701,6 @@ function formatRecentThreadTime(timestamp: string) {
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
   letter-spacing: var(--type-supporting-spacing);
-}
-
-.atelier-agenda-layout {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
-}
-
-.atelier-lane {
-  display: grid;
-  gap: 1rem;
-  align-content: start;
-  padding: 1.08rem;
-  border-radius: var(--radius-xl);
-}
-
-.atelier-lane-due {
-  background: linear-gradient(180deg, var(--danger-panel), var(--warm-panel-strong));
-}
-
-.atelier-lane-coin {
-  background: linear-gradient(180deg, var(--warning-panel), var(--warm-panel-strong));
-}
-
-.lane-head {
-  align-items: flex-start;
-}
-
-.lane-head h3 {
-  font-size: var(--type-card-title-size);
-  line-height: var(--type-card-title-line);
-  letter-spacing: var(--type-card-title-tracking);
-}
-
-.lane-list {
-  display: grid;
-  gap: 0.76rem;
-}
-
-.lane-row {
-  align-items: start;
-  padding-bottom: 0.88rem;
-  border-bottom: 1px solid var(--warm-border-soft);
-}
-
-.lane-row:last-child {
-  padding-bottom: 0;
-  border-bottom: none;
-}
-
-.lane-row-copy {
-  display: grid;
-  gap: 0.28rem;
-  max-width: 31ch;
-}
-
-.lane-row strong {
-  display: block;
-  font-size: var(--type-l5-size);
-  line-height: 1.48;
-}
-
-.lane-row p {
-  font-size: var(--type-body-size);
-  line-height: var(--type-body-line);
-}
-
-.lane-empty {
-  display: grid;
-  gap: 0.42rem;
-  max-width: 32ch;
-  padding: 0.12rem 0;
-}
-
-.lane-empty h3 {
-  font-size: var(--type-card-title-size);
-  line-height: var(--type-card-title-line);
-  letter-spacing: var(--type-card-title-tracking);
 }
 
 .journal-entry strong {
@@ -1709,7 +1748,6 @@ function formatRecentThreadTime(timestamp: string) {
   gap: 0.16rem;
 }
 
-.journal-member-role,
 .journal-shared-kicker {
   margin: 0;
   color: var(--atelier-ink-soft);
@@ -1744,6 +1782,7 @@ function formatRecentThreadTime(timestamp: string) {
 
 .journal-member-highlight strong,
 .journal-member-entry strong,
+.journal-member-followup-copy strong,
 .journal-shared-strip strong {
   display: block;
   margin: 0;
@@ -1816,6 +1855,58 @@ function formatRecentThreadTime(timestamp: string) {
   background: var(--warm-panel);
 }
 
+.atelier-journal-yesterday {
+  margin-top: 0.92rem;
+  border-top: 1px solid var(--warm-border-soft);
+  padding-top: 0.92rem;
+}
+
+.atelier-journal-yesterday-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.atelier-journal-yesterday-summary::-webkit-details-marker {
+  display: none;
+}
+
+.atelier-journal-yesterday-summary strong {
+  color: var(--atelier-ink);
+  font-family: var(--atelier-heading-font);
+  font-size: var(--type-l6-size);
+  line-height: var(--type-l6-line);
+  letter-spacing: var(--type-l6-spacing);
+}
+
+.atelier-journal-yesterday-summary span {
+  color: var(--atelier-ink-soft);
+  font-size: var(--type-supporting-size);
+  line-height: var(--type-supporting-line);
+  letter-spacing: var(--type-supporting-spacing);
+}
+
+.atelier-journal-yesterday-summary::after {
+  content: '';
+  width: 0.42rem;
+  height: 0.42rem;
+  border-right: 1.4px solid var(--atelier-ink-soft);
+  border-bottom: 1.4px solid var(--atelier-ink-soft);
+  transform: rotate(45deg);
+  transition: transform 150ms ease;
+}
+
+.atelier-journal-yesterday[open] .atelier-journal-yesterday-summary::after {
+  transform: rotate(225deg);
+}
+
+.atelier-journal-yesterday-body {
+  margin-top: 0.78rem;
+}
+
 .section-icon {
   display: inline-flex;
   align-items: center;
@@ -1841,14 +1932,6 @@ function formatRecentThreadTime(timestamp: string) {
   stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-
-.section-icon.is-calendar {
-  color: #8a6e52;
-}
-
-.section-icon.is-coin {
-  color: #ab7d39;
 }
 
 .section-icon.is-spark {
@@ -2349,7 +2432,6 @@ function formatRecentThreadTime(timestamp: string) {
 
 @media (hover: hover) {
   .focus-link:hover,
-  .lane-link:hover,
   .atelier-mini-link:hover {
     transform: translateY(-1px);
   }
@@ -2358,13 +2440,11 @@ function formatRecentThreadTime(timestamp: string) {
 @media (max-width: 1140px) {
   .atelier-hero,
   .atelier-journal-layout,
-  .atelier-agenda-layout,
   .atelier-grid,
   .wish-bottle-main {
     grid-template-columns: 1fr;
   }
 
-  .atelier-agenda,
   .atelier-journal {
     grid-column: 1 / -1;
   }
@@ -2397,15 +2477,12 @@ function formatRecentThreadTime(timestamp: string) {
   .atelier-marquee,
   .section-head,
   .focus-head,
-  .focus-footer,
-  .lane-row,
-  .lane-head {
+  .focus-footer {
     flex-direction: column;
     align-items: flex-start;
   }
 
   .atelier-hero,
-  .atelier-agenda,
   .atelier-journal {
     padding: 1rem;
     border-radius: var(--radius-xl);
@@ -2422,7 +2499,6 @@ function formatRecentThreadTime(timestamp: string) {
   }
 
   .focus-card,
-  .atelier-lane,
   .journal-member-card,
   .atelier-progress-hero {
     padding: 0.96rem;
@@ -2437,6 +2513,24 @@ function formatRecentThreadTime(timestamp: string) {
   .journal-shared-strip {
     padding: 0.82rem 0.9rem;
     border-radius: 20px;
+  }
+
+  .atelier-journal-yesterday {
+    margin-top: 0.8rem;
+    padding-top: 0.8rem;
+  }
+
+  .atelier-journal-yesterday-summary {
+    gap: 0.4rem;
+  }
+
+  .atelier-journal-yesterday-summary strong {
+    font-size: var(--type-supporting-size);
+    line-height: var(--type-supporting-line);
+  }
+
+  .atelier-journal-yesterday-body {
+    margin-top: 0.62rem;
   }
 
   .atelier-marquee-actions {
@@ -2560,7 +2654,6 @@ function formatRecentThreadTime(timestamp: string) {
   }
 
   .focus-link,
-  .lane-link,
   .atelier-mini-link {
     transition: none;
   }

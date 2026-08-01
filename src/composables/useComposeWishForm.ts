@@ -50,7 +50,7 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
   }
 
   const draft = ref<WishDraft>(createEmptyDraft())
-  const editingWish = computed(() => {
+  const requestedEditingWish = computed(() => {
     if (!allowEditing) {
       return null
     }
@@ -58,9 +58,34 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
     const wishId = String(route.query.edit ?? '')
     return wishId ? wishStore.findById(wishId) ?? null : null
   })
+  const editingWish = computed(() => {
+    const targetWish = requestedEditingWish.value
+
+    if (!targetWish) {
+      return null
+    }
+
+    const memberId = authStore.currentMemberId || authStore.currentMember?.id || ''
+    return memberId && targetWish.ownerId === memberId ? targetWish : null
+  })
+  const hasBlockedEditingWish = computed(() => !!requestedEditingWish.value && !editingWish.value)
   const formRouteName = computed(() => {
     return typeof route.name === 'string' ? route.name : 'compose'
   })
+
+  watch(
+    hasBlockedEditingWish,
+    (blocked) => {
+      if (!blocked) {
+        return
+      }
+
+      feedbackMessage.value = '只能编辑你自己的愿望，已切回新建模式。'
+      feedbackTone.value = 'danger'
+      void router.replace({ name: formRouteName.value })
+    },
+    { immediate: true },
+  )
 
   watch(
     () => authStore.currentMemberId,
@@ -177,6 +202,9 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
       if (!editingWish.value) {
         // 新建 count 愿望时固定从 0 开始，避免创建时带入已完成量。
         draft.value.progressCurrent = 0
+      } else {
+        // 编辑愿望时不允许改写既成进度。
+        draft.value.progressCurrent = editingWish.value.progressCurrent
       }
 
       draft.value.progressCurrent = Math.max(0, Math.min(draft.value.progressCurrent, draft.value.progressTarget))

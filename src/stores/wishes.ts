@@ -2210,6 +2210,11 @@ export const useWishStore = defineStore('wishes', () => {
       return false
     }
 
+    if (!isCurrentMemberWishOwner(existingWish)) {
+      syncMessage.value = '只能编辑你自己的愿望。'
+      return false
+    }
+
     const progressCapabilityMessage = getKnownCapabilityMessage('hasWishProgress')
 
     if (progressCapabilityMessage && (draft.progressMode !== 'none' || existingWish.progressMode !== 'none')) {
@@ -2268,6 +2273,13 @@ export const useWishStore = defineStore('wishes', () => {
   }
 
   async function deleteWish(id: string) {
+    const existingWish = findById(id)
+
+    if (!existingWish || !isCurrentMemberWishOwner(existingWish)) {
+      syncMessage.value = '只能移走你自己的愿望。'
+      return false
+    }
+
     if (supabase && isUsingCloudWishes.value) {
       const client = supabase
 

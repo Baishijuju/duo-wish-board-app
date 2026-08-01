@@ -275,7 +275,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     }
 
     if (claimKind === 'count_reward' || claimKind === 'count_star_coin') {
-      return '进度奖励'
+      return '进度更新'
     }
 
     if (claimKind === 'step_reward' || claimKind === 'step_star_coin') {
@@ -283,7 +283,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     }
 
     if (claimKind === 'star_coin') {
-      return sourceStepId ? '步骤奖励' : '进度奖励'
+      return sourceStepId ? '步骤奖励' : '进度更新'
     }
 
     if (claimKind === 'wish_reward' || claimKind === 'wish_completion_bonus') {
@@ -369,6 +369,14 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
       }
 
       return `花费 ${spentCopy} 枚星星币，兑换了「${rewardTitle}」。`
+    }
+
+    if (/写下了新的愿望「\s*.+?\s*」。?$/u.test(thread.messageText)) {
+      return thread.messageText.replace(/写下了新的愿望/u, '写下愿望')
+    }
+
+    if (/写下了新愿望「\s*.+?\s*」。?$/u.test(thread.messageText)) {
+      return thread.messageText.replace(/写下了新愿望/u, '写下愿望')
     }
 
     return thread.messageText

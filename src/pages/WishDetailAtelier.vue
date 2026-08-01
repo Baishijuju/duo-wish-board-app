@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import CopyFold from '../components/CopyFold.vue'
 import ActionCard from '../components/page/ActionCard.vue'
@@ -10,11 +10,29 @@ import { getWishStatusSemantic } from '../shared/statusSemantics'
 import WishCompletionFireworks from '../components/WishCompletionFireworks.vue'
 import WishBottleStarDrop from '../components/WishBottleStarDrop.vue'
 import { getWishBottleColorTier as getWishBottleColorTierModule } from '../modules/wishes/wish.progress'
-import { type WishImage } from '../stores/wishes'
+import { type WishImage, type WishThreadEntry } from '../stores/wishes'
 import { formatBeijingDateTime } from '../utils/datetime'
 import { useWishDetailPageState } from '../composables/useWishDetailPageState'
 
 const MOBILE_THREAD_PREVIEW_COUNT = 2
+const BEIJING_TIME_OFFSET_MS = 8 * 60 * 60 * 1000
+const MONTH_HEAT_WEEKDAY_LABELS = ['一', '二', '三', '四', '五', '六', '日']
+
+type MonthHeatProgressEvent = {
+  dateKey: string
+  count: number
+}
+
+type MonthHeatCell = {
+  id: string
+  dateKey: string
+  day: number
+  count: number
+  level: number
+  isBlank: boolean
+  isToday: boolean
+  title: string
+}
 
 const {
   EXTENDED_THREAD_REACTION_OPTIONS,
@@ -35,7 +53,6 @@ const {
   commentFeedbackTone,
   commentImageFiles,
   commentImageInputVersion,
-  countProgressDraft,
   coverImageUrl,
   currentWishStarCoinSummary,
   deleteImage,
@@ -74,7 +91,6 @@ const {
   isEditingThreadComment,
   isSavingThreadEdit,
   isSubmittingComment,
-  isSubmittingStep,
   isThreadReactionActive,
   isThreadReactionExpanded,
   isThreadReactionMembersExpanded,
@@ -88,20 +104,15 @@ const {
   previewImageIndex,
   progressSnapshot,
   removeCommentImageFile,
-  removeWishStep,
   retryComment,
   rewardFeedback,
   rewardFeedbackTone,
-  saveCountProgress,
   saveThreadComment,
   selectedWish,
   startEditingThreadComment,
-  stepDraft,
-  stepStarCoinDraft,
   stepPreview,
   stepRewardFeedbackTargetId,
   submitComment,
-  submitWishStep,
   threadFeedback,
   threadFeedbackTone,
   toggleThreadReactionExpansion,
@@ -124,7 +135,7 @@ const detailTags = computed(() => {
   ]
 })
 
-const visibleThreads = computed(() => wishJournalEntries.value)
+const visibleThreads = computed(() => mergeCompletionMomentThreads(wishJournalEntries.value))
 const visibleImages = computed(() => {
   const firstWishImage = selectedWish.value?.images[0]
 
@@ -161,6 +172,250 @@ const mobileOverflowThreads = computed(() => visibleThreads.value.slice(MOBILE_T
 const mobileNextPendingStep = computed(() => selectedWish.value?.steps.find((step) => !step.isDone) ?? null)
 const mobilePrimaryStep = computed(() => mobileNextPendingStep.value ?? selectedWish.value?.steps[0] ?? null)
 const mobileCompletedStepCount = computed(() => selectedWish.value?.steps.filter((step) => step.isDone).length ?? 0)
+const monthHeatAnchorMonthKey = ref(getBeijingMonthKey())
+const selectedHeatDateKey = ref<string | null>(null)
+const monthHeatTodayDateKey = computed(() => getBeijingDateKey())
+const monthHeatProgressEvents = computed<MonthHeatProgressEvent[]>(() => {
+  const wish = selectedWish.value
+
+  if (!wish) {
+    return []
+  }
+
+  const events: MonthHeatProgressEvent[] = []
+
+  for (const thread of wishJournalEntries.value) {
+    if (thread.wishId !== wish.id) {
+      continue
+    }
+
+    if (thread.eventKind === 'wish_step_completed') {
+      events.push({
+        count: 1,
+        dateKey: getBeijingDateKey(thread.createdAt),
+      })
+      continue
+    }
+
+    if (thread.eventKind !== 'reward_claimed') {
+      continue
+    }
+
+    const claimKind = typeof thread.meta.claimKind === 'string' ? thread.meta.claimKind : ''
+    const sourceStepId = typeof thread.meta.sourceStepId === 'string' ? thread.meta.sourceStepId : ''
+    const isCountProgressClaim = claimKind === 'count_star_coin'
+      || claimKind === 'count_reward'
+      || (claimKind === 'star_coin' && !sourceStepId)
+
+    if (!isCountProgressClaim) {
+      continue
+    }
+
+    let count = 1
+
+    if (Array.isArray(thread.meta.claimIds)) {
+      const claimIds = thread.meta.claimIds.filter((claimId): claimId is string => typeof claimId === 'string' && claimId.trim().length > 0)
+
+      if (claimIds.length) {
+        count = claimIds.length
+      }
+    }
+
+    events.push({
+      count,
+      dateKey: getBeijingDateKey(thread.createdAt),
+    })
+  }
+
+  return events
+})
+const monthHeatCurrentMonthKey = computed(() => getBeijingMonthKey())
+const monthHeatAvailableMonthKeys = computed(() => {
+  const monthKeys = [...new Set(monthHeatProgressEvents.value.map((event) => event.dateKey.slice(0, 7)))].sort()
+  const earliestMonthKey = monthKeys[0] ?? monthHeatCurrentMonthKey.value
+
+  return buildMonthKeyRange(earliestMonthKey, monthHeatCurrentMonthKey.value)
+})
+const monthHeatActiveMonthKey = computed(() => {
+  const keys = monthHeatAvailableMonthKeys.value
+
+  if (!keys.length) {
+    return monthHeatCurrentMonthKey.value
+  }
+
+  if (keys.includes(monthHeatAnchorMonthKey.value)) {
+    return monthHeatAnchorMonthKey.value
+  }
+
+  if (monthHeatAnchorMonthKey.value < keys[0]) {
+    return keys[0]
+  }
+
+  const latestMonthKey = keys[keys.length - 1]!
+
+  if (monthHeatAnchorMonthKey.value > latestMonthKey) {
+    return latestMonthKey
+  }
+
+  return latestMonthKey
+})
+const monthHeatMonthLabel = computed(() => formatMonthHeatLabel(monthHeatActiveMonthKey.value))
+const monthHeatActiveMonthIndex = computed(() => monthHeatAvailableMonthKeys.value.indexOf(monthHeatActiveMonthKey.value))
+const canShowPreviousMonthHeat = computed(() => monthHeatActiveMonthIndex.value > 0)
+const canShowNextMonthHeat = computed(() => {
+  const lastIndex = monthHeatAvailableMonthKeys.value.length - 1
+  return monthHeatActiveMonthIndex.value >= 0 && monthHeatActiveMonthIndex.value < lastIndex
+})
+const monthHeatMonthDateKeys = computed(() => buildMonthDateKeys(monthHeatActiveMonthKey.value))
+const monthHeatCells = computed<MonthHeatCell[]>(() => {
+  const activeMonthKey = monthHeatActiveMonthKey.value
+  const dateKeys = monthHeatMonthDateKeys.value
+  const countsByDateKey = new Map<string, number>()
+
+  for (const event of monthHeatProgressEvents.value) {
+    if (!event.dateKey.startsWith(activeMonthKey)) {
+      continue
+    }
+
+    countsByDateKey.set(event.dateKey, (countsByDateKey.get(event.dateKey) ?? 0) + Math.max(0, event.count))
+  }
+
+  const baseCells = dateKeys.map((dateKey) => {
+    const count = countsByDateKey.get(dateKey) ?? 0
+    const { day, month } = parseDateKey(dateKey)
+
+    return {
+      count,
+      dateKey,
+      day,
+      id: `month-heat-${dateKey}`,
+      isBlank: false,
+      isToday: dateKey === monthHeatTodayDateKey.value,
+      level: 0,
+      title: `${month} 月 ${day} 日：${count} 次推进`,
+    }
+  })
+
+  const maxCount = Math.max(1, ...baseCells.map((cell) => cell.count))
+  const leveledCells = baseCells.map((cell) => ({
+    ...cell,
+    level: getMonthHeatLevel(cell.count, maxCount),
+  }))
+
+  const firstDateKey = dateKeys[0]
+
+  if (!firstDateKey) {
+    return leveledCells
+  }
+
+  const leadingBlankCount = getMondayBasedWeekdayIndex(firstDateKey)
+  const leadingBlanks: MonthHeatCell[] = Array.from({ length: leadingBlankCount }, (_, index) => ({
+    count: 0,
+    dateKey: '',
+    day: 0,
+    id: `month-heat-blank-${activeMonthKey}-${index}`,
+    isBlank: true,
+    isToday: false,
+    level: 0,
+    title: '',
+  }))
+
+  return [...leadingBlanks, ...leveledCells]
+})
+const monthHeatActiveDayCount = computed(() => monthHeatCells.value.filter((cell) => !cell.isBlank && cell.count > 0).length)
+const monthHeatPeakCount = computed(() => monthHeatCells.value.reduce((max, cell) => cell.isBlank ? max : Math.max(max, cell.count), 0))
+const hasActiveHeatDateFocus = computed(() => !!selectedHeatDateKey.value)
+const selectedHeatDateRecordCount = computed(() => {
+  const dateKey = selectedHeatDateKey.value
+
+  if (!dateKey) {
+    return 0
+  }
+
+  return visibleThreads.value.filter((thread) => getBeijingDateKey(thread.createdAt) === dateKey).length
+})
+const monthHeatSummary = computed(() => {
+  if (selectedHeatDateKey.value) {
+    const label = formatMonthHeatDayLabel(selectedHeatDateKey.value)
+    return `已高亮 ${label} · 共 ${selectedHeatDateRecordCount.value} 笔记录。`
+  }
+
+  if (!monthHeatActiveDayCount.value) {
+    return `${monthHeatMonthLabel.value}还没有推进记录。`
+  }
+
+  return `本月亮起 ${monthHeatActiveDayCount.value} 天，单日最高 ${monthHeatPeakCount.value} 次推进。`
+})
+
+function goToPreviousMonthHeat() {
+  const currentIndex = monthHeatAvailableMonthKeys.value.indexOf(monthHeatActiveMonthKey.value)
+
+  if (currentIndex <= 0) {
+    return
+  }
+
+  monthHeatAnchorMonthKey.value = monthHeatAvailableMonthKeys.value[currentIndex - 1]!
+}
+
+function goToNextMonthHeat() {
+  const currentIndex = monthHeatAvailableMonthKeys.value.indexOf(monthHeatActiveMonthKey.value)
+  const nextIndex = currentIndex + 1
+
+  if (currentIndex < 0 || nextIndex >= monthHeatAvailableMonthKeys.value.length) {
+    return
+  }
+
+  monthHeatAnchorMonthKey.value = monthHeatAvailableMonthKeys.value[nextIndex]!
+}
+
+function toggleHeatDateFocus(cell: MonthHeatCell) {
+  if (cell.isBlank || cell.count <= 0 || !cell.dateKey) {
+    return
+  }
+
+  selectedHeatDateKey.value = selectedHeatDateKey.value === cell.dateKey ? null : cell.dateKey
+}
+
+function clearHeatDateFocus() {
+  selectedHeatDateKey.value = null
+}
+
+function isThreadOnFocusedHeatDate(thread: { createdAt: string }) {
+  const dateKey = selectedHeatDateKey.value
+
+  if (!dateKey) {
+    return true
+  }
+
+  return getBeijingDateKey(thread.createdAt) === dateKey
+}
+
+function isThreadMutedByHeatDate(thread: { createdAt: string }) {
+  const dateKey = selectedHeatDateKey.value
+
+  if (!dateKey) {
+    return false
+  }
+
+  return getBeijingDateKey(thread.createdAt) !== dateKey
+}
+
+watch(
+  () => monthHeatActiveMonthKey.value,
+  (monthKey) => {
+    if (selectedHeatDateKey.value && !selectedHeatDateKey.value.startsWith(monthKey)) {
+      selectedHeatDateKey.value = null
+    }
+  },
+)
+
+watch(
+  () => selectedWish.value?.id ?? '',
+  () => {
+    selectedHeatDateKey.value = null
+    monthHeatAnchorMonthKey.value = getBeijingMonthKey()
+  },
+)
 const canShowProgressCompletionAction = computed(() => {
   const progress = progressSnapshot.value
 
@@ -356,6 +611,265 @@ const stickyCtaFeedbackState = computed(() => {
     tone: 'neutral' as const,
   }
 })
+
+function getBeijingDate(dateValue: Date | number | string = new Date()) {
+  const timestamp = dateValue instanceof Date
+    ? dateValue.getTime()
+    : typeof dateValue === 'number'
+      ? dateValue
+      : new Date(dateValue).getTime()
+
+  return new Date((Number.isNaN(timestamp) ? Date.now() : timestamp) + BEIJING_TIME_OFFSET_MS)
+}
+
+function getBeijingDateKey(dateValue: Date | number | string = new Date()) {
+  const date = getBeijingDate(dateValue)
+  const year = date.getUTCFullYear()
+  const month = `${date.getUTCMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getUTCDate()}`.padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+function getBeijingMonthKey(dateValue: Date | number | string = new Date()) {
+  const date = getBeijingDate(dateValue)
+  const year = date.getUTCFullYear()
+  const month = `${date.getUTCMonth() + 1}`.padStart(2, '0')
+
+  return `${year}-${month}`
+}
+
+function parseDateKey(dateKey: string) {
+  const [yearText, monthText, dayText = '1'] = dateKey.split('-')
+
+  return {
+    day: Number(dayText),
+    month: Number(monthText),
+    year: Number(yearText),
+  }
+}
+
+function buildMonthDateKeys(monthKey: string) {
+  const [yearText, monthText] = monthKey.split('-')
+  const year = Number(yearText)
+  const month = Number(monthText)
+  const dayCount = new Date(Date.UTC(year, month, 0)).getUTCDate()
+
+  return Array.from({ length: dayCount }, (_, index) => `${yearText}-${monthText}-${`${index + 1}`.padStart(2, '0')}`)
+}
+
+function buildMonthKeyRange(startMonthKey: string, endMonthKey: string) {
+  if (startMonthKey > endMonthKey) {
+    return [endMonthKey]
+  }
+
+  const range: string[] = []
+  let cursor = startMonthKey
+
+  while (cursor <= endMonthKey) {
+    range.push(cursor)
+    cursor = addMonthsToMonthKey(cursor, 1)
+  }
+
+  return range
+}
+
+function addMonthsToMonthKey(monthKey: string, offset: number) {
+  const [yearText, monthText] = monthKey.split('-')
+  const date = new Date(Date.UTC(Number(yearText), Number(monthText) - 1 + offset, 1))
+  const year = date.getUTCFullYear()
+  const month = `${date.getUTCMonth() + 1}`.padStart(2, '0')
+
+  return `${year}-${month}`
+}
+
+function getMondayBasedWeekdayIndex(dateKey: string) {
+  const { day, month, year } = parseDateKey(dateKey)
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay()
+
+  return (weekday + 6) % 7
+}
+
+function getMonthHeatLevel(value: number, maxValue: number) {
+  if (value <= 0) {
+    return 0
+  }
+
+  return Math.max(1, Math.ceil((value / Math.max(1, maxValue)) * 5))
+}
+
+function formatMonthHeatLabel(monthKey: string) {
+  const [year, month] = monthKey.split('-')
+  return `${year} 年 ${Number(month)} 月`
+}
+
+function formatMonthHeatDayLabel(dateKey: string) {
+  const { day, month } = parseDateKey(dateKey)
+  return `${month} 月 ${day} 日`
+}
+
+function mergeCompletionMomentThreads(entries: WishThreadEntry[]) {
+  const consumedThreadIds = new Set<string>()
+  const mergedEntries: WishThreadEntry[] = []
+
+  for (const thread of entries) {
+    if (consumedThreadIds.has(thread.id)) {
+      continue
+    }
+
+    if (thread.eventKind !== 'wish_completed') {
+      mergedEntries.push(thread)
+      continue
+    }
+
+    const completionRewardThread = entries.find((candidate) => {
+      if (candidate.id === thread.id || consumedThreadIds.has(candidate.id)) {
+        return false
+      }
+
+      if (!canMergeIntoCompletionMoment(thread, candidate)) {
+        return false
+      }
+
+      return isCompletionRewardClaimThread(candidate)
+    })
+
+    const countProgressRewardThread = entries.find((candidate) => {
+      if (candidate.id === thread.id || consumedThreadIds.has(candidate.id)) {
+        return false
+      }
+
+      if (!canMergeIntoCompletionMoment(thread, candidate)) {
+        return false
+      }
+
+      return isCountProgressRewardClaimThread(candidate)
+    })
+
+    if (!completionRewardThread && !countProgressRewardThread) {
+      mergedEntries.push(thread)
+      continue
+    }
+
+    if (completionRewardThread) {
+      consumedThreadIds.add(completionRewardThread.id)
+    }
+
+    if (countProgressRewardThread) {
+      consumedThreadIds.add(countProgressRewardThread.id)
+    }
+
+    mergedEntries.push(
+      createMergedCompletionMomentThread(thread, completionRewardThread ?? null, countProgressRewardThread ?? null),
+    )
+  }
+
+  return mergedEntries
+}
+
+function canMergeIntoCompletionMoment(baseThread: WishThreadEntry, candidate: WishThreadEntry) {
+  if (baseThread.wishId !== candidate.wishId || baseThread.actorId !== candidate.actorId) {
+    return false
+  }
+
+  if (getThreadMomentMinuteKey(baseThread.createdAt) !== getThreadMomentMinuteKey(candidate.createdAt)) {
+    return false
+  }
+
+  if (candidate.images.length > 0 || candidate.reactions.length > 0) {
+    return false
+  }
+
+  return true
+}
+
+function isCompletionRewardClaimThread(thread: WishThreadEntry) {
+  if (thread.eventKind !== 'reward_claimed') {
+    return false
+  }
+
+  const claimKind = typeof thread.meta.claimKind === 'string' ? thread.meta.claimKind : ''
+  return claimKind === 'wish_completion_bonus' || claimKind === 'wish_reward'
+}
+
+function isCountProgressRewardClaimThread(thread: WishThreadEntry) {
+  if (thread.eventKind !== 'reward_claimed') {
+    return false
+  }
+
+  const claimKind = typeof thread.meta.claimKind === 'string' ? thread.meta.claimKind : ''
+  const sourceStepId = typeof thread.meta.sourceStepId === 'string' ? thread.meta.sourceStepId : ''
+  return claimKind === 'count_star_coin' || claimKind === 'count_reward' || (claimKind === 'star_coin' && !sourceStepId)
+}
+
+function getThreadMomentMinuteKey(timestamp: string) {
+  const date = getBeijingDate(timestamp)
+  const year = date.getUTCFullYear()
+  const month = `${date.getUTCMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getUTCDate()}`.padStart(2, '0')
+  const hour = `${date.getUTCHours()}`.padStart(2, '0')
+  const minute = `${date.getUTCMinutes()}`.padStart(2, '0')
+
+  return `${year}-${month}-${day} ${hour}:${minute}`
+}
+
+function getNumericMetaValue(meta: Record<string, unknown>, key: string) {
+  const value = meta[key]
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+
+  return null
+}
+
+function formatDecimal(value: number) {
+  const rounded = Math.round(value * 10) / 10
+  return Number.isInteger(rounded) ? `${rounded}` : rounded.toFixed(1)
+}
+
+function createMergedCompletionMomentThread(
+  completionThread: WishThreadEntry,
+  completionRewardThread: WishThreadEntry | null,
+  countProgressRewardThread: WishThreadEntry | null,
+) {
+  const mergedParts: string[] = ['这条愿望收官了']
+
+  if (completionRewardThread) {
+    const completionRewardCoins = Math.abs(getNumericMetaValue(completionRewardThread.meta, 'starCoinDelta') ?? 0)
+
+    if (completionRewardCoins > 0) {
+      mergedParts.push(`完成奖励 ${formatDecimal(completionRewardCoins)} 星币已入账`)
+    } else {
+      mergedParts.push('完成奖励已记下')
+    }
+  }
+
+  if (countProgressRewardThread) {
+    const quantity = Math.max(1, getNumericMetaValue(countProgressRewardThread.meta, 'quantity') ?? 1)
+    const progressRewardCoins = Math.abs(getNumericMetaValue(countProgressRewardThread.meta, 'starCoinDelta') ?? 0)
+
+    if (progressRewardCoins > 0) {
+      mergedParts.push(`最后 ${formatDecimal(quantity)} 点推进也结算了 ${formatDecimal(progressRewardCoins)} 星币`)
+    } else {
+      mergedParts.push(`最后 ${formatDecimal(quantity)} 点推进也已记下`)
+    }
+  }
+
+  return {
+    ...completionThread,
+    messageText: `${mergedParts.join('，')}。`,
+    meta: {
+      ...completionThread.meta,
+      mergedCompletionMoment: true,
+    },
+  }
+}
 const wishBottleAnimationSnapshot = computed(() => wishStore.wishBottleSnapshot)
 const wishBottleAnimationStarCount = computed(() => {
   const snapshot = wishBottleAnimationSnapshot.value
@@ -462,24 +976,6 @@ async function runWishStepToggle(stepId: string) {
 
 async function runCountProgressAdjustment(delta: number) {
   const result = await adjustCountProgress(delta)
-
-  if (!result || typeof result !== 'object') {
-    return
-  }
-
-  if (result.gainedProgress) {
-    await triggerStepStarDrop()
-  }
-
-  if (result.autoCompleted) {
-    isCompletionFireworksActive.value = false
-    await nextTick()
-    isCompletionFireworksActive.value = true
-  }
-}
-
-async function runCountProgressSave() {
-  const result = await saveCountProgress()
 
   if (!result || typeof result !== 'object') {
     return
@@ -824,6 +1320,70 @@ async function runStickyCtaSecondaryAction() {
 
       <section class="detail-atelier-journal-grid">
         <article id="journal" class="page-card detail-atelier-thread-card">
+          <section class="detail-atelier-month-heat-panel" aria-label="本月推进热力图">
+            <div class="detail-atelier-month-heat-head">
+              <div class="detail-atelier-month-heat-controls" role="group" aria-label="切换月份">
+                <button
+                  class="detail-atelier-secondary detail-atelier-month-heat-nav"
+                  type="button"
+                  :disabled="!canShowPreviousMonthHeat"
+                  @click="goToPreviousMonthHeat"
+                >
+                  上月
+                </button>
+                <strong class="detail-atelier-month-heat-label">{{ monthHeatMonthLabel }}</strong>
+                <button
+                  class="detail-atelier-secondary detail-atelier-month-heat-nav"
+                  type="button"
+                  :disabled="!canShowNextMonthHeat"
+                  @click="goToNextMonthHeat"
+                >
+                  下月
+                </button>
+                <button
+                  v-if="hasActiveHeatDateFocus"
+                  class="detail-atelier-text detail-atelier-month-heat-clear"
+                  type="button"
+                  @click="clearHeatDateFocus"
+                >
+                  查看全部
+                </button>
+              </div>
+            </div>
+
+            <div class="detail-atelier-month-heat-weekdays" aria-hidden="true">
+              <span v-for="weekday in MONTH_HEAT_WEEKDAY_LABELS" :key="`month-heat-weekday-${weekday}`">{{ weekday }}</span>
+            </div>
+
+            <div class="detail-atelier-month-heat-grid" role="img" :aria-label="`${monthHeatMonthLabel}推进热力图`">
+              <div
+                v-for="cell in monthHeatCells"
+                :key="cell.id"
+                :class="[
+                  'detail-atelier-month-heat-cell',
+                  `is-level-${cell.level}`,
+                  {
+                    'is-blank': cell.isBlank,
+                    'is-interactive': !cell.isBlank && cell.count > 0,
+                    'is-selected': selectedHeatDateKey === cell.dateKey,
+                    'is-today': cell.isToday,
+                  },
+                ]"
+                :title="cell.title"
+                :role="!cell.isBlank && cell.count > 0 ? 'button' : undefined"
+                :tabindex="!cell.isBlank && cell.count > 0 ? 0 : undefined"
+                :aria-pressed="!cell.isBlank && cell.count > 0 ? String(selectedHeatDateKey === cell.dateKey) : undefined"
+                @click="toggleHeatDateFocus(cell)"
+                @keydown.enter.prevent="toggleHeatDateFocus(cell)"
+                @keydown.space.prevent="toggleHeatDateFocus(cell)"
+              >
+                <span v-if="!cell.isBlank">{{ cell.day }}</span>
+              </div>
+            </div>
+
+            <p class="detail-atelier-month-heat-summary">{{ monthHeatSummary }}</p>
+          </section>
+
           <div class="detail-atelier-section-head">
             <div class="detail-atelier-section-copy">
               <h2>最近记录</h2>
@@ -835,7 +1395,16 @@ async function runStickyCtaSecondaryAction() {
             <article
               v-for="(thread, index) in visibleThreads"
               :key="thread.id"
-              :class="['detail-atelier-thread-entry', { 'is-system': !isCommentThread(thread), 'is-comment': isCommentThread(thread), 'is-latest': index === 0 }]"
+              :class="[
+                'detail-atelier-thread-entry',
+                {
+                  'is-comment': isCommentThread(thread),
+                  'is-heat-focus': isThreadOnFocusedHeatDate(thread),
+                  'is-heat-muted': isThreadMutedByHeatDate(thread),
+                  'is-latest': index === 0,
+                  'is-system': !isCommentThread(thread),
+                },
+              ]"
             >
               <div class="detail-atelier-thread-toolbar">
                 <div class="detail-atelier-thread-meta">
@@ -1012,7 +1581,16 @@ async function runStickyCtaSecondaryAction() {
             <article
               v-for="(thread, index) in mobileVisibleThreads"
               :key="`mobile-thread-${thread.id}`"
-              :class="['detail-atelier-thread-entry', { 'is-system': !isCommentThread(thread), 'is-comment': isCommentThread(thread), 'is-latest': index === 0 }]"
+              :class="[
+                'detail-atelier-thread-entry',
+                {
+                  'is-comment': isCommentThread(thread),
+                  'is-heat-focus': isThreadOnFocusedHeatDate(thread),
+                  'is-heat-muted': isThreadMutedByHeatDate(thread),
+                  'is-latest': index === 0,
+                  'is-system': !isCommentThread(thread),
+                },
+              ]"
             >
               <div class="detail-atelier-thread-toolbar">
                 <div class="detail-atelier-thread-meta">
@@ -1126,7 +1704,15 @@ async function runStickyCtaSecondaryAction() {
               <article
                 v-for="thread in mobileOverflowThreads"
                 :key="`mobile-thread-overflow-${thread.id}`"
-                :class="['detail-atelier-thread-entry', { 'is-system': !isCommentThread(thread), 'is-comment': isCommentThread(thread) }]"
+                :class="[
+                  'detail-atelier-thread-entry',
+                  {
+                    'is-comment': isCommentThread(thread),
+                    'is-heat-focus': isThreadOnFocusedHeatDate(thread),
+                    'is-heat-muted': isThreadMutedByHeatDate(thread),
+                    'is-system': !isCommentThread(thread),
+                  },
+                ]"
               >
                 <div class="detail-atelier-thread-toolbar">
                   <div class="detail-atelier-thread-meta">
@@ -1249,7 +1835,7 @@ async function runStickyCtaSecondaryAction() {
         class="detail-atelier-mode-shell detail-atelier-manage-shell"
         eyebrow="整理区"
         title="整理与设置"
-        summary="低频编辑、步骤整理和删除操作都放在这里。"
+        summary="低频编辑和移除操作都放在这里。"
       >
         <template #actions>
           <button class="detail-atelier-secondary" type="button" @click="detailPageMode = 'action'">回到推进</button>
@@ -1265,14 +1851,14 @@ async function runStickyCtaSecondaryAction() {
             <p v-if="deleteWishFeedback" class="detail-atelier-feedback danger" role="status" aria-live="polite">{{ deleteWishFeedback }}</p>
           </div>
 
-          <div class="detail-atelier-tools-section">
+          <div v-if="canProgressSelectedWish" class="detail-atelier-tools-section">
             <div class="detail-atelier-inline-buttons detail-atelier-danger-actions detail-atelier-edit-delete-actions">
               <RouterLink class="detail-atelier-secondary" :to="{ name: 'compose', query: { edit: selectedWish.id } }">编辑愿望</RouterLink>
               <button v-if="!isDeleteWishConfirming" class="detail-atelier-text danger" type="button" @click="openWishDeleteConfirm()">移走这条愿望</button>
             </div>
           </div>
 
-          <div v-if="isDeleteWishConfirming" class="detail-atelier-inline-buttons detail-atelier-danger-actions">
+          <div v-if="canProgressSelectedWish && isDeleteWishConfirming" class="detail-atelier-inline-buttons detail-atelier-danger-actions">
             <span class="detail-atelier-chip detail-atelier-danger-chip">移走后会回到清单页</span>
             <button class="detail-atelier-secondary" type="button" :disabled="isDeletingWish" @click="cancelWishDeleteConfirm()">先不删</button>
             <button class="detail-atelier-text danger" type="button" :disabled="isDeletingWish" @click="void confirmDeleteWish()">
@@ -1280,51 +1866,6 @@ async function runStickyCtaSecondaryAction() {
             </button>
           </div>
 
-          <div v-if="progressSnapshot?.mode === 'count' && canProgressSelectedWish" class="detail-atelier-tools-section">
-            <div class="detail-atelier-tools-copy">
-              <span>数字进度校正</span>
-            </div>
-
-            <div class="detail-atelier-inline-form detail-atelier-inline-form-compact">
-              <label>
-                <span>把它改成现在的位置</span>
-                <input v-model.number="countProgressDraft" type="number" min="0" :max="Math.max(1, selectedWish.progressTarget)" />
-              </label>
-              <div class="detail-atelier-inline-buttons detail-atelier-tools-actions">
-                <button class="detail-atelier-secondary" type="button" @click="void runCountProgressAdjustment(-1)">往回调 1 点</button>
-                <button class="detail-atelier-secondary" type="button" @click="void runCountProgressSave()">保存现在的位置</button>
-              </div>
-            </div>
-          </div>
-
-          <div v-if="progressSnapshot?.mode === 'steps' && canProgressSelectedWish" class="detail-atelier-tools-section">
-            <div class="detail-atelier-tools-copy">
-              <span>步骤整理</span>
-            </div>
-
-            <form class="detail-atelier-inline-form detail-atelier-inline-form-compact" @submit.prevent="submitWishStep">
-              <label>
-                <span>补一小步</span>
-                <input v-model="stepDraft" type="text" maxlength="60" placeholder="例如：先确认路线和预算" />
-              </label>
-              <label>
-                <span>完成可得星星币</span>
-                <input v-model.number="stepStarCoinDraft" type="number" min="0" step="0.1" />
-              </label>
-              <div class="detail-atelier-inline-buttons detail-atelier-tools-actions">
-                <button class="detail-atelier-secondary" type="submit" :disabled="isSubmittingStep || !stepDraft.trim()">
-                  {{ isSubmittingStep ? '正在加入...' : '加入这一步' }}
-                </button>
-              </div>
-            </form>
-
-            <div v-if="selectedWish.steps.length" class="detail-atelier-step-manage-list">
-              <div v-for="step in selectedWish.steps" :key="`manage-${step.id}`" class="detail-atelier-step-manage-row">
-                <span>{{ step.title }}</span>
-                <button class="detail-atelier-text danger" type="button" @click="void removeWishStep(step.id)">移走这一步</button>
-              </div>
-            </div>
-          </div>
         </details>
         </section>
       </ManagePanel>
@@ -2207,6 +2748,161 @@ async function runStickyCtaSecondaryAction() {
 .detail-atelier-thread-card {
   border: 1px solid var(--warm-border-soft);
   background: linear-gradient(180deg, color-mix(in srgb, var(--surface-card) 94%, white), var(--surface-soft));
+}
+
+.detail-atelier-month-heat-panel {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.68rem 0.72rem;
+  border: 1px solid color-mix(in srgb, var(--warm-border-soft) 86%, var(--surface-soft));
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-card) 95%, white), color-mix(in srgb, var(--warm-panel) 80%, white));
+}
+
+.detail-atelier-month-heat-head {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.detail-atelier-month-heat-summary {
+  margin: 0;
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: 0.76rem;
+  line-height: 1.3;
+  letter-spacing: var(--type-l7-spacing);
+}
+
+.detail-atelier-month-heat-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.26rem;
+}
+
+.detail-atelier-month-heat-clear {
+  min-height: 28px;
+  padding: 0.14rem 0.42rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--warm-border-soft) 66%, var(--surface-soft));
+  background: color-mix(in srgb, var(--surface-soft) 90%, white);
+  color: var(--text-soft);
+  font-size: 0.66rem;
+  letter-spacing: 0;
+}
+
+.detail-atelier-month-heat-label {
+  min-width: 6.7rem;
+  text-align: center;
+  color: var(--text-main);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+}
+
+.detail-atelier-month-heat-nav.detail-atelier-secondary {
+  min-height: 28px;
+  padding: 0.18rem 0.48rem;
+  font-size: 0.7rem;
+  letter-spacing: 0;
+}
+
+.detail-atelier-month-heat-weekdays,
+.detail-atelier-month-heat-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.2rem;
+}
+
+.detail-atelier-month-heat-weekdays span {
+  text-align: center;
+  color: var(--text-faint);
+  font-family: var(--font-body);
+  font-size: 0.66rem;
+  line-height: 1;
+  letter-spacing: 0.03em;
+}
+
+.detail-atelier-month-heat-cell {
+  display: grid;
+  place-items: center;
+  min-height: 1.92rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--warm-border-soft) 72%, rgba(255, 255, 255, 0.92));
+  background: color-mix(in srgb, var(--surface-soft) 82%, white);
+  color: color-mix(in srgb, var(--text-soft) 72%, var(--text-faint));
+  font-family: var(--font-body);
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.detail-atelier-month-heat-cell.is-interactive {
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 140ms ease, border-color 140ms ease;
+}
+
+.detail-atelier-month-heat-cell.is-interactive:hover {
+  transform: translateY(-1px);
+}
+
+.detail-atelier-month-heat-cell.is-interactive:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent-ring) 74%, transparent);
+  outline-offset: 1px;
+}
+
+.detail-atelier-month-heat-cell.is-selected {
+  box-shadow: 0 0 0 1.6px color-mix(in srgb, var(--accent-ring) 72%, var(--surface-soft)) inset;
+  border-color: color-mix(in srgb, var(--accent-border) 58%, var(--warm-border-soft));
+}
+
+.detail-atelier-month-heat-cell.is-level-1 {
+  background: color-mix(in srgb, #e8eedc 76%, white);
+}
+
+.detail-atelier-month-heat-cell.is-level-2 {
+  background: color-mix(in srgb, #c8dba5 78%, white);
+  color: color-mix(in srgb, var(--text-main) 78%, #1f3024);
+}
+
+.detail-atelier-month-heat-cell.is-level-3 {
+  background: color-mix(in srgb, #91b875 84%, white);
+  color: #1f3024;
+}
+
+.detail-atelier-month-heat-cell.is-level-4 {
+  background: color-mix(in srgb, #5f8b62 90%, #f6fff7);
+  color: #f6fff7;
+}
+
+.detail-atelier-month-heat-cell.is-level-5 {
+  background: color-mix(in srgb, #365f4f 94%, #e8f3eb);
+  color: #f6fff7;
+}
+
+.detail-atelier-month-heat-cell.is-blank {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.detail-atelier-month-heat-cell.is-today {
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--accent-ring) 62%, transparent) inset;
+}
+
+.detail-atelier-thread-entry.is-heat-focus {
+  border-color: color-mix(in srgb, var(--accent-border) 58%, var(--warm-border-soft));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-ring) 46%, transparent) inset;
+}
+
+.detail-atelier-thread-entry.is-heat-muted {
+  opacity: 0.48;
+  filter: saturate(0.78);
 }
 
 .detail-atelier-overview-card {
@@ -4356,6 +5052,54 @@ async function runStickyCtaSecondaryAction() {
     min-height: 28px;
     padding: 0.22rem 0.44rem;
     font-size: 0.68rem;
+  }
+
+  .detail-atelier-month-heat-panel {
+    gap: 0.42rem;
+    padding: 0.58rem 0.62rem;
+    border-radius: 14px;
+  }
+
+  .detail-atelier-month-heat-head {
+    gap: 0.4rem;
+  }
+
+  .detail-atelier-month-heat-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .detail-atelier-month-heat-label {
+    min-width: 0;
+    font-size: 0.74rem;
+  }
+
+  .detail-atelier-month-heat-nav.detail-atelier-secondary {
+    min-height: 24px;
+    padding: 0.12rem 0.4rem;
+    font-size: 0.64rem;
+  }
+
+  .detail-atelier-month-heat-clear {
+    min-height: 24px;
+    padding: 0.1rem 0.36rem;
+    font-size: 0.62rem;
+  }
+
+  .detail-atelier-month-heat-weekdays,
+  .detail-atelier-month-heat-grid {
+    gap: 0.16rem;
+  }
+
+  .detail-atelier-month-heat-cell {
+    min-height: 1.72rem;
+    border-radius: 8px;
+    font-size: 0.62rem;
+  }
+
+  .detail-atelier-month-heat-summary,
+  .detail-atelier-month-heat-note {
+    font-size: 0.7rem;
   }
 
   .detail-atelier-overlay {
