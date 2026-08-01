@@ -10,7 +10,7 @@ export const useFilterStore = defineStore('filters', () => {
   const search = ref('')
   const visibility = ref<VisibilityFilter>('mine')
   const status = ref<StatusFilter>('active')
-  const sortMode = ref<SortFilter>('progress')
+  const sortMode = ref<SortFilter>('updated')
   const sortDirection = ref<SortDirection>('desc')
 
   function setSortMode(nextSortMode: SortFilter) {
@@ -27,7 +27,7 @@ export const useFilterStore = defineStore('filters', () => {
     search.value = ''
     visibility.value = 'mine'
     status.value = 'active'
-    sortMode.value = 'progress'
+    sortMode.value = 'updated'
     sortDirection.value = 'desc'
   }
 
