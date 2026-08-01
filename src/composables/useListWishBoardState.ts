@@ -18,14 +18,39 @@ export function useListWishBoardState() {
     return Number.isFinite(timestamp) ? timestamp : 0
   }
 
-  function getDaysSince(dateValue: string) {
-    const timestamp = getIsoTimestamp(dateValue)
+  function parseDateKeyToUtcMidnight(dateKey: string) {
+    const [yearText, monthText, dayText] = dateKey.split('-')
+    const year = Number(yearText)
+    const month = Number(monthText)
+    const day = Number(dayText)
 
-    if (!timestamp) {
+    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+      return null
+    }
+
+    return Date.UTC(year, month - 1, day)
+  }
+
+  function getBeijingDateKey(dateValue: string) {
+    return formatBeijingDate(dateValue, '')
+  }
+
+  function getDaysSince(dateValue: string) {
+    const targetDateKey = getBeijingDateKey(dateValue)
+    const todayDateKey = getBeijingDateKey(new Date().toISOString())
+
+    if (!targetDateKey || !todayDateKey) {
       return 0
     }
 
-    return Math.max(Math.floor((Date.now() - timestamp) / (24 * 60 * 60 * 1000)), 0)
+    const targetUtcMidnight = parseDateKeyToUtcMidnight(targetDateKey)
+    const todayUtcMidnight = parseDateKeyToUtcMidnight(todayDateKey)
+
+    if (targetUtcMidnight === null || todayUtcMidnight === null) {
+      return 0
+    }
+
+    return Math.max(Math.floor((todayUtcMidnight - targetUtcMidnight) / (24 * 60 * 60 * 1000)), 0)
   }
 
   function getWishRemainingStarCoins(wish: WishRecord) {
