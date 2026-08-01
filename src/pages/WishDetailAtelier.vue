@@ -135,7 +135,15 @@ const detailTags = computed(() => {
   ]
 })
 
-const visibleThreads = computed(() => mergeCompletionMomentThreads(wishJournalEntries.value))
+const visibleThreads = computed(() => {
+  const mergedThreads = mergeCompletionMomentThreads(wishJournalEntries.value)
+
+  return [...mergedThreads].sort((left, right) => {
+    const rightTimestamp = getSafeTimestamp(getThreadDisplayTime(right))
+    const leftTimestamp = getSafeTimestamp(getThreadDisplayTime(left))
+    return rightTimestamp - leftTimestamp || right.id.localeCompare(left.id)
+  })
+})
 const visibleImages = computed(() => {
   const firstWishImage = selectedWish.value?.images[0]
 
@@ -833,6 +841,43 @@ function formatDecimal(value: number) {
   return Number.isInteger(rounded) ? `${rounded}` : rounded.toFixed(1)
 }
 
+function getSafeTimestamp(value: string) {
+  const timestamp = new Date(value).getTime()
+  return Number.isFinite(timestamp) ? timestamp : 0
+}
+
+function getThreadDisplayTime(thread: WishThreadEntry) {
+  if (thread.meta.mergedCompletionMoment === true) {
+    return thread.updatedAt || thread.createdAt
+  }
+
+  if (isCountProgressRewardClaimThread(thread)) {
+    return thread.updatedAt || thread.createdAt
+  }
+
+  return thread.createdAt
+}
+
+function getLaterIsoValue(values: Array<string | null | undefined>) {
+  let latestValue = ''
+  let latestTimestamp = 0
+
+  for (const value of values) {
+    if (!value) {
+      continue
+    }
+
+    const timestamp = getSafeTimestamp(value)
+
+    if (timestamp >= latestTimestamp) {
+      latestTimestamp = timestamp
+      latestValue = value
+    }
+  }
+
+  return latestValue
+}
+
 function createMergedCompletionMomentThread(
   completionThread: WishThreadEntry,
   completionRewardThread: WishThreadEntry | null,
@@ -861,13 +906,34 @@ function createMergedCompletionMomentThread(
     }
   }
 
+  const mergedDisplayTime = countProgressRewardThread?.updatedAt
+    || countProgressRewardThread?.createdAt
+    || getLaterIsoValue([
+      completionRewardThread?.updatedAt,
+      completionRewardThread?.createdAt,
+      completionThread.updatedAt,
+      completionThread.createdAt,
+    ])
+    || completionThread.createdAt
+
+  const mergedUpdatedAt = getLaterIsoValue([
+    completionThread.updatedAt,
+    completionRewardThread?.updatedAt,
+    completionRewardThread?.createdAt,
+    countProgressRewardThread?.updatedAt,
+    countProgressRewardThread?.createdAt,
+    mergedDisplayTime,
+  ]) || completionThread.updatedAt
+
   return {
     ...completionThread,
+    createdAt: mergedDisplayTime,
     messageText: `${mergedParts.join('，')}。`,
     meta: {
       ...completionThread.meta,
       mergedCompletionMoment: true,
     },
+    updatedAt: mergedUpdatedAt,
   }
 }
 const wishBottleAnimationSnapshot = computed(() => wishStore.wishBottleSnapshot)
@@ -1412,7 +1478,7 @@ async function runStickyCtaSecondaryAction() {
                     <div class="detail-atelier-mobile-thread-title">
                       <div class="detail-atelier-thread-subline">
                         <p class="detail-atelier-kicker">{{ getThreadEyebrow(thread) }}</p>
-                        <time>{{ formatBeijingDateTime(thread.createdAt) }}</time>
+                        <time>{{ formatBeijingDateTime(getThreadDisplayTime(thread)) }}</time>
                       </div>
                     </div>
                     <div class="detail-atelier-chip-row compact detail-atelier-mobile-thread-corner-chips">
@@ -1598,7 +1664,7 @@ async function runStickyCtaSecondaryAction() {
                     <div class="detail-atelier-mobile-thread-title">
                       <div class="detail-atelier-thread-subline">
                         <p class="detail-atelier-kicker">{{ getThreadEyebrow(thread) }}</p>
-                        <time>{{ formatBeijingDateTime(thread.createdAt) }}</time>
+                        <time>{{ formatBeijingDateTime(getThreadDisplayTime(thread)) }}</time>
                       </div>
                     </div>
                     <div class="detail-atelier-chip-row compact detail-atelier-mobile-thread-corner-chips">
@@ -1720,7 +1786,7 @@ async function runStickyCtaSecondaryAction() {
                       <div class="detail-atelier-mobile-thread-title">
                         <div class="detail-atelier-thread-subline">
                           <p class="detail-atelier-kicker">{{ getThreadEyebrow(thread) }}</p>
-                          <time>{{ formatBeijingDateTime(thread.createdAt) }}</time>
+                          <time>{{ formatBeijingDateTime(getThreadDisplayTime(thread)) }}</time>
                         </div>
                       </div>
                       <div class="detail-atelier-chip-row compact detail-atelier-mobile-thread-corner-chips">
