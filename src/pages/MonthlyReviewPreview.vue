@@ -94,15 +94,6 @@ type ProgressRow = {
   title: string
 }
 
-type ProgressCategoryRow = {
-  category: string
-  commentCount: number
-  percent: number
-  progressAmount: number
-  touchedCount: number
-  wishRows: ProgressRow[]
-}
-
 type ProgressUsageEvent = {
   id: string
   dateKey: string
@@ -154,7 +145,6 @@ const activeScope = ref<ReviewScope>('me')
 const activeRange = ref<ReviewRange>('week')
 const anchorDateKey = ref(getBeijingDateKey())
 const bubbleDateKey = ref<string | null>(null)
-const isProgressListExpanded = ref(false)
 const isCompletedListExpanded = ref(false)
 const isMessageListExpanded = ref(false)
 const rewardClaimHeatKinds = new Set<RewardClaimKind>(['count_reward', 'step_reward', 'wish_reward', 'premium_redeem'])
@@ -231,7 +221,6 @@ const activePeriodDateSet = computed(() => new Set(activePeriodDateKeys.value))
 const periodStartDateKey = computed(() => activePeriodDateKeys.value[0] ?? anchorDateKey.value)
 const periodEndDateKey = computed(() => activePeriodDateKeys.value.at(-1) ?? anchorDateKey.value)
 const activePeriodLabel = computed(() => getPeriodLabel(activeRange.value, anchorDateKey.value))
-const currentMonthKey = computed(() => getBeijingMonthKey(anchorDateKey.value))
 const currentYear = computed(() => parseDateKey(anchorDateKey.value).year)
 const periodEvents = computed(() => reviewEvents.value.filter((event) => activePeriodDateSet.value.has(event.dateKey) && matchesMemberScope(event)))
 const metricPeriodEvents = computed(() => {
@@ -794,33 +783,6 @@ const allProgressRows = computed<ProgressRow[]>(() => {
       }
     })
     .sort((left, right) => right.progressAmount - left.progressAmount || right.doneSteps - left.doneSteps || right.numericProgressAmount - left.numericProgressAmount || right.commentCount - left.commentCount)
-})
-const progressCategoryRows = computed<ProgressCategoryRow[]>(() => {
-  const categoryMap = new Map<string, Omit<ProgressCategoryRow, 'percent'>>()
-  const totalProgressAmount = allProgressRows.value.reduce((total, row) => total + row.progressAmount, 0)
-
-  for (const row of allProgressRows.value) {
-    const current = categoryMap.get(row.category) ?? {
-      category: row.category,
-      commentCount: 0,
-      progressAmount: 0,
-      touchedCount: 0,
-      wishRows: [],
-    }
-
-    current.commentCount += row.commentCount
-    current.progressAmount += row.progressAmount
-    current.touchedCount += 1
-    current.wishRows.push(row)
-    categoryMap.set(row.category, current)
-  }
-
-  return Array.from(categoryMap.values())
-    .map((row) => ({
-      ...row,
-      percent: totalProgressAmount ? Math.round((row.progressAmount / totalProgressAmount) * 100) : Math.round((row.touchedCount / Math.max(1, allProgressRows.value.length)) * 100),
-    }))
-    .sort((left, right) => right.progressAmount - left.progressAmount || right.touchedCount - left.touchedCount || right.commentCount - left.commentCount)
 })
 const completedWishJournals = computed(() => {
   return [...wishStore.wishes]
