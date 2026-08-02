@@ -81,19 +81,6 @@ type MessageEntry = {
   wishTitle: string
 }
 
-type ProgressRow = {
-  id: string
-  category: string
-  commentCount: number
-  completedCount: number
-  doneSteps: number
-  label: string
-  numericProgressAmount: number
-  percent: number
-  progressAmount: number
-  title: string
-}
-
 type ProgressUsageEvent = {
   id: string
   dateKey: string
@@ -191,12 +178,6 @@ const starCoinWaterfallKinds: Array<{ kind: StarCoinWaterfallKind; label: string
   { kind: 'reward_deposit', label: '存入奖励' },
 ]
 
-const progressTouchEventKinds = new Set<ReviewEventKind>(['message', 'step', 'count_progress', 'wish_complete'])
-
-function isProgressTouchEvent(event: ReviewEvent) {
-  return progressTouchEventKinds.has(event.kind)
-}
-
 const currentMember = computed(() => authStore.currentMember)
 const partnerMember = computed(() => authStore.members.find((member) => member.id !== currentMember.value.id) ?? null)
 const scopeOptions = computed<SwitchOption<ReviewScope>[]>(() => [
@@ -249,17 +230,6 @@ const currentPeriodComments = computed<MessageEntry[]>(() => {
       return true
     })
     .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
-})
-const periodTouchedWishes = computed(() => {
-  const touchedWishIds = new Set<string>()
-
-  periodEvents.value.forEach((event) => {
-    if (event.wishId && isProgressTouchEvent(event)) touchedWishIds.add(event.wishId)
-  })
-
-  return [...touchedWishIds]
-    .map((wishId) => wishStore.findById(wishId))
-    .filter((wish): wish is WishRecord => !!wish)
 })
 const starCoinLedger = computed(() => buildVisibleStarCoinLedger({
   claims: wishStore.rewardClaims,
@@ -560,22 +530,6 @@ const starCoinWaterfallChart = computed<StarCoinWaterfallChart>(() => {
 })
 const starCoinWaterfallSteps = computed(() => starCoinWaterfallChart.value.steps)
 const hasStarCoinWaterfall = computed(() => starCoinWaterfallSteps.value.some((step) => step.amount > 0) || currentPeriodRewardClaims.value.length > 0)
-const periodCountProgressUnitsByWishId = computed(() => {
-  const unitsByWishId = new Map<string, number>()
-
-  wishStore.rewardClaims.forEach((claim) => {
-    if (claim.claimKind !== 'count_star_coin' || !claim.sourceWishId) return
-    if (!activePeriodDateSet.value.has(getBeijingDateKey(claim.createdAt))) return
-    if (!activeLedgerMemberIdSet.value.has(claim.ownerId)) return
-
-    const quantity = Math.max(0, claim.quantity)
-    if (!quantity) return
-
-    unitsByWishId.set(claim.sourceWishId, (unitsByWishId.get(claim.sourceWishId) ?? 0) + quantity)
-  })
-
-  return unitsByWishId
-})
 const progressUsageEvents = computed<ProgressUsageEvent[]>(() => {
   const events: ProgressUsageEvent[] = []
 
@@ -759,31 +713,6 @@ const progressUsageWishRows = computed<ProgressUsageWishRow[]>(() => {
 })
 const progressUsageMaxWishUnits = computed(() => Math.max(1, ...progressUsageWishRows.value.map((row) => row.units)))
 const showProgressUsageCopy = computed(() => activeMetric.value === 'progress' && activeRange.value !== 'year')
-const allProgressRows = computed<ProgressRow[]>(() => {
-  return periodTouchedWishes.value
-    .map((wish) => {
-      const snapshot = wishStore.getWishProgressSnapshot(wish)
-      const doneSteps = wish.steps.filter((step) => step.isDone && activePeriodDateSet.value.has(getBeijingDateKey(step.updatedAt))).length
-      const commentCount = wish.comments.filter((comment) => activePeriodDateSet.value.has(getBeijingDateKey(comment.createdAt)) && comment.message.trim()).length
-      const completedCount = wish.completedAt && activePeriodDateSet.value.has(getBeijingDateKey(wish.completedAt)) ? 1 : 0
-      const numericProgressAmount = periodCountProgressUnitsByWishId.value.get(wish.id) ?? 0
-      const progressAmount = doneSteps + numericProgressAmount + completedCount
-
-      return {
-        id: wish.id,
-        category: wish.category || '未分类',
-        commentCount,
-        completedCount,
-        doneSteps,
-        label: snapshot.label,
-        numericProgressAmount,
-        percent: snapshot.percent,
-        progressAmount,
-        title: wish.title,
-      }
-    })
-    .sort((left, right) => right.progressAmount - left.progressAmount || right.doneSteps - left.doneSteps || right.numericProgressAmount - left.numericProgressAmount || right.commentCount - left.commentCount)
-})
 const completedWishJournals = computed(() => {
   return [...wishStore.wishes]
     .filter((wish) => {
@@ -1034,13 +963,6 @@ function getPeriodLabel(range: ReviewRange, anchorKey: string) {
   }
   if (range === 'year') return `${parseDateKey(anchorKey).year} 年`
   return formatMonthLabel(anchorKey.slice(0, 7))
-}
-
-function getBeijingMonthKey(dateValue: Date | number | string = new Date()) {
-  const date = getBeijingDate(dateValue)
-  const year = date.getUTCFullYear()
-  const month = `${date.getUTCMonth() + 1}`.padStart(2, '0')
-  return `${year}-${month}`
 }
 
 function getBeijingDateKey(dateValue: Date | number | string = new Date()) {
