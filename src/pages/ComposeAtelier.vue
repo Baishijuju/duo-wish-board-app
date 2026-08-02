@@ -30,6 +30,7 @@ const {
   feedbackTone,
   initialStepCount,
   initialStepDrafts,
+  cloningWish,
   progressOptions,
   progressSummary,
   removeInitialStepField,
@@ -64,11 +65,14 @@ const previewStageTitle = computed(() => {
     <article class="compose-preview-shell page-card">
       <header class="compose-preview-hero">
         <div class="compose-preview-hero-copy">
-          <p class="eyebrow">{{ editingWish ? '整理这一页愿望' : '写下这条愿望' }}</p>
+          <p class="eyebrow">{{ editingWish ? '整理这一页愿望' : (cloningWish ? '复制后新建愿望' : '写下这条愿望') }}</p>
           <h1>
             <span class="compose-atelier-hero-name">{{ viewerName }}</span>
             <span class="compose-atelier-hero-headline">{{ composerHeadline }}</span>
           </h1>
+          <p v-if="cloningWish && !editingWish" class="compose-preview-clone-note">
+            已从「{{ cloningWish.title }}」带入内容，你可以直接改成 run3 这类新版本。
+          </p>
         </div>
       </header>
 
@@ -336,6 +340,13 @@ const previewStageTitle = computed(() => {
 .compose-preview-hero-copy {
   display: grid;
   gap: 0.7rem;
+}
+
+.compose-preview-clone-note {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.76rem;
+  line-height: 1.45;
 }
 
 .compose-preview-hero h1 {

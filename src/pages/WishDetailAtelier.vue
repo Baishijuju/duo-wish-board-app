@@ -34,6 +34,9 @@ type MonthHeatCell = {
   title: string
 }
 
+type DetailDailyPalette = 'ocean' | 'candy' | 'sunset' | 'aurora' | 'neon' | 'tropical' | 'macaron'
+type ThreadRecordFilter = 'comment' | 'system'
+
 const {
   EXTENDED_THREAD_REACTION_OPTIONS,
   FEATURED_THREAD_REACTION_OPTIONS,
@@ -135,6 +138,13 @@ const detailTags = computed(() => {
   ]
 })
 
+const activeThreadRecordFilter = ref<ThreadRecordFilter>('comment')
+const isInlineComposeOpen = ref(false)
+const inlineComposePanelId = 'wish-detail-inline-compose-panel'
+const threadRecordFilterOptions: Array<{ value: ThreadRecordFilter; label: string }> = [
+  { value: 'comment', label: '留言' },
+  { value: 'system', label: '系统' },
+]
 const visibleThreads = computed(() => {
   const mergedThreads = mergeCompletionMomentThreads(wishJournalEntries.value)
 
@@ -143,6 +153,20 @@ const visibleThreads = computed(() => {
     const leftTimestamp = getSafeTimestamp(getThreadDisplayTime(left))
     return rightTimestamp - leftTimestamp || right.id.localeCompare(left.id)
   })
+})
+const filteredVisibleThreads = computed(() => {
+  return visibleThreads.value.filter((thread) => activeThreadRecordFilter.value === 'comment'
+    ? isCommentThread(thread)
+    : !isCommentThread(thread))
+})
+const threadRecordFilterSliderStyle = computed(() => ({
+  width: `calc(${100 / threadRecordFilterOptions.length}% - 4px)`,
+  transform: `translateX(${threadRecordFilterOptions.findIndex((option) => option.value === activeThreadRecordFilter.value) * 100}%)`,
+}))
+const filteredThreadEmptyCopy = computed(() => {
+  return activeThreadRecordFilter.value === 'comment'
+    ? '这一条愿望暂时还没有留言。'
+    : '这一条愿望暂时还没有系统记录。'
 })
 const visibleImages = computed(() => {
   const firstWishImage = selectedWish.value?.images[0]
@@ -175,14 +199,21 @@ const detailPreviewImages = computed(() => {
 })
 const wishImageIds = computed(() => new Set(selectedWish.value?.images.map((image) => image.id) ?? []))
 const canManagePreviewImage = computed(() => !!previewImage.value && wishImageIds.value.has(previewImage.value.id))
-const mobileVisibleThreads = computed(() => visibleThreads.value.slice(0, MOBILE_THREAD_PREVIEW_COUNT))
-const mobileOverflowThreads = computed(() => visibleThreads.value.slice(MOBILE_THREAD_PREVIEW_COUNT))
+const mobileVisibleThreads = computed(() => filteredVisibleThreads.value.slice(0, MOBILE_THREAD_PREVIEW_COUNT))
+const mobileOverflowThreads = computed(() => filteredVisibleThreads.value.slice(MOBILE_THREAD_PREVIEW_COUNT))
 const mobileNextPendingStep = computed(() => selectedWish.value?.steps.find((step) => !step.isDone) ?? null)
 const mobilePrimaryStep = computed(() => mobileNextPendingStep.value ?? selectedWish.value?.steps[0] ?? null)
 const mobileCompletedStepCount = computed(() => selectedWish.value?.steps.filter((step) => step.isDone).length ?? 0)
 const monthHeatAnchorMonthKey = ref(getBeijingMonthKey())
 const selectedHeatDateKey = ref<string | null>(null)
 const monthHeatTodayDateKey = computed(() => getBeijingDateKey())
+const detailDailyPaletteCycle: DetailDailyPalette[] = ['ocean', 'candy', 'sunset', 'aurora', 'neon', 'tropical', 'macaron']
+const activeDetailDailyPalette = computed<DetailDailyPalette>(() => {
+  const { year, month, day } = parseDateKey(monthHeatTodayDateKey.value)
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay()
+  const mondayFirstIndex = (weekday + 6) % 7
+  return detailDailyPaletteCycle[mondayFirstIndex]
+})
 const monthHeatProgressEvents = computed<MonthHeatProgressEvent[]>(() => {
   const wish = selectedWish.value
 
@@ -1224,9 +1255,7 @@ async function runStickyCtaSecondaryAction() {
       <ActionCard
         v-if="detailPageMode === 'action'"
         class="detail-atelier-mode-shell detail-atelier-action-shell"
-        eyebrow="行动区"
         title="推进这条愿望"
-        summary="先推进进度、写近况，再回看最近记录。"
       >
 
       <section class="detail-atelier-overview-grid">
@@ -1302,88 +1331,6 @@ async function runStickyCtaSecondaryAction() {
         </article>
       </section>
 
-      <section id="compose" class="detail-atelier-compose-band">
-        <details class="page-card detail-atelier-compose-card detail-atelier-compose-disclosure">
-          <summary class="detail-atelier-compose-summary">
-            <div class="detail-atelier-compose-summary-copy">
-              <strong>先记下一笔近况</strong>
-            </div>
-          </summary>
-
-          <form class="detail-atelier-comment-form is-front detail-atelier-compose-form" @submit.prevent="submitComment">
-            <label class="detail-atelier-compose-message-field detail-atelier-compose-block">
-              <span>留言内容</span>
-              <textarea v-model="draftMessage" rows="3" maxlength="180" :disabled="isSubmittingComment" placeholder="先写一句今天的近况"></textarea>
-            </label>
-
-            <div class="detail-atelier-attachment-panel detail-atelier-compose-attachment-panel detail-atelier-compose-block detail-atelier-desktop-only" :class="{ 'is-disabled': !wishStore.isUsingCloudWishes }">
-              <div class="detail-atelier-compose-attachment-copy">
-                <span>图片附件</span>
-              </div>
-
-              <div v-if="wishStore.isUsingCloudWishes" class="detail-atelier-inline-buttons detail-atelier-compose-upload-row">
-                <label class="detail-atelier-secondary upload-trigger">
-                  <input
-                    :key="commentImageInputVersion"
-                    class="visually-hidden"
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/gif"
-                    multiple
-                    @change="handleCommentImageSelection"
-                  />
-                  {{ commentImageFiles.length ? `已选 ${commentImageFiles.length} 张图` : '选图' }}
-                </label>
-                <button v-if="commentImageFiles.length" class="detail-atelier-secondary" type="button" @click="clearCommentImageFiles()">清空已选</button>
-              </div>
-
-              <span v-else class="detail-atelier-upload-unavailable">图片留言暂需云端同步</span>
-
-              <div v-if="commentImageFiles.length" class="detail-atelier-chip-row compact">
-                <button v-for="(file, index) in commentImageFiles" :key="getCommentImageFileKey(file)" class="detail-atelier-chip chip-button" type="button" @click="removeCommentImageFile(index)">
-                  {{ file.name }} · 移除
-                </button>
-              </div>
-            </div>
-
-            <div class="detail-atelier-mobile-upload-panel detail-atelier-mobile-only" :class="{ 'is-disabled': !wishStore.isUsingCloudWishes }">
-              <div v-if="wishStore.isUsingCloudWishes" class="detail-atelier-inline-buttons detail-atelier-compose-upload-row">
-                <label class="detail-atelier-secondary upload-trigger">
-                  <input
-                    :key="commentImageInputVersion"
-                    class="visually-hidden"
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/gif"
-                    multiple
-                    @change="handleCommentImageSelection"
-                  />
-                  {{ commentImageFiles.length ? `已选 ${commentImageFiles.length} 张图` : '选图' }}
-                </label>
-                <button v-if="commentImageFiles.length" class="detail-atelier-secondary" type="button" @click="clearCommentImageFiles()">清空已选</button>
-              </div>
-
-              <span v-else class="detail-atelier-upload-unavailable">图片留言暂需云端同步</span>
-
-              <div v-if="commentImageFiles.length" class="detail-atelier-chip-row compact">
-                <button v-for="(file, index) in commentImageFiles" :key="`mobile-${getCommentImageFileKey(file)}`" class="detail-atelier-chip chip-button" type="button" @click="removeCommentImageFile(index)">
-                  {{ file.name }} · 移除
-                </button>
-              </div>
-            </div>
-
-            <div class="detail-atelier-compose-submit-row detail-atelier-compose-block">
-              <div class="detail-atelier-inline-buttons detail-atelier-compose-submit-buttons">
-                <button class="detail-atelier-primary" type="submit" :disabled="!draftMessage.trim() || isSubmittingComment">
-                  {{ isSubmittingComment ? '发送中...' : '发送留言' }}
-                </button>
-                <button v-if="commentFeedbackTone === 'danger' && canRetryComment" class="detail-atelier-secondary" type="button" @click="void retryComment()">重试发送</button>
-              </div>
-            </div>
-
-            <p v-if="commentFeedback" :class="['detail-atelier-feedback', commentFeedbackTone]" role="status" aria-live="polite">{{ commentFeedback }}</p>
-          </form>
-        </details>
-      </section>
-
       <section class="detail-atelier-journal-grid">
         <article id="journal" class="page-card detail-atelier-thread-card">
           <section class="detail-atelier-month-heat-panel" aria-label="本月推进热力图">
@@ -1454,12 +1401,115 @@ async function runStickyCtaSecondaryAction() {
             <div class="detail-atelier-section-copy">
               <h2>最近记录</h2>
             </div>
-            <span class="detail-atelier-badge">共 {{ visibleThreads.length }} 笔</span>
+            <div class="detail-atelier-thread-head-actions">
+              <span class="detail-atelier-badge">共 {{ filteredVisibleThreads.length }} 笔</span>
+              <div class="detail-atelier-thread-filter" aria-label="最近记录筛选">
+                <span class="detail-atelier-thread-filter-slider" aria-hidden="true" :style="threadRecordFilterSliderStyle"></span>
+                <button
+                  v-for="option in threadRecordFilterOptions"
+                  :key="option.value"
+                  type="button"
+                  :class="{ 'is-active': activeThreadRecordFilter === option.value }"
+                  @click="activeThreadRecordFilter = option.value"
+                >
+                  {{ option.label }}
+                </button>
+              </div>
+              <button
+                class="detail-atelier-compose-summary"
+                type="button"
+                aria-label="切换留言输入区"
+                :aria-expanded="isInlineComposeOpen"
+                :aria-controls="inlineComposePanelId"
+                :class="{ 'is-open': isInlineComposeOpen }"
+                @click="isInlineComposeOpen = !isInlineComposeOpen"
+              >
+                <span class="detail-atelier-compose-summary-label">写留言</span>
+              </button>
+            </div>
           </div>
 
-          <div v-if="visibleThreads.length" class="detail-atelier-thread-list detail-atelier-desktop-only">
+          <form
+            v-if="isInlineComposeOpen"
+            :id="inlineComposePanelId"
+            class="detail-atelier-comment-form is-front detail-atelier-compose-form detail-atelier-compose-inline-panel"
+            @submit.prevent="submitComment"
+          >
+            <label class="detail-atelier-compose-message-field detail-atelier-compose-block">
+              <div class="detail-atelier-compose-message-head">
+                <div class="detail-atelier-mobile-upload-panel detail-atelier-mobile-only" :class="{ 'is-disabled': !wishStore.isUsingCloudWishes }">
+                  <div v-if="wishStore.isUsingCloudWishes" class="detail-atelier-inline-buttons detail-atelier-compose-upload-row">
+                    <label class="detail-atelier-secondary upload-trigger">
+                      <input
+                        :key="commentImageInputVersion"
+                        class="visually-hidden"
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        multiple
+                        @change="handleCommentImageSelection"
+                      />
+                      {{ commentImageFiles.length ? `已选 ${commentImageFiles.length} 张图` : '选图' }}
+                    </label>
+                    <button v-if="commentImageFiles.length" class="detail-atelier-secondary" type="button" @click="clearCommentImageFiles()">清空</button>
+                  </div>
+                  <span v-else class="detail-atelier-upload-unavailable">图片留言暂需云端同步</span>
+                </div>
+              </div>
+              <textarea v-model="draftMessage" rows="3" maxlength="180" :disabled="isSubmittingComment" placeholder="写一句今天想留在这里的话"></textarea>
+            </label>
+
+              <div class="detail-atelier-attachment-panel detail-atelier-compose-attachment-panel detail-atelier-compose-block detail-atelier-desktop-only" :class="{ 'is-disabled': !wishStore.isUsingCloudWishes }">
+                <div class="detail-atelier-compose-attachment-copy">
+                  <span>图片附件</span>
+                </div>
+
+                <div v-if="wishStore.isUsingCloudWishes" class="detail-atelier-inline-buttons detail-atelier-compose-upload-row">
+                  <label class="detail-atelier-secondary upload-trigger">
+                    <input
+                      :key="commentImageInputVersion"
+                      class="visually-hidden"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      multiple
+                      @change="handleCommentImageSelection"
+                    />
+                    {{ commentImageFiles.length ? `已选 ${commentImageFiles.length} 张图` : '选图' }}
+                  </label>
+                  <button v-if="commentImageFiles.length" class="detail-atelier-secondary" type="button" @click="clearCommentImageFiles()">清空已选</button>
+                </div>
+
+                <span v-else class="detail-atelier-upload-unavailable">图片留言暂需云端同步</span>
+
+                <div v-if="commentImageFiles.length" class="detail-atelier-chip-row compact">
+                  <button v-for="(file, index) in commentImageFiles" :key="getCommentImageFileKey(file)" class="detail-atelier-chip chip-button" type="button" @click="removeCommentImageFile(index)">
+                    {{ file.name }} · 移除
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="commentImageFiles.length" class="detail-atelier-mobile-upload-panel detail-atelier-mobile-only">
+                <div class="detail-atelier-chip-row compact">
+                  <button v-for="(file, index) in commentImageFiles" :key="`mobile-${getCommentImageFileKey(file)}`" class="detail-atelier-chip chip-button" type="button" @click="removeCommentImageFile(index)">
+                    {{ file.name }} · 移除
+                  </button>
+                </div>
+              </div>
+
+              <div class="detail-atelier-compose-submit-row detail-atelier-compose-block">
+                <div class="detail-atelier-inline-buttons detail-atelier-compose-submit-buttons">
+                  <button class="detail-atelier-primary" type="submit" :disabled="!draftMessage.trim() || isSubmittingComment">
+                    {{ isSubmittingComment ? '发送中...' : '发送留言' }}
+                  </button>
+                  <button v-if="commentFeedbackTone === 'danger' && canRetryComment" class="detail-atelier-secondary" type="button" @click="void retryComment()">重试发送</button>
+                </div>
+              </div>
+
+            <p v-if="commentFeedback" :class="['detail-atelier-feedback', commentFeedbackTone]" role="status" aria-live="polite">{{ commentFeedback }}</p>
+          </form>
+
+          <div v-if="filteredVisibleThreads.length" class="detail-atelier-thread-list detail-atelier-desktop-only">
             <article
-              v-for="(thread, index) in visibleThreads"
+              v-for="(thread, index) in filteredVisibleThreads"
               :key="thread.id"
               :class="[
                 'detail-atelier-thread-entry',
@@ -1884,14 +1934,13 @@ async function runStickyCtaSecondaryAction() {
             </div>
           </details>
 
-          <div v-else class="detail-atelier-empty-block">
-            <strong>这条愿望还没有留下手账记录</strong>
-            <p>先从上面的留言口写下一句，后面的变化会继续接进来。</p>
+          <div v-else-if="!visibleThreads.length" class="detail-atelier-empty-block">
+            <strong>{{ activeThreadRecordFilter === 'comment' ? '这条愿望还没有留下留言' : '这条愿望还没有系统记录' }}</strong>
+            <p>{{ filteredThreadEmptyCopy }}</p>
           </div>
 
           <p v-if="threadFeedback" :class="['detail-atelier-feedback', threadFeedbackTone]" role="status" aria-live="polite">{{ threadFeedback }}</p>
         </article>
-
       </section>
 
       </ActionCard>
@@ -1919,6 +1968,7 @@ async function runStickyCtaSecondaryAction() {
 
           <div v-if="canProgressSelectedWish" class="detail-atelier-tools-section">
             <div class="detail-atelier-inline-buttons detail-atelier-danger-actions detail-atelier-edit-delete-actions">
+              <RouterLink class="detail-atelier-secondary" :to="{ name: 'compose', query: { clone: selectedWish.id } }">复制到写下页</RouterLink>
               <RouterLink class="detail-atelier-secondary" :to="{ name: 'compose', query: { edit: selectedWish.id } }">编辑愿望</RouterLink>
               <button v-if="!isDeleteWishConfirming" class="detail-atelier-text danger" type="button" @click="openWishDeleteConfirm()">移走这条愿望</button>
             </div>
@@ -1945,7 +1995,7 @@ async function runStickyCtaSecondaryAction() {
             {{ stickyCtaFeedbackState.message }}
           </p>
           <button
-            class="detail-atelier-primary detail-atelier-cta-dock-primary"
+            :class="['detail-atelier-primary', 'detail-atelier-cta-dock-primary', `theme-${activeDetailDailyPalette}`]"
             type="button"
             :disabled="stickyCtaPrimaryDisabled"
             @click="void runStickyCtaPrimaryAction()"
@@ -2222,6 +2272,68 @@ async function runStickyCtaSecondaryAction() {
   flex-wrap: wrap;
   justify-content: space-between;
   align-items: flex-start;
+}
+
+.detail-atelier-thread-head-actions {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.44rem;
+}
+
+.detail-atelier-thread-head-actions > .detail-atelier-compose-summary {
+  flex: 0 0 auto;
+  width: auto;
+  margin-left: auto;
+}
+
+.detail-atelier-thread-filter {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  min-width: 8.6rem;
+  padding: 2px;
+  border: 1px solid color-mix(in srgb, var(--accent-border) 22%, var(--warm-border-soft));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-card) 82%, var(--warm-panel));
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.detail-atelier-thread-filter-slider {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  z-index: 0;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent-border) 22%, transparent);
+  background: color-mix(in srgb, var(--accent-panel) 66%, white);
+  box-shadow: 0 6px 14px color-mix(in srgb, var(--accent-shadow) 12%, transparent);
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), width 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.detail-atelier-thread-filter button {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 1.82rem;
+  padding: 0.22rem 0.6rem;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--text-soft) 88%, white);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  transition: color 180ms ease;
+}
+
+.detail-atelier-thread-filter button.is-active {
+  color: color-mix(in srgb, var(--text-main) 96%, black);
 }
 
 .detail-atelier-hero,
@@ -2752,22 +2864,127 @@ async function runStickyCtaSecondaryAction() {
   background: color-mix(in srgb, var(--surface-card) 94%, white);
 }
 
-.detail-atelier-compose-disclosure {
-  display: grid;
-  gap: 0.7rem;
+.detail-atelier-compose-band {
+  align-self: start;
 }
 
 .detail-atelier-compose-summary {
-  display: flex;
-  justify-content: space-between;
+  display: inline-flex;
   align-items: center;
-  gap: 0.78rem;
+  justify-content: center;
+  width: auto;
+  min-width: 68px;
+  height: 38px;
+  padding: 0 0.78rem;
+  border: 1px solid var(--warm-border-soft);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--text-main);
   cursor: pointer;
   list-style: none;
+  box-shadow: none;
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.detail-atelier-compose-summary {
+  min-height: 38px;
+}
+
+.detail-atelier-compose-summary-label {
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.01em;
 }
 
 .detail-atelier-compose-summary::-webkit-details-marker {
   display: none;
+}
+
+.detail-atelier-compose-summary:hover {
+  border-color: color-mix(in srgb, var(--accent-border) 32%, var(--warm-border-soft));
+  background: color-mix(in srgb, var(--surface-raised) 88%, white);
+}
+
+.detail-atelier-compose-summary:active {
+  transform: translateY(1px);
+}
+
+.detail-atelier-compose-summary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent-border) 42%, transparent);
+  outline-offset: 2px;
+}
+
+.detail-atelier-compose-toggle-icon-swap {
+  position: relative;
+  width: 18px;
+  height: 18px;
+}
+
+.detail-atelier-compose-toggle-icon,
+.detail-atelier-compose-toggle-close {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.detail-atelier-compose-toggle-icon {
+  gap: 3px;
+}
+
+.detail-atelier-compose-toggle-icon i {
+  display: block;
+  width: 12px;
+  height: 1.5px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.detail-atelier-compose-toggle-icon i:nth-child(1) {
+  width: 8px;
+}
+
+.detail-atelier-compose-toggle-icon i:nth-child(3) {
+  width: 6px;
+}
+
+.detail-atelier-compose-toggle-close i {
+  position: absolute;
+  width: 11px;
+  height: 1.5px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.detail-atelier-compose-toggle-close i:first-child {
+  transform: rotate(45deg);
+}
+
+.detail-atelier-compose-toggle-close i:last-child {
+  transform: rotate(-45deg);
+}
+
+.detail-atelier-compose-summary:not(.is-open) .detail-atelier-compose-toggle-icon {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.detail-atelier-compose-summary:not(.is-open) .detail-atelier-compose-toggle-close {
+  opacity: 0;
+  transform: scale(0.82);
+}
+
+.detail-atelier-compose-summary.is-open .detail-atelier-compose-toggle-icon {
+  opacity: 0;
+  transform: scale(0.82);
+}
+
+.detail-atelier-compose-summary.is-open .detail-atelier-compose-toggle-close {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .detail-atelier-compose-summary-copy {
@@ -2783,6 +3000,18 @@ async function runStickyCtaSecondaryAction() {
   line-height: 1.3;
 }
 
+.detail-atelier-compose-disclosure:not([open]) .detail-atelier-compose-summary-copy strong {
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: var(--type-button-tracking);
+  white-space: nowrap;
+}
+
+.detail-atelier-compose-disclosure:not([open]) .detail-atelier-compose-summary::after {
+  content: none;
+}
+
 .detail-atelier-compose-summary-copy span {
   color: var(--text-soft);
   font-family: var(--font-body);
@@ -2792,23 +3021,30 @@ async function runStickyCtaSecondaryAction() {
 }
 
 .detail-atelier-compose-summary::after {
-  content: '';
-  width: 0.42rem;
-  height: 0.42rem;
-  flex: 0 0 auto;
-  border-right: 1.5px solid var(--text-soft);
-  border-bottom: 1.5px solid var(--text-soft);
-  transform: rotate(45deg) translateY(-1px);
-  transition: transform 160ms ease;
+  content: none;
 }
 
 .detail-atelier-compose-disclosure[open] .detail-atelier-compose-summary::after {
-  transform: rotate(225deg) translateY(-1px);
+  content: none;
 }
 
 .detail-atelier-compose-form {
   border-top: 1px solid var(--warm-border-soft);
   padding-top: 0.68rem;
+}
+
+.detail-atelier-compose-inline-panel {
+  display: grid;
+  gap: 0.48rem;
+  margin-top: 0.32rem;
+  width: 100%;
+  max-width: 100%;
+  padding: 0.74rem;
+  border-top: 0;
+  border: 1px solid var(--warm-border-soft);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface-card) 94%, white);
+  box-shadow: 0 18px 34px color-mix(in srgb, var(--accent-shadow) 16%, transparent);
 }
 
 .detail-atelier-thread-card {
@@ -3208,12 +3444,12 @@ async function runStickyCtaSecondaryAction() {
 }
 
 .detail-atelier-edit-delete-actions {
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
 }
 
 .detail-atelier-edit-delete-actions > .detail-atelier-secondary,
 .detail-atelier-edit-delete-actions > .detail-atelier-text.danger {
-  flex: 1 1 0;
+  flex: 1 1 8.6rem;
   min-width: 0;
 }
 
@@ -3493,19 +3729,89 @@ async function runStickyCtaSecondaryAction() {
 }
 
 .detail-atelier-cta-dock-primary {
+  --cta-dock-accent: var(--accent);
+  --cta-dock-accent-soft: color-mix(in srgb, var(--accent) 24%, white);
+  --cta-dock-accent-pale: color-mix(in srgb, var(--accent) 12%, white);
+  --cta-dock-accent-deep: color-mix(in srgb, var(--text-main) 88%, black);
+  --cta-dock-accent-shadow: var(--accent-shadow);
+  --cta-dock-border: color-mix(in srgb, var(--cta-dock-accent) 18%, white);
   position: relative;
   isolation: isolate;
-  border: 1px solid color-mix(in srgb, white 54%, var(--warm-border-soft));
+  border: 1px solid var(--cta-dock-border);
   background:
-    radial-gradient(circle at 16% -32%, color-mix(in srgb, white 74%, transparent), transparent 56%),
-    radial-gradient(circle at 92% 118%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 46%),
-    linear-gradient(160deg, color-mix(in srgb, white 30%, transparent), color-mix(in srgb, var(--surface-popover) 34%, transparent));
-  color: color-mix(in srgb, var(--text-main) 90%, white);
+    radial-gradient(circle at 16% -32%, color-mix(in srgb, white 78%, transparent), transparent 56%),
+    radial-gradient(circle at 84% 116%, color-mix(in srgb, var(--cta-dock-accent) 12%, transparent), transparent 46%),
+    linear-gradient(160deg, color-mix(in srgb, white 24%, transparent), color-mix(in srgb, var(--cta-dock-accent-pale) 16%, transparent));
+  color: var(--cta-dock-accent-deep);
   box-shadow:
-    0 8px 18px color-mix(in srgb, var(--accent-shadow) 16%, transparent),
-    inset 0 1px 0 color-mix(in srgb, white 80%, transparent);
-  -webkit-backdrop-filter: blur(14px) saturate(140%);
-  backdrop-filter: blur(14px) saturate(140%);
+    0 8px 18px color-mix(in srgb, var(--cta-dock-accent-shadow) 18%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 82%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--cta-dock-accent) 8%, transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(132%);
+  backdrop-filter: blur(16px) saturate(132%);
+}
+
+.detail-atelier-cta-dock-primary.theme-ocean {
+  --cta-dock-accent: #447cae;
+  --cta-dock-accent-soft: #6ba8d4;
+  --cta-dock-accent-pale: #a8cee8;
+  --cta-dock-accent-deep: #2f5f8f;
+  --cta-dock-accent-shadow: rgba(68, 124, 174, 0.22);
+  --cta-dock-border: rgba(68, 124, 174, 0.28);
+}
+
+.detail-atelier-cta-dock-primary.theme-candy {
+  --cta-dock-accent: #ff4f87;
+  --cta-dock-accent-soft: #6b79ff;
+  --cta-dock-accent-pale: #35c7c0;
+  --cta-dock-accent-deep: #9f2f61;
+  --cta-dock-accent-shadow: rgba(255, 79, 135, 0.22);
+  --cta-dock-border: rgba(255, 79, 135, 0.28);
+}
+
+.detail-atelier-cta-dock-primary.theme-sunset {
+  --cta-dock-accent: #ff6d3a;
+  --cta-dock-accent-soft: #ff9f43;
+  --cta-dock-accent-pale: #ffd166;
+  --cta-dock-accent-deep: #b84f2f;
+  --cta-dock-accent-shadow: rgba(255, 109, 58, 0.22);
+  --cta-dock-border: rgba(255, 109, 58, 0.28);
+}
+
+.detail-atelier-cta-dock-primary.theme-aurora {
+  --cta-dock-accent: #1ca8a1;
+  --cta-dock-accent-soft: #49cc7e;
+  --cta-dock-accent-pale: #9ee467;
+  --cta-dock-accent-deep: #176f76;
+  --cta-dock-accent-shadow: rgba(28, 168, 161, 0.22);
+  --cta-dock-border: rgba(28, 168, 161, 0.28);
+}
+
+.detail-atelier-cta-dock-primary.theme-neon {
+  --cta-dock-accent: #7a3cff;
+  --cta-dock-accent-soft: #00c2ff;
+  --cta-dock-accent-pale: #00e0b8;
+  --cta-dock-accent-deep: #4f2bb0;
+  --cta-dock-accent-shadow: rgba(122, 60, 255, 0.22);
+  --cta-dock-border: rgba(122, 60, 255, 0.28);
+}
+
+.detail-atelier-cta-dock-primary.theme-tropical {
+  --cta-dock-accent: #1f9f7a;
+  --cta-dock-accent-soft: #00b7c7;
+  --cta-dock-accent-pale: #ffd15a;
+  --cta-dock-accent-deep: #1a6f65;
+  --cta-dock-accent-shadow: rgba(31, 159, 122, 0.22);
+  --cta-dock-border: rgba(31, 159, 122, 0.28);
+}
+
+.detail-atelier-cta-dock-primary.theme-macaron {
+  --cta-dock-accent: #8b8fd8;
+  --cta-dock-accent-soft: #93bfd4;
+  --cta-dock-accent-pale: #c8deaf;
+  --cta-dock-accent-deep: #6569b1;
+  --cta-dock-accent-shadow: rgba(139, 143, 216, 0.22);
+  --cta-dock-border: rgba(139, 143, 216, 0.28);
 }
 
 .detail-atelier-cta-dock-primary::before {
@@ -3514,14 +3820,16 @@ async function runStickyCtaSecondaryAction() {
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  background: linear-gradient(180deg, color-mix(in srgb, white 52%, transparent), transparent 48%);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, white 52%, transparent), transparent 48%),
+    radial-gradient(circle at 18% 30%, color-mix(in srgb, var(--cta-dock-accent-pale) 10%, transparent), transparent 40%);
 }
 
 .detail-atelier-cta-dock-primary:hover,
 .detail-atelier-cta-dock-primary:active {
-  border-color: color-mix(in srgb, white 62%, var(--warm-border-soft));
+  border-color: color-mix(in srgb, white 62%, var(--cta-dock-accent));
   box-shadow:
-    0 10px 20px color-mix(in srgb, var(--accent-shadow) 18%, transparent),
+    0 10px 20px color-mix(in srgb, var(--cta-dock-accent-shadow) 18%, transparent),
     inset 0 1px 0 color-mix(in srgb, white 82%, transparent);
 }
 
@@ -3719,6 +4027,23 @@ async function runStickyCtaSecondaryAction() {
   gap: 0.28rem;
 }
 
+.detail-atelier-compose-message-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.68rem;
+}
+
+.detail-atelier-compose-message-head .detail-atelier-mobile-upload-panel {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.detail-atelier-compose-message-head .detail-atelier-compose-upload-row {
+  gap: 0.34rem;
+}
+
 .detail-atelier-compose-attachment-copy p,
 .detail-atelier-compose-author-note {
   margin: 0;
@@ -3733,6 +4058,11 @@ async function runStickyCtaSecondaryAction() {
   grid-template-columns: 1fr;
   gap: 0.62rem 0.82rem;
   align-items: center;
+}
+
+.detail-atelier-comment-form.is-front > .detail-atelier-compose-submit-row {
+  padding-top: 0;
+  border-top: none;
 }
 
 .detail-atelier-compose-attachment-panel {
@@ -4842,6 +5172,11 @@ async function runStickyCtaSecondaryAction() {
     align-items: flex-start;
   }
 
+  .detail-atelier-thread-head-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
   .detail-atelier-story-card h1 {
     font-size: clamp(1.38rem, 1.12rem + 1.1vw, 1.64rem);
     max-width: none;
@@ -5555,13 +5890,14 @@ async function runStickyCtaSecondaryAction() {
     font-size: 0.9rem;
     font-weight: 600;
     letter-spacing: 0.012em;
-    color: color-mix(in srgb, var(--text-main) 94%, black);
+    color: var(--cta-dock-accent-deep);
     border-width: 1px;
     box-shadow:
-      0 6px 14px color-mix(in srgb, var(--accent-shadow) 16%, transparent),
-      inset 0 1px 0 color-mix(in srgb, white 84%, transparent);
-    -webkit-backdrop-filter: blur(12px) saturate(138%);
-    backdrop-filter: blur(12px) saturate(138%);
+      0 6px 14px color-mix(in srgb, var(--cta-dock-accent-shadow) 18%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 84%, transparent),
+      inset 0 0 0 1px color-mix(in srgb, var(--cta-dock-accent) 8%, transparent);
+    -webkit-backdrop-filter: blur(14px) saturate(132%);
+    backdrop-filter: blur(14px) saturate(132%);
   }
 
   .detail-atelier-cta-dock-secondary {

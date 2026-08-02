@@ -77,6 +77,7 @@ type MessageEntry = {
   dateKey: string
   text: string
   timeLabel: string
+  wishId: string
   wishTitle: string
 }
 
@@ -250,6 +251,7 @@ const currentPeriodComments = computed<MessageEntry[]>(() => {
         dateKey: getBeijingDateKey(comment.createdAt),
         text: comment.message.trim(),
         timeLabel: formatDateTimeLabel(comment.createdAt),
+        wishId: wish.id,
         wishTitle: wish.title,
       })))
     .filter((entry) => {
@@ -464,17 +466,23 @@ const displayHeatGroups = computed<HeatGroup[]>(() => {
     return [{ id: 'month', label: activePeriodLabel.value, cells: withLeadingWeekdayBlanks(activeHeatCells.value) }]
   }
 
-  return Array.from({ length: 12 }, (_, index) => {
+  const yearGroups = Array.from({ length: 12 }, (_, index) => {
     const month = index + 1
     const monthKey = `${currentYear.value}-${`${month}`.padStart(2, '0')}`
     const monthCells = activeHeatCells.value.filter((cell) => cell.dateKey.startsWith(monthKey))
+    const monthScore = monthCells.reduce((sum, cell) => sum + cell.score, 0)
 
     return {
       id: monthKey,
       label: `${month}月`,
-      cells: withLeadingWeekdayBlanks(monthCells),
+      cells: withCalendarWeekdayBlanks(monthCells),
+      monthScore,
     }
   })
+
+  return yearGroups
+    .filter((group) => group.monthScore > 0)
+    .map(({ monthScore: _monthScore, ...group }) => group)
 })
 const activeDayCount = computed(() => activeHeatCells.value.filter((cell) => cell.score > 0).length)
 const peakCell = computed(() => activeHeatCells.value.reduce<HeatCell | null>((peak, cell) => !peak || cell.score > peak.score ? cell : peak, null))
@@ -691,7 +699,7 @@ const progressUsageCategorySummary = computed(() => {
     .map(([category, units]) => ({ category, units, percent: total ? Math.round((units / total) * 100) : 0 }))
     .sort((left, right) => right.units - left.units)
 })
-const progressUsageTopCategories = computed(() => progressUsageCategorySummary.value.slice(0, 3).map((row) => row.category))
+const progressUsageTopCategories = computed(() => progressUsageCategorySummary.value.slice(0, 5).map((row) => row.category))
 const progressUsageLegend = computed(() => {
   const base = progressUsageTopCategories.value.map((label, index) => ({ label, className: `review-usage-dot-${index}` }))
   if (progressUsageCategorySummary.value.length > progressUsageTopCategories.value.length) {
@@ -1029,6 +1037,34 @@ function withLeadingWeekdayBlanks(cells: HeatCell[]) {
   return [...blanks, ...cells]
 }
 
+function withCalendarWeekdayBlanks(cells: HeatCell[]) {
+  const leadingCells = withLeadingWeekdayBlanks(cells)
+  if (!leadingCells.length) return []
+
+  const trailingBlankCount = (7 - (leadingCells.length % 7)) % 7
+  const leadingFirstCell = leadingCells[0]
+
+  const trailingBlanks: HeatCell[] = Array.from({ length: trailingBlankCount }, (_, index) => ({
+    dateKey: `blank-tail-${leadingFirstCell.dateKey}-${index}`,
+    day: 0,
+    dayLabel: '',
+    weekdayLabel: '',
+    isToday: false,
+    isBlank: true,
+    score: 0,
+    level: 0,
+    messages: 0,
+    progress: 0,
+    claims: 0,
+    completed: 0,
+    income: 0,
+    spending: 0,
+    events: [],
+  }))
+
+  return [...leadingCells, ...trailingBlanks]
+}
+
 function getPeriodLabel(range: ReviewRange, anchorKey: string) {
   if (range === 'week') {
     const days = buildWeekDays(anchorKey)
@@ -1169,7 +1205,7 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 </script>
 
 <template>
-  <section class="monthly-preview-page palette-sage">
+  <section :class="['monthly-preview-page', `heat-theme-${activeUsagePalette}`]">
     <section class="monthly-switch-panel" aria-label="热力图切换器">
       <div class="monthly-switch-group">
         <span>看什么</span>
@@ -1217,13 +1253,16 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
         </div>
       </div>
 
-      <div class="monthly-weekday-row" aria-hidden="true">
+      <div v-if="activeRange !== 'year'" class="monthly-weekday-row" aria-hidden="true">
         <span v-for="label in weekdayLabels" :key="label">{{ label }}</span>
       </div>
 
       <div :class="['monthly-thermometer-groups', `is-${activeRange}`]" :aria-label="`${activePeriodLabel}${activeMetricOption.label}热力图`">
         <article v-for="group in displayHeatGroups" :key="group.id" class="monthly-thermometer-group">
           <span v-if="activeRange === 'year'" class="monthly-month-label">{{ group.label }}</span>
+          <div v-if="activeRange === 'year'" class="monthly-weekday-row monthly-weekday-row-mini" aria-hidden="true">
+            <span v-for="label in weekdayLabels" :key="`${group.id}-${label}`">{{ label }}</span>
+          </div>
           <div class="monthly-thermometer-grid">
             <div
               v-for="cell in group.cells"
@@ -1258,14 +1297,8 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
           <div class="review-usage-header-summary">
             <span class="review-usage-caption">{{ progressUsageSummaryLabel }} · <strong class="review-usage-caption-strong">{{ progressUsageSelectedDateKey ? progressUsageFocusedTotalUnits : progressUsageTotalUnits }} 次推进</strong></span>
             <div class="review-usage-palette-switch" role="tablist" aria-label="推进图配色">
-              <button
-                v-for="option in usagePaletteOptions"
-                :key="option.value"
-                type="button"
-                :class="{ 'is-active': activeUsagePalette === option.value }"
-                :aria-pressed="activeUsagePalette === option.value"
-              >
-                {{ option.label }}
+              <button type="button" class="is-active" aria-pressed="true">
+                {{ activeUsagePaletteLabel }}
               </button>
             </div>
             <span class="review-usage-palette-note">每日自动轮换，今天是 {{ activeUsagePaletteLabel }}</span>
@@ -1323,13 +1356,18 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
         </div>
         <div class="review-usage-wish-list">
           <p v-if="!progressUsageWishRows.length" class="monthly-empty-note">这个范围里还没有愿望推进。</p>
-          <article v-for="row in progressUsageWishRows" :key="row.wishId" class="review-usage-wish-row">
+          <RouterLink
+            v-for="row in progressUsageWishRows"
+            :key="row.wishId"
+            class="review-usage-wish-row"
+            :to="{ name: 'wish-detail', params: { id: row.wishId } }"
+          >
             <div class="review-usage-wish-copy">
               <strong>{{ row.title }}</strong>
               <span>{{ row.category }} · {{ formatNumber(row.units) }} 次</span>
             </div>
             <i><b :style="{ width: `${Math.round((row.units / progressUsageMaxWishUnits) * 100)}%` }"></b></i>
-          </article>
+          </RouterLink>
         </div>
       </article>
     </section>
@@ -1345,10 +1383,15 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
           <p>年视图先只看高点。</p>
         </div>
         <div v-else class="monthly-message-list">
-          <article v-for="entry in visibleMessageBookEntries" :key="entry.id" class="monthly-message-item">
+          <RouterLink
+            v-for="entry in visibleMessageBookEntries"
+            :key="entry.id"
+            class="monthly-message-item monthly-message-link"
+            :to="{ name: 'wish-detail', params: { id: entry.wishId } }"
+          >
             <div><span>{{ entry.authorName }} · {{ entry.timeLabel }}</span><strong>{{ entry.wishTitle }}</strong></div>
             <p>{{ entry.text }}</p>
-          </article>
+          </RouterLink>
           <p v-if="!messageBookEntries.length" class="monthly-empty-note">这个范围里还没有留言。</p>
         </div>
         <button v-if="messageBookEntries.length > 4 && activeRange !== 'year'" type="button" class="monthly-progress-more" :aria-expanded="isMessageListExpanded" @click="isMessageListExpanded = !isMessageListExpanded">
@@ -1467,13 +1510,21 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
   --heat-3: #de9d4b;
   --heat-4: #b96b3f;
   --heat-5: #7d402f;
+  --heat-today-ring: rgba(126, 96, 76, 0.28);
+  --heat-bubble-bg: #241b16;
+  --heat-bubble-text: #fff8ee;
   display: grid;
   gap: 0.72rem;
   color: var(--text-main);
 }
 
-.monthly-preview-page.palette-rose { --heat-1: #f8dddd; --heat-2: #ecaeb0; --heat-3: #ce787f; --heat-4: #9b5360; --heat-5: #603345; }
-.monthly-preview-page.palette-sage { --heat-1: #e8eedc; --heat-2: #c8dba5; --heat-3: #91b875; --heat-4: #5f8b62; --heat-5: #365f4f; }
+.monthly-preview-page.heat-theme-ocean { --heat-1: #deebf7; --heat-2: #c5def1; --heat-3: #a8cee8; --heat-4: #6ba8d4; --heat-5: #447cae; --heat-today-ring: rgba(68, 124, 174, 0.34); --heat-bubble-bg: #447cae; --heat-bubble-text: #f7fbff; }
+.monthly-preview-page.heat-theme-candy { --heat-1: #ffe0b8; --heat-2: #ffd166; --heat-3: #35c7c0; --heat-4: #6b79ff; --heat-5: #ff4f87; --heat-today-ring: rgba(255, 79, 135, 0.34); --heat-bubble-bg: #ff4f87; --heat-bubble-text: #fff8fd; }
+.monthly-preview-page.heat-theme-sunset { --heat-1: #ffe3c2; --heat-2: #ffd9a8; --heat-3: #ffd166; --heat-4: #ff9f43; --heat-5: #ff6d3a; --heat-today-ring: rgba(255, 109, 58, 0.34); --heat-bubble-bg: #ff6d3a; --heat-bubble-text: #fff9f4; }
+.monthly-preview-page.heat-theme-aurora { --heat-1: #d8f4e5; --heat-2: #b7f1ce; --heat-3: #9ee467; --heat-4: #49cc7e; --heat-5: #1ca8a1; --heat-today-ring: rgba(28, 168, 161, 0.34); --heat-bubble-bg: #1ca8a1; --heat-bubble-text: #f4fffd; }
+.monthly-preview-page.heat-theme-neon { --heat-1: #ffe4a8; --heat-2: #ffbf3c; --heat-3: #00e0b8; --heat-4: #00c2ff; --heat-5: #7a3cff; --heat-today-ring: rgba(122, 60, 255, 0.34); --heat-bubble-bg: #7a3cff; --heat-bubble-text: #faf7ff; }
+.monthly-preview-page.heat-theme-tropical { --heat-1: #e2f5c5; --heat-2: #b6e880; --heat-3: #ffd15a; --heat-4: #00b7c7; --heat-5: #1f9f7a; --heat-today-ring: rgba(31, 159, 122, 0.34); --heat-bubble-bg: #1f9f7a; --heat-bubble-text: #f6fff9; }
+.monthly-preview-page.heat-theme-macaron { --heat-1: #f5e6c6; --heat-2: #f0d8a8; --heat-3: #c8deaf; --heat-4: #93bfd4; --heat-5: #8b8fd8; --heat-today-ring: rgba(139, 143, 216, 0.34); --heat-bubble-bg: #8b8fd8; --heat-bubble-text: #fbfbff; }
 
 .monthly-ledger-panel {
   --heat-1: #f8dddd;
@@ -1729,9 +1780,21 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 }
 
 .monthly-weekday-row span {
+  display: block;
   color: var(--text-soft);
   font-size: 0.66rem;
+  line-height: 1;
   text-align: center;
+}
+
+.monthly-weekday-row-mini {
+  gap: 0.1rem;
+}
+
+.monthly-weekday-row-mini span {
+  color: color-mix(in srgb, var(--text-soft) 88%, white);
+  font-size: 0.58rem;
+  line-height: 1;
 }
 
 .monthly-thermometer-groups {
@@ -1741,19 +1804,30 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 
 .monthly-thermometer-groups.is-year {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.44rem;
+  gap: 0.34rem;
+  align-items: start;
 }
 
 .monthly-thermometer-group {
   display: grid;
-  gap: 0.22rem;
+  align-content: start;
+  gap: 0.16rem;
   min-width: 0;
 }
 
+.monthly-thermometer-groups.is-year .monthly-thermometer-group {
+  gap: 0.12rem;
+}
+
 .monthly-month-label {
+  display: block;
   color: var(--text-soft);
   font-size: 0.68rem;
   line-height: 1;
+}
+
+.monthly-thermometer-groups.is-year .monthly-month-label {
+  font-weight: 600;
 }
 
 .monthly-thermometer-groups.is-year .monthly-thermometer-grid {
@@ -1802,7 +1876,7 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 .monthly-heat-legend .is-level-5 { background: var(--heat-5); color: #fffaf0; }
 
 .monthly-heat-cell.is-today {
-  outline: 2px solid var(--accent-border);
+  outline: 2px solid var(--heat-today-ring);
   outline-offset: 1px;
 }
 
@@ -1815,8 +1889,8 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
   min-width: 1.45rem;
   padding: 0.18rem 0.36rem;
   border-radius: 999px;
-  background: var(--text-main);
-  color: var(--warm-panel);
+  background: var(--heat-bubble-bg);
+  color: var(--heat-bubble-text);
   font-size: 0.66rem;
   font-style: normal;
   line-height: 1.1;
@@ -1849,11 +1923,12 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
   --usage-accent-soft: #91b875;
   --usage-accent-pale: #c8dba5;
   --usage-accent-deep: #365f4f;
-  --usage-accent-other: #7ea06f;
   --usage-layer-0: var(--usage-accent);
   --usage-layer-1: var(--usage-accent-soft);
   --usage-layer-2: var(--usage-accent-pale);
-  --usage-layer-other: var(--usage-accent-other);
+  --usage-layer-3: color-mix(in srgb, var(--usage-accent-soft) 72%, white);
+  --usage-layer-4: color-mix(in srgb, var(--usage-accent-pale) 58%, white);
+  --usage-layer-other: #b9bcc3;
   --usage-muted: #7f927f;
   --usage-track: color-mix(in srgb, var(--usage-accent-pale) 42%, white);
   display: grid;
@@ -1865,11 +1940,11 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
   --usage-accent-soft: #6ba8d4;
   --usage-accent-pale: #a8cee8;
   --usage-accent-deep: #2f5f8f;
-  --usage-accent-other: #6e93c2;
   --usage-layer-0: #447cae;
   --usage-layer-1: #6ba8d4;
   --usage-layer-2: #a8cee8;
-  --usage-layer-other: #6e93c2;
+  --usage-layer-3: #c5def1;
+  --usage-layer-4: #deebf7;
   --usage-muted: #6f849e;
 }
 
@@ -1878,11 +1953,11 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
   --usage-accent-soft: #6b79ff;
   --usage-accent-pale: #35c7c0;
   --usage-accent-deep: #9f2f61;
-  --usage-accent-other: #ff9d3d;
   --usage-layer-0: #ff4f87;
   --usage-layer-1: #6b79ff;
   --usage-layer-2: #35c7c0;
-  --usage-layer-other: #ff9d3d;
+  --usage-layer-3: #ff9d3d;
+  --usage-layer-4: #ffd166;
   --usage-muted: #7a6282;
 }
 
@@ -1891,11 +1966,11 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
   --usage-accent-soft: #ff9f43;
   --usage-accent-pale: #ffd166;
   --usage-accent-deep: #b84f2f;
-  --usage-accent-other: #ff5e7e;
   --usage-layer-0: #ff6d3a;
   --usage-layer-1: #ff9f43;
   --usage-layer-2: #ffd166;
-  --usage-layer-other: #ff5e7e;
+  --usage-layer-3: #ff8aa1;
+  --usage-layer-4: #ffd9a8;
   --usage-muted: #8f6d5f;
 }
 
@@ -1904,11 +1979,11 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
   --usage-accent-soft: #49cc7e;
   --usage-accent-pale: #9ee467;
   --usage-accent-deep: #176f76;
-  --usage-accent-other: #5f8bff;
   --usage-layer-0: #1ca8a1;
   --usage-layer-1: #49cc7e;
   --usage-layer-2: #9ee467;
-  --usage-layer-other: #5f8bff;
+  --usage-layer-3: #5f8bff;
+  --usage-layer-4: #b7f1ce;
   --usage-muted: #5f7f78;
 }
 
@@ -1917,11 +1992,11 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
   --usage-accent-soft: #00c2ff;
   --usage-accent-pale: #00e0b8;
   --usage-accent-deep: #4f2bb0;
-  --usage-accent-other: #ff5e6c;
   --usage-layer-0: #7a3cff;
   --usage-layer-1: #00c2ff;
   --usage-layer-2: #00e0b8;
-  --usage-layer-other: #ff5e6c;
+  --usage-layer-3: #ff5e6c;
+  --usage-layer-4: #ffbf3c;
   --usage-muted: #6f6698;
 }
 
@@ -1930,11 +2005,11 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
   --usage-accent-soft: #00b7c7;
   --usage-accent-pale: #ffd15a;
   --usage-accent-deep: #1a6f65;
-  --usage-accent-other: #ff7b54;
   --usage-layer-0: #1f9f7a;
   --usage-layer-1: #00b7c7;
   --usage-layer-2: #ffd15a;
-  --usage-layer-other: #ff7b54;
+  --usage-layer-3: #ff7b54;
+  --usage-layer-4: #b6e880;
   --usage-muted: #607f78;
 }
 
@@ -1943,11 +2018,11 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
   --usage-accent-soft: #93bfd4;
   --usage-accent-pale: #c8deaf;
   --usage-accent-deep: #6569b1;
-  --usage-accent-other: #d3a4b8;
   --usage-layer-0: #8b8fd8;
   --usage-layer-1: #93bfd4;
   --usage-layer-2: #c8deaf;
-  --usage-layer-other: #d3a4b8;
+  --usage-layer-3: #d3a4b8;
+  --usage-layer-4: #f0d8a8;
   --usage-muted: #7f8198;
 }
 
@@ -1968,27 +2043,28 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 .review-usage-header-summary {
   display: grid;
   justify-items: end;
-  gap: 0.26rem;
+  gap: 0.2rem;
 }
 
 .review-usage-palette-switch {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 0.24rem;
+  gap: 0.18rem;
+  opacity: 0.78;
 }
 
 .review-usage-palette-switch button {
-  border: 1px solid color-mix(in srgb, var(--usage-accent) 34%, white);
+  border: 1px solid color-mix(in srgb, var(--usage-accent) 18%, white);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--usage-accent-pale) 22%, white);
-  color: color-mix(in srgb, var(--usage-accent-deep) 86%, #1f1f1f);
+  background: color-mix(in srgb, var(--usage-accent-pale) 10%, white);
+  color: color-mix(in srgb, var(--usage-accent-deep) 60%, #595959);
   font: inherit;
-  font-size: 0.66rem;
+  font-size: 0.62rem;
   line-height: 1;
-  padding: 0.2rem 0.46rem;
+  padding: 0.16rem 0.4rem;
   cursor: default;
-  transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease, opacity 160ms ease;
 }
 
 .review-usage-palette-switch button:hover {
@@ -1996,15 +2072,16 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 }
 
 .review-usage-palette-switch button.is-active {
-  border-color: color-mix(in srgb, var(--usage-accent-deep) 56%, white);
-  background: color-mix(in srgb, var(--usage-accent) 16%, white);
+  border-color: color-mix(in srgb, var(--usage-accent-deep) 32%, white);
+  background: color-mix(in srgb, var(--usage-accent) 9%, white);
   color: var(--usage-accent-deep);
-  font-weight: 700;
+  font-weight: 600;
+  opacity: 1;
 }
 
 .review-usage-palette-note {
-  color: var(--text-soft);
-  font-size: 0.66rem;
+  color: color-mix(in srgb, var(--text-soft) 88%, white);
+  font-size: 0.62rem;
   line-height: 1.2;
 }
 
@@ -2163,6 +2240,12 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 .review-usage-layer-2,
 .review-usage-dot-2 { background: var(--usage-layer-2); }
 
+.review-usage-layer-3,
+.review-usage-dot-3 { background: var(--usage-layer-3); }
+
+.review-usage-layer-4,
+.review-usage-dot-4 { background: var(--usage-layer-4); }
+
 .review-usage-layer-other,
 .review-usage-dot-other { background: var(--usage-layer-other); }
 
@@ -2192,23 +2275,26 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 }
 
 .review-usage-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, max-content));
+  justify-content: start;
+  gap: 0.34rem 0.72rem;
   color: var(--usage-muted);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
 }
 
 .review-usage-legend span {
   display: inline-flex;
   align-items: center;
-  gap: 0.28rem;
+  gap: 0.24rem;
+  min-width: 0;
 }
 
 .review-usage-legend i {
   display: inline-block;
-  width: 0.5rem;
-  height: 0.5rem;
+  width: 0.42rem;
+  height: 0.42rem;
+  flex: 0 0 auto;
   border-radius: 999px;
 }
 
@@ -2236,6 +2322,15 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
   border-radius: 12px;
   border: 1px solid var(--line-soft);
   background: rgba(255, 255, 255, 0.52);
+  color: inherit;
+  text-decoration: none;
+  transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease;
+}
+
+.review-usage-wish-row:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--usage-accent) 24%, rgba(79, 49, 35, 0.12));
+  background: color-mix(in srgb, var(--usage-accent-pale) 10%, rgba(255, 255, 255, 0.88));
 }
 
 .review-usage-wish-copy {
@@ -2298,6 +2393,18 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 .monthly-message-list {
   display: grid;
   gap: 0.34rem;
+}
+
+.monthly-message-link {
+  color: inherit;
+  text-decoration: none;
+  transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease;
+}
+
+.monthly-message-link:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--heat-4) 24%, rgba(79, 49, 35, 0.12));
+  background: color-mix(in srgb, var(--heat-1) 28%, rgba(255, 255, 255, 0.88));
 }
 
 .monthly-claims-chart-shell {
@@ -2447,7 +2554,7 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 
 .monthly-completed-preview {
   padding-top: 0.48rem;
-  border-top: 1px solid var(--line-soft);
+  border-top: 1px solid color-mix(in srgb, var(--heat-4) 28%, rgba(79, 49, 35, 0.1));
 }
 
 .monthly-completed-preview p {
@@ -2459,17 +2566,17 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 
 .monthly-completed-preview span {
   margin-right: 0.32rem;
-  color: var(--heat-5);
+  color: color-mix(in srgb, var(--heat-5) 88%, var(--text-main));
 }
 
 .monthly-completed-link {
   justify-self: start;
   min-height: 1.9rem;
   padding: 0.32rem 0.68rem;
-  border: 1px solid var(--line-soft);
+  border: 1px solid color-mix(in srgb, var(--heat-4) 26%, rgba(79, 49, 35, 0.12));
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.5);
-  color: var(--text-main);
+  background: color-mix(in srgb, var(--heat-1) 34%, rgba(255, 255, 255, 0.82));
+  color: color-mix(in srgb, var(--heat-5) 72%, var(--text-main));
   font-size: 0.72rem;
   font-weight: 700;
   text-decoration: none;

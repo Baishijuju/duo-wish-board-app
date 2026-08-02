@@ -22,6 +22,7 @@ export function useComposePreviewState(options: UseComposePreviewStateOptions = 
   const composeForm = useComposeWishForm({ allowEditing: options.allowEditing })
   const {
     categorySuggestions,
+    cloningWish,
     draft,
     editingWish,
     initialStepDrafts,
@@ -65,11 +66,23 @@ export function useComposePreviewState(options: UseComposePreviewStateOptions = 
     return draft.value.note.trim() || '留下一句为什么想实现它，这页会更值得回看。'
   })
   const composerHeadline = computed(() => {
-    return editingWish.value ? '把这条愿望整理成它现在最像的样子' : '把一个愿望认真写进今天'
+    if (editingWish.value) {
+      return '把这条愿望整理成它现在最像的样子'
+    }
+
+    if (cloningWish.value) {
+      return '复制一条愿望，再改成这次的新版本'
+    }
+
+    return '把一个愿望认真写进今天'
   })
   const composerLead = computed(() => {
     if (editingWish.value) {
       return '这一页只整理基本信息，让标题、范围和进度方式重新对齐。'
+    }
+
+    if (cloningWish.value) {
+      return '已经把原愿望内容带过来了，改几个关键词就能快速开始新一轮。'
     }
 
     return '把名字、分类和第一步都放好，让这个小愿望一开始就有路可走。'

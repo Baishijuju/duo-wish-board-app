@@ -1,7 +1,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import type { WishDraft } from '../stores/wishes'
+import type { WishDraft, WishRecord } from '../stores/wishes'
 import { useWishStore } from '../stores/wishes'
 
 interface UseComposeWishFormOptions {
@@ -58,6 +58,10 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
     const wishId = String(route.query.edit ?? '')
     return wishId ? wishStore.findById(wishId) ?? null : null
   })
+  const requestedCloningWish = computed(() => {
+    const wishId = String(route.query.clone ?? '')
+    return wishId ? wishStore.findById(wishId) ?? null : null
+  })
   const editingWish = computed(() => {
     const targetWish = requestedEditingWish.value
 
@@ -68,6 +72,14 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
     const memberId = authStore.currentMemberId || authStore.currentMember?.id || ''
     return memberId && targetWish.ownerId === memberId ? targetWish : null
   })
+  const cloningWish = computed(() => {
+    if (editingWish.value) {
+      return null
+    }
+
+    return requestedCloningWish.value
+  })
+  const isCloningWish = computed(() => !!cloningWish.value)
   const hasBlockedEditingWish = computed(() => !!requestedEditingWish.value && !editingWish.value)
   const formRouteName = computed(() => {
     return typeof route.name === 'string' ? route.name : 'compose'
@@ -98,29 +110,64 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
   )
 
   watch(
-    () => editingWish.value?.id ?? '',
-    (wishId) => {
-      if (!wishId || !editingWish.value) {
-        resetDraft()
+    () => ({
+      editingWishId: editingWish.value?.id ?? '',
+      cloningWishId: cloningWish.value?.id ?? '',
+      memberId: authStore.currentMemberId ?? '',
+    }),
+    () => {
+      if (editingWish.value) {
+        populateDraftFromWish(editingWish.value, true)
+        initialStepDrafts.value = [createEmptyInitialStepDraft(), createEmptyInitialStepDraft()]
         return
       }
 
-      draft.value = {
-        title: editingWish.value.title,
-        category: editingWish.value.category,
-        note: editingWish.value.note,
-        ownerId: editingWish.value.ownerId,
-        scope: editingWish.value.scope,
-        progressMode: editingWish.value.progressMode,
-        progressCurrent: editingWish.value.progressCurrent,
-        progressTarget: editingWish.value.progressTarget,
-        progressUnit: editingWish.value.progressUnit,
-        progressStarCoinValue: editingWish.value.progressStarCoinValue,
-        completionStarCoinBonus: editingWish.value.completionStarCoinBonus,
+      if (cloningWish.value) {
+        populateDraftFromWish(cloningWish.value, false)
+        hydrateInitialStepsFromWish(cloningWish.value)
+        return
       }
+
+      resetDraft()
     },
     { immediate: true },
   )
+
+  function populateDraftFromWish(wish: WishRecord, isEditing: boolean) {
+    draft.value = {
+      title: wish.title,
+      category: wish.category,
+      note: wish.note,
+      ownerId: isEditing
+        ? wish.ownerId
+        : (authStore.currentMemberId || authStore.currentMember?.id || wish.ownerId),
+      scope: wish.scope,
+      progressMode: wish.progressMode,
+      progressCurrent: isEditing ? wish.progressCurrent : 0,
+      progressTarget: wish.progressTarget,
+      progressUnit: wish.progressUnit,
+      progressStarCoinValue: wish.progressStarCoinValue,
+      completionStarCoinBonus: wish.completionStarCoinBonus,
+    }
+  }
+
+  function hydrateInitialStepsFromWish(wish: WishRecord) {
+    if (wish.progressMode !== 'steps') {
+      initialStepDrafts.value = [createEmptyInitialStepDraft(), createEmptyInitialStepDraft()]
+      return
+    }
+
+    const seedSteps = wish.steps
+      .map((step) => ({
+        title: step.title.trim(),
+        starCoinValue: Math.max(0, Number(step.starCoinValue ?? 0) || 0),
+      }))
+      .filter((step) => !!step.title)
+
+    initialStepDrafts.value = seedSteps.length
+      ? seedSteps
+      : [createEmptyInitialStepDraft(), createEmptyInitialStepDraft()]
+  }
 
   function resetDraft() {
     draft.value = createEmptyDraft()
@@ -272,7 +319,9 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
     feedbackMessage,
     feedbackTone,
     initialStepDrafts,
+    isCloningWish,
     lastSavedWishId,
+    cloningWish,
     removeInitialStepField,
     resetDraft,
     submitWish,
