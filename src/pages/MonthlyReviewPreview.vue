@@ -105,14 +105,6 @@ type CoinUsageWishRow = {
   units: number
 }
 
-type StarCoinIncomeWishRow = {
-  wishId: string
-  title: string
-  category: string
-  income: number
-  claimCount: number
-}
-
 type UsagePalette = 'ocean' | 'candy' | 'sunset' | 'aurora' | 'neon' | 'tropical' | 'macaron'
 
 type ClaimStatRow = {
@@ -560,31 +552,6 @@ const starCoinWaterfallChart = computed<StarCoinWaterfallChart>(() => {
 })
 const starCoinWaterfallSteps = computed(() => starCoinWaterfallChart.value.steps)
 const hasStarCoinWaterfall = computed(() => starCoinWaterfallSteps.value.some((step) => step.amount > 0) || currentPeriodRewardClaims.value.length > 0)
-const starCoinIncomeWishRows = computed<StarCoinIncomeWishRow[]>(() => {
-  const grouped = new Map<string, StarCoinIncomeWishRow>()
-
-  currentPeriodRewardClaims.value.forEach((claim) => {
-    if (!claim.sourceWishId) return
-    if (claim.starCoinDelta <= 0) return
-
-    const wish = wishStore.findById(claim.sourceWishId)
-    const row = grouped.get(claim.sourceWishId) ?? {
-      wishId: claim.sourceWishId,
-      title: wish?.title ?? getWishTitle(claim.sourceWishId),
-      category: wish?.category || '未分类',
-      income: 0,
-      claimCount: 0,
-    }
-    row.income += claim.starCoinDelta
-    row.claimCount += 1
-    grouped.set(claim.sourceWishId, row)
-  })
-
-  return [...grouped.values()].sort((left, right) => {
-    if (right.income !== left.income) return right.income - left.income
-    return right.claimCount - left.claimCount
-  })
-})
 const coinUsageEvents = computed<ProgressUsageEvent[]>(() => {
   const events: ProgressUsageEvent[] = []
 
