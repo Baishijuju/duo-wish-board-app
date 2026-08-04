@@ -585,8 +585,6 @@ const starCoinIncomeWishRows = computed<StarCoinIncomeWishRow[]>(() => {
     return right.claimCount - left.claimCount
   })
 })
-const starCoinIncomeWishMax = computed(() => Math.max(1, ...starCoinIncomeWishRows.value.map((row) => row.income)))
-const starCoinIncomeTotal = computed(() => starCoinIncomeWishRows.value.reduce((sum, row) => sum + row.income, 0))
 const coinUsageEvents = computed<ProgressUsageEvent[]>(() => {
   const events: ProgressUsageEvent[] = []
 
