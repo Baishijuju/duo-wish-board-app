@@ -24,8 +24,8 @@ type RewardKeywordEntry = {
 
 const selectedRewardKeywordId = ref<string | null>(null)
 const rewardKeywordSortMode = ref<RewardKeywordSortMode>('default')
-const rewardKeywordOwnerFilter = ref<RewardKeywordOwnerFilter>('personal')
-const rewardKeywordStatusFilter = ref<RewardKeywordStatusFilter>('depositable')
+const rewardKeywordOwnerFilter = ref<RewardKeywordOwnerFilter>('all')
+const rewardKeywordStatusFilter = ref<RewardKeywordStatusFilter>('all')
 const rewardCostMinDraft = ref('')
 const rewardCostMaxDraft = ref('')
 const rewardDepositedMinDraft = ref('')
@@ -441,8 +441,8 @@ function chooseRewardKeywordStatusFilter(filter: RewardKeywordStatusFilter) {
 }
 
 function clearRewardKeywordFilters() {
-  rewardKeywordOwnerFilter.value = 'personal'
-  rewardKeywordStatusFilter.value = 'depositable'
+  rewardKeywordOwnerFilter.value = 'all'
+  rewardKeywordStatusFilter.value = 'all'
   rewardCostMinDraft.value = ''
   rewardCostMaxDraft.value = ''
   rewardDepositedMinDraft.value = ''
@@ -537,6 +537,7 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
 
       <component
         :is="rewardPageMode === 'manage' ? ManagePanel : ActionCard"
+        id="space-reward-center"
         class="space-shell-card space-main-card space-reward-hub"
         eyebrow="奖励中心"
         :summary="activeRewardHubLead"

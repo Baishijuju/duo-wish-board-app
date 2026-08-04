@@ -36,9 +36,17 @@ export interface WishCloudFetchResult {
   hasUnifiedThreadData: boolean
   imageRows: WishImageRowLike[]
   stepRows: WishStepRowLike[]
+  countProgressDailyRows: WishCountProgressDailyRowLike[]
   imageUrlMap: Map<string, string>
   commentImageUrlMap: Map<string, string>
   snapshotWarningMessage: string
+}
+
+export interface WishCountProgressDailyRowLike {
+  wish_id: string
+  owner_id: string
+  progress_date: string
+  progress_units: number
 }
 
 export interface MonthlyJournalSnapshotRowLike {
@@ -167,6 +175,7 @@ export async function fetchWishCloudRows(
   let hasUnifiedThreadData = false
   let imageRows: WishImageRowLike[] = []
   let stepRows: WishStepRowLike[] = []
+  let countProgressDailyRows: WishCountProgressDailyRowLike[] = []
   let imageUrlMap = new Map<string, string>()
   let commentImageUrlMap = new Map<string, string>()
   let snapshotWarningMessage = ''
@@ -375,6 +384,22 @@ export async function fetchWishCloudRows(
       stepRows = (stepData ?? []) as WishStepRowLike[]
     }
 
+    const { data: dailyData, error: dailyError } = await supabase
+      .from('wish_count_progress_daily')
+      .select('wish_id, owner_id, progress_date, progress_units')
+      .in('wish_id', wishIds)
+      .eq('space_id', spaceId)
+
+    if (dailyError) {
+      const allowsMissingDailyTableFallback = allowsLegacyCapabilityFallback || options.capabilities?.hasWishProgress === false
+
+      if (!allowsMissingDailyTableFallback || (dailyError.code !== '42P01' && !/wish_count_progress_daily/i.test(dailyError.message))) {
+        return { ok: false, message: `云端每日推进同步失败：${dailyError.message}` }
+      }
+    } else {
+      countProgressDailyRows = (dailyData ?? []) as WishCountProgressDailyRowLike[]
+    }
+
     const { data: imageData, error: imageError } = await supabase
       .from('wish_images')
       .select('id, wish_id, created_by, storage_path, file_name, mime_type, note, size_bytes, sort_order, created_at')
@@ -414,6 +439,7 @@ export async function fetchWishCloudRows(
       hasUnifiedThreadData,
       imageRows,
       stepRows,
+      countProgressDailyRows,
       imageUrlMap,
       commentImageUrlMap,
       snapshotWarningMessage,

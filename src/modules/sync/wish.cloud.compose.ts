@@ -7,7 +7,12 @@ import type {
 } from '../../stores/wishes'
 import { createMonthlyJournalSnapshotRecord, isPlainRecord } from '../journal/journal.factories'
 import { buildDerivedWishThreadEntries } from '../journal/journal.projection.local'
-import { buildWishThreadEntriesFromRows, buildCommentRowsFromThreadEntries, mapCommentImageRowsFromThreadImages } from '../journal/journal.mapping.cloud'
+import {
+  buildWishThreadEntriesFromRows,
+  buildCommentRowsFromThreadEntries,
+  mapCommentImageRowsFromThreadImages,
+  type WishCountProgressDailyRowLike,
+} from '../journal/journal.mapping.cloud'
 import {
   createRewardClaimFromRow,
   createRewardPoolItemFromRow,
@@ -72,8 +77,20 @@ export function composeWishCloudState(fetchResult: WishCloudFetchResult) {
     ),
   )
 
+  const resolvedCountProgressDailyRows = resolveCountProgressDailyRows(
+    fetchResult.countProgressDailyRows,
+    fetchResult.rewardClaimRows,
+  )
+
   const nextWishThreads = fetchResult.hasUnifiedThreadData
-    ? buildWishThreadEntriesFromRows(fetchResult.threadRows, fetchResult.threadImageRows, fetchResult.threadReactionRows, createWishImageRecord, fetchResult.commentImageUrlMap)
+    ? buildWishThreadEntriesFromRows(
+      fetchResult.threadRows,
+      fetchResult.threadImageRows,
+      fetchResult.threadReactionRows,
+      createWishImageRecord,
+      fetchResult.commentImageUrlMap,
+      resolvedCountProgressDailyRows,
+    )
     : buildDerivedWishThreadEntries(nextWishes, nextRewardClaims, fetchResult.threadReactionRows)
 
   const nextMonthlySnapshots = fetchResult.monthlySnapshotRows.map((snapshot) =>
@@ -104,6 +121,62 @@ export function composeWishCloudState(fetchResult: WishCloudFetchResult) {
     wishThreads: nextWishThreads,
     monthlyJournalSnapshots: nextMonthlySnapshots,
   }
+}
+
+function resolveCountProgressDailyRows(
+  dailyRows: WishCountProgressDailyRowLike[],
+  rewardClaimRows: RewardClaimRowLike[],
+) {
+  const fromClaims = buildCountProgressDailyRowsFromClaims(rewardClaimRows)
+  const mergedByKey = new Map<string, WishCountProgressDailyRowLike>()
+
+  for (const row of fromClaims) {
+    mergedByKey.set(`${row.progress_date}:${row.wish_id}:${row.owner_id}`, row)
+  }
+
+  for (const row of dailyRows) {
+    mergedByKey.set(`${row.progress_date}:${row.wish_id}:${row.owner_id}`, row)
+  }
+
+  return [...mergedByKey.values()]
+}
+
+function buildCountProgressDailyRowsFromClaims(rewardClaimRows: RewardClaimRowLike[]) {
+  const grouped = new Map<string, WishCountProgressDailyRowLike>()
+
+  for (const row of rewardClaimRows) {
+    if (row.claim_kind !== 'count_star_coin' || !row.source_wish_id || row.source_step_id) {
+      continue
+    }
+
+    const progressDate = getBeijingDateKey(row.created_at)
+    const quantity = Number.isFinite(row.quantity) ? Math.max(0, Math.trunc(row.quantity ?? 0)) : 0
+    const key = `${progressDate}:${row.source_wish_id}:${row.owner_id}`
+    const existing = grouped.get(key)
+
+    if (existing) {
+      existing.progress_units += quantity
+    } else {
+      grouped.set(key, {
+        owner_id: row.owner_id,
+        progress_date: progressDate,
+        progress_units: quantity,
+        wish_id: row.source_wish_id,
+      })
+    }
+  }
+
+  return [...grouped.values()]
+}
+
+function getBeijingDateKey(dateValue: string | Date = new Date()) {
+  const timestamp = dateValue instanceof Date ? dateValue.getTime() : new Date(dateValue).getTime()
+  const shiftedDate = new Date((Number.isNaN(timestamp) ? Date.now() : timestamp) + 8 * 60 * 60 * 1000)
+  const year = shiftedDate.getUTCFullYear()
+  const month = `${shiftedDate.getUTCMonth() + 1}`.padStart(2, '0')
+  const day = `${shiftedDate.getUTCDate()}`.padStart(2, '0')
+
+  return `${year}-${month}-${day}`
 }
 
 function createWishImageRecord(image: {

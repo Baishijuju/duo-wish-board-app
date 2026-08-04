@@ -26,3 +26,7 @@ test-results
 *.njsproj
 *.sln
 *.sw?
+
+# Local CLI caches
+.npx-cache/
+supabase/.temp/

@@ -98,6 +98,21 @@ type ProgressUsageWishRow = {
   units: number
 }
 
+type CoinUsageWishRow = {
+  wishId: string
+  title: string
+  category: string
+  units: number
+}
+
+type StarCoinIncomeWishRow = {
+  wishId: string
+  title: string
+  category: string
+  income: number
+  claimCount: number
+}
+
 type UsagePalette = 'ocean' | 'candy' | 'sunset' | 'aurora' | 'neon' | 'tropical' | 'macaron'
 
 type ClaimStatRow = {
@@ -483,13 +498,23 @@ const compactInsightLine = computed(() => {
 })
 const starCoinWaterfallChart = computed<StarCoinWaterfallChart>(() => {
   let runningTotal = periodStarCoinStartBalance.value
-  const changeSteps = starCoinWaterfallKinds.map((source) => {
-    const signedAmount = starCoinLedger.value.sourceTotals.get(source.kind) ?? 0
+  const progressStarCoinSignedAmount =
+    (starCoinLedger.value.sourceTotals.get('count_star_coin') ?? 0)
+    + (starCoinLedger.value.sourceTotals.get('step_star_coin') ?? 0)
+
+  const changeStepSources = [
+    { key: 'progress_star_coin', label: '推进星币', signedAmount: progressStarCoinSignedAmount },
+    { key: 'wish_completion_bonus', label: '完成愿望', signedAmount: starCoinLedger.value.sourceTotals.get('wish_completion_bonus') ?? 0 },
+    { key: 'reward_deposit', label: '存入奖励', signedAmount: starCoinLedger.value.sourceTotals.get('reward_deposit') ?? 0 },
+  ]
+
+  const changeSteps = changeStepSources.map((source) => {
+    const signedAmount = source.signedAmount
     const start = runningTotal
     const end = runningTotal + signedAmount
     runningTotal = end
 
-    return { key: source.kind, label: source.label, amount: Math.abs(signedAmount), end, signedAmount, start, tone: signedAmount > 0 ? 'income' as const : signedAmount < 0 ? 'spending' as const : 'empty' as const }
+    return { key: source.key, label: source.label, amount: Math.abs(signedAmount), end, signedAmount, start, tone: signedAmount > 0 ? 'income' as const : signedAmount < 0 ? 'spending' as const : 'empty' as const }
   })
 
   const balancePoints = [periodStarCoinStartBalance.value, ...changeSteps.map((step) => step.end), periodStarCoinEndBalance.value]
@@ -499,8 +524,13 @@ const starCoinWaterfallChart = computed<StarCoinWaterfallChart>(() => {
     { key: 'period-end', label: '期末', amount: Math.abs(periodStarCoinEndBalance.value), end: periodStarCoinEndBalance.value, signedAmount: periodStarCoinEndBalance.value, start: periodStarCoinEndBalance.value, tone: 'balance' as const },
   ]
 
-  const minValue = Math.min(0, ...balancePoints)
-  const maxValue = Math.max(0, ...balancePoints)
+  const rawMinValue = Math.min(0, ...balancePoints)
+  const rawMaxValue = Math.max(0, ...balancePoints)
+  const rawSpan = Math.max(1, rawMaxValue - rawMinValue)
+  // Keep a dynamic domain but reserve headroom/footroom so endpoints do not visually stick to chart edges.
+  const dynamicPadding = Math.max(1, rawSpan * 0.1)
+  const minValue = rawMinValue - dynamicPadding
+  const maxValue = rawMaxValue + dynamicPadding
   const valueSpan = Math.max(1, maxValue - minValue)
   const valueToPercent = (value: number) => formatWaterfallPercent((value - minValue) / valueSpan)
 
@@ -530,6 +560,193 @@ const starCoinWaterfallChart = computed<StarCoinWaterfallChart>(() => {
 })
 const starCoinWaterfallSteps = computed(() => starCoinWaterfallChart.value.steps)
 const hasStarCoinWaterfall = computed(() => starCoinWaterfallSteps.value.some((step) => step.amount > 0) || currentPeriodRewardClaims.value.length > 0)
+const starCoinIncomeWishRows = computed<StarCoinIncomeWishRow[]>(() => {
+  const grouped = new Map<string, StarCoinIncomeWishRow>()
+
+  currentPeriodRewardClaims.value.forEach((claim) => {
+    if (!claim.sourceWishId) return
+    if (claim.starCoinDelta <= 0) return
+
+    const wish = wishStore.findById(claim.sourceWishId)
+    const row = grouped.get(claim.sourceWishId) ?? {
+      wishId: claim.sourceWishId,
+      title: wish?.title ?? getWishTitle(claim.sourceWishId),
+      category: wish?.category || '未分类',
+      income: 0,
+      claimCount: 0,
+    }
+    row.income += claim.starCoinDelta
+    row.claimCount += 1
+    grouped.set(claim.sourceWishId, row)
+  })
+
+  return [...grouped.values()].sort((left, right) => {
+    if (right.income !== left.income) return right.income - left.income
+    return right.claimCount - left.claimCount
+  })
+})
+const starCoinIncomeWishMax = computed(() => Math.max(1, ...starCoinIncomeWishRows.value.map((row) => row.income)))
+const starCoinIncomeTotal = computed(() => starCoinIncomeWishRows.value.reduce((sum, row) => sum + row.income, 0))
+const coinUsageEvents = computed<ProgressUsageEvent[]>(() => {
+  const events: ProgressUsageEvent[] = []
+
+  currentPeriodRewardClaims.value.forEach((claim) => {
+    if (!claim.sourceWishId || claim.starCoinDelta <= 0) return
+
+    const wish = wishStore.findById(claim.sourceWishId)
+    if (!wish) return
+
+    events.push({
+      id: `coin-income-${claim.id}`,
+      dateKey: getBeijingDateKey(claim.createdAt),
+      ownerId: claim.ownerId,
+      wishId: wish.id,
+      category: wish.category || '未分类',
+      title: wish.title,
+      units: claim.starCoinDelta,
+    })
+  })
+
+  return events.sort((left, right) => right.dateKey.localeCompare(left.dateKey))
+})
+const previousCoinIncomeEvents = computed<ProgressUsageEvent[]>(() => {
+  const events: ProgressUsageEvent[] = []
+
+  wishStore.rewardClaims.forEach((claim) => {
+    if (!claim.sourceWishId || claim.starCoinDelta <= 0) return
+    if (!previousProgressDateSet.value.has(getBeijingDateKey(claim.createdAt))) return
+    if (!activeLedgerMemberIdSet.value.has(claim.ownerId)) return
+
+    const wish = wishStore.findById(claim.sourceWishId)
+    if (!wish) return
+
+    events.push({
+      id: `previous-coin-income-${claim.id}`,
+      dateKey: getBeijingDateKey(claim.createdAt),
+      ownerId: claim.ownerId,
+      wishId: wish.id,
+      category: wish.category || '未分类',
+      title: wish.title,
+      units: claim.starCoinDelta,
+    })
+  })
+
+  return events
+})
+const coinUsageTotalUnits = computed(() => coinUsageEvents.value.reduce((sum, event) => sum + event.units, 0))
+const previousCoinUsageTotalUnits = computed(() => previousCoinIncomeEvents.value.reduce((sum, event) => sum + event.units, 0))
+const coinUsageDailyAverage = computed(() => coinUsageTotalUnits.value / Math.max(1, activePeriodDateKeys.value.length))
+const previousCoinUsageDailyAverage = computed(() => {
+  const previousDateSet = new Set(previousComparableProgressDateKeys.value)
+  const previousComparableCount = Math.max(1, previousComparableProgressDateKeys.value.length)
+  const total = wishStore.rewardClaims.reduce((sum, claim) => {
+    if (!claim.sourceWishId || claim.starCoinDelta <= 0) return sum
+    if (!previousDateSet.has(getBeijingDateKey(claim.createdAt))) return sum
+    if (!activeLedgerMemberIdSet.value.has(claim.ownerId)) return sum
+    return sum + claim.starCoinDelta
+  }, 0)
+
+  return total / previousComparableCount
+})
+const coinUsageSelectedDateKey = ref<string | null>(null)
+const coinUsageSummaryLabel = computed(() => coinUsageSelectedDateKey.value ? formatDateLabel(coinUsageSelectedDateKey.value) : activePeriodLabel.value)
+const coinUsageFocusedEvents = computed(() => {
+  if (!coinUsageSelectedDateKey.value) return coinUsageEvents.value
+  return coinUsageEvents.value.filter((event) => event.dateKey === coinUsageSelectedDateKey.value)
+})
+const coinUsageFocusedTotalUnits = computed(() => coinUsageFocusedEvents.value.reduce((sum, event) => sum + event.units, 0))
+const coinUsageCompareLine = computed(() => {
+  const diff = coinUsageTotalUnits.value - previousCoinUsageTotalUnits.value
+  if (Math.abs(diff) < 0.05) return '与上一周期持平'
+  const prefix = diff > 0 ? '比上一周期多' : '比上一周期少'
+  const amount = Math.abs(diff)
+  if (previousCoinUsageTotalUnits.value <= 0) return `${prefix} 入账 ${formatNumber(amount)} 星币`
+  const ratio = Math.round((amount / previousCoinUsageTotalUnits.value) * 100)
+  return `${prefix} 入账 ${formatNumber(amount)} 星币（${ratio}%）`
+})
+const coinUsageAverageLine = computed(() => `日均入账 ${formatNumber(coinUsageDailyAverage.value)} 星币`)
+const coinUsageAverageCompareLine = computed(() => {
+  const currentAverage = coinUsageDailyAverage.value
+  const previousAverage = previousCoinUsageDailyAverage.value
+  const averageDiff = currentAverage - previousAverage
+
+  if (previousAverage <= 0) {
+    return averageDiff > 0 ? '日均入账较上一周期有提升' : '日均入账较上一周期回落'
+  }
+
+  const ratio = Math.round((Math.abs(averageDiff) / previousAverage) * 100)
+  if (ratio < 5) return '日均入账与上一周期基本持平'
+
+  const direction = averageDiff > 0 ? '多' : '少'
+  return `日均入账比上一周期${direction} ${ratio}%`
+})
+const coinUsageCategorySummary = computed(() => {
+  const grouped = new Map<string, number>()
+  coinUsageFocusedEvents.value.forEach((event) => {
+    grouped.set(event.category, (grouped.get(event.category) ?? 0) + event.units)
+  })
+  const total = coinUsageFocusedTotalUnits.value
+  return [...grouped.entries()]
+    .map(([category, units]) => ({ category, units, percent: total ? Math.round((units / total) * 100) : 0 }))
+    .sort((left, right) => right.units - left.units)
+})
+const coinUsageTopCategories = computed(() => coinUsageCategorySummary.value.slice(0, 5).map((row) => row.category))
+const coinUsageLegend = computed(() => {
+  const base = coinUsageTopCategories.value.map((label, index) => ({ label, className: `review-usage-dot-${index}` }))
+  if (coinUsageCategorySummary.value.length > coinUsageTopCategories.value.length) {
+    base.push({ label: '其他', className: 'review-usage-dot-other' })
+  }
+  return base
+})
+const coinUsageBars = computed(() => {
+  const grouped = new Map<string, { total: number; categories: Map<string, number> }>()
+  progressUsageChartDateKeys.value.forEach((dateKey) => grouped.set(dateKey, { total: 0, categories: new Map<string, number>() }))
+  coinUsageEvents.value.forEach((event) => {
+    const row = grouped.get(event.dateKey)
+    if (!row) return
+    row.total += event.units
+    row.categories.set(event.category, (row.categories.get(event.category) ?? 0) + event.units)
+  })
+  const max = Math.max(1, ...[...grouped.values()].map((row) => row.total))
+  return progressUsageChartDateKeys.value.map((dateKey) => {
+    const row = grouped.get(dateKey) ?? { total: 0, categories: new Map<string, number>() }
+    return {
+      dateKey,
+      total: row.total,
+      weekdayLabel: weekdayLabels[getMondayBasedWeekdayIndex(dateKey)] ?? '-',
+      dayLabel: `${parseDateKey(dateKey).day}`,
+      hasValue: row.total > 0,
+      active: coinUsageSelectedDateKey.value === dateKey,
+      layers: buildCoinUsageLayers(row.categories, max),
+    }
+  })
+})
+const coinUsageAverageAxis = computed(() => {
+  const max = Math.max(1, ...coinUsageBars.value.map((row) => row.total))
+  const ratio = Math.min(100, (coinUsageDailyAverage.value / max) * 100)
+  return { bottom: `${WEEK_CHART_AXIS_SPACE_REM + (ratio / 100) * (WEEK_CHART_HEIGHT_REM - WEEK_CHART_AXIS_SPACE_REM)}rem`, label: '平均' }
+})
+const coinUsageAxisTicks = computed(() => {
+  const max = Math.max(1, ...coinUsageBars.value.map((row) => row.total))
+  const mid = max / 2
+  const levels = [max, mid, 0]
+  return levels.map((value, index) => ({
+    key: `${value}-${index}`,
+    label: formatNumber(value),
+    bottom: `${WEEK_CHART_AXIS_SPACE_REM + ((value / max) * (WEEK_CHART_HEIGHT_REM - WEEK_CHART_AXIS_SPACE_REM))}rem`,
+  }))
+})
+const coinUsageWishRows = computed<CoinUsageWishRow[]>(() => {
+  const grouped = new Map<string, CoinUsageWishRow>()
+  coinUsageFocusedEvents.value.forEach((event) => {
+    const current = grouped.get(event.wishId) ?? { wishId: event.wishId, title: event.title, category: event.category, units: 0 }
+    current.units += event.units
+    grouped.set(event.wishId, current)
+  })
+  return [...grouped.values()].sort((left, right) => right.units - left.units)
+})
+const coinUsageMaxWishUnits = computed(() => Math.max(1, ...coinUsageWishRows.value.map((row) => row.units)))
+const showCoinUsageCopy = computed(() => activeMetric.value === 'coins' && activeRange.value !== 'year')
 const progressUsageEvents = computed<ProgressUsageEvent[]>(() => {
   const events: ProgressUsageEvent[] = []
 
@@ -595,6 +812,10 @@ const previousProgressDateKeys = computed(() => {
   if (activeRange.value === 'month') return buildPeriodDateKeys('month', addMonthsToDateKey(anchorDateKey.value, -1))
   return []
 })
+const previousComparableProgressDateKeys = computed(() => {
+  const comparableCount = Math.max(1, activePeriodDateKeys.value.length)
+  return previousProgressDateKeys.value.slice(0, comparableCount)
+})
 const previousProgressDateSet = computed(() => new Set(previousProgressDateKeys.value.filter((dateKey) => dateKey <= todayDateKey.value)))
 const previousProgressUnits = computed(() => {
   let total = 0
@@ -615,6 +836,27 @@ const previousProgressUnits = computed(() => {
   return total
 })
 const progressUsageTotalUnits = computed(() => progressUsageEvents.value.reduce((sum, event) => sum + event.units, 0))
+const progressUsageDailyAverage = computed(() => progressUsageTotalUnits.value / Math.max(1, activePeriodDateKeys.value.length))
+const previousProgressDailyAverage = computed(() => {
+  const previousDateSet = new Set(previousComparableProgressDateKeys.value)
+  const previousComparableCount = Math.max(1, previousComparableProgressDateKeys.value.length)
+  let total = 0
+
+  wishStore.rewardClaims.forEach((claim) => {
+    if (claim.claimKind !== 'count_star_coin' || !claim.sourceWishId) return
+    if (!previousDateSet.has(getBeijingDateKey(claim.createdAt))) return
+    if (!activeLedgerMemberIdSet.value.has(claim.ownerId)) return
+    total += Math.max(0, claim.quantity)
+  })
+
+  wishStore.wishes.forEach((wish) => {
+    if (!activeLedgerMemberIdSet.value.has(wish.ownerId)) return
+    total += wish.steps.filter((step) => step.isDone && previousDateSet.has(getBeijingDateKey(step.updatedAt))).length
+    if (wish.completedAt && previousDateSet.has(getBeijingDateKey(wish.completedAt))) total += 1
+  })
+
+  return total / previousComparableCount
+})
 const progressUsageSelectedDateKey = ref<string | null>(null)
 const progressUsageSummaryLabel = computed(() => progressUsageSelectedDateKey.value ? formatDateLabel(progressUsageSelectedDateKey.value) : activePeriodLabel.value)
 const progressUsageFocusedEvents = computed(() => {
@@ -631,7 +873,24 @@ const progressUsageCompareLine = computed(() => {
   const ratio = Math.round((amount / previousProgressUnits.value) * 100)
   return `${prefix} ${formatNumber(amount)} 次（${ratio}%）`
 })
-const progressUsageAverageLine = computed(() => `日均 ${(progressUsageTotalUnits.value / Math.max(1, activePeriodDateKeys.value.length)).toFixed(1)} 次`)
+const progressUsageAverageLine = computed(() => `日均 ${progressUsageDailyAverage.value.toFixed(1)} 次`)
+const progressUsageAverageCompareLine = computed(() => {
+  const currentAverage = progressUsageDailyAverage.value
+  const previousAverage = previousProgressDailyAverage.value
+  const averageDiff = currentAverage - previousAverage
+
+  if (previousAverage <= 0) {
+    return averageDiff > 0 ? '日均较上一周期有提升' : '日均较上一周期回落'
+  }
+
+  const ratio = Math.round((Math.abs(averageDiff) / previousAverage) * 100)
+  if (ratio < 5) {
+    return '日均与上一周期基本持平'
+  }
+
+  const direction = averageDiff > 0 ? '多' : '少'
+  return `日均比上一周期${direction} ${ratio}%`
+})
 const progressUsageCategorySummary = computed(() => {
   const grouped = new Map<string, number>()
   progressUsageFocusedEvents.value.forEach((event) => {
@@ -650,6 +909,13 @@ const progressUsageLegend = computed(() => {
   }
   return base
 })
+const progressUsageChartDateKeys = computed(() => {
+  if (activeRange.value === 'week' || activeRange.value === 'month') {
+    return buildPeriodDateKeys(activeRange.value, anchorDateKey.value)
+  }
+
+  return activePeriodDateKeys.value
+})
 function buildProgressUsageLayers(categoryUnits: Map<string, number>, maxUnits: number) {
   if (!maxUnits) return [] as Array<{ key: string; className: string; ratio: number }>
 
@@ -664,9 +930,23 @@ function buildProgressUsageLayers(categoryUnits: Map<string, number>, maxUnits: 
   if (others > 0) layers.push({ key: '其他', className: 'review-usage-layer-other', ratio: (others / maxUnits) * 100 })
   return layers.filter((layer) => layer.ratio > 0)
 }
+function buildCoinUsageLayers(categoryUnits: Map<string, number>, maxUnits: number) {
+  if (!maxUnits) return [] as Array<{ key: string; className: string; ratio: number }>
+
+  const layers = coinUsageTopCategories.value.map((category, index) => ({
+    key: category,
+    className: `review-usage-layer-${index}`,
+    ratio: ((categoryUnits.get(category) ?? 0) / maxUnits) * 100,
+  }))
+  const others = [...categoryUnits.entries()]
+    .filter(([category]) => !coinUsageTopCategories.value.includes(category))
+    .reduce((sum, [, units]) => sum + units, 0)
+  if (others > 0) layers.push({ key: '其他', className: 'review-usage-layer-other', ratio: (others / maxUnits) * 100 })
+  return layers.filter((layer) => layer.ratio > 0)
+}
 const progressUsageBars = computed(() => {
   const grouped = new Map<string, { total: number; categories: Map<string, number> }>()
-  activePeriodDateKeys.value.forEach((dateKey) => grouped.set(dateKey, { total: 0, categories: new Map<string, number>() }))
+  progressUsageChartDateKeys.value.forEach((dateKey) => grouped.set(dateKey, { total: 0, categories: new Map<string, number>() }))
   progressUsageEvents.value.forEach((event) => {
     const row = grouped.get(event.dateKey)
     if (!row) return
@@ -674,7 +954,7 @@ const progressUsageBars = computed(() => {
     row.categories.set(event.category, (row.categories.get(event.category) ?? 0) + event.units)
   })
   const max = Math.max(1, ...[...grouped.values()].map((row) => row.total))
-  return activePeriodDateKeys.value.map((dateKey) => {
+  return progressUsageChartDateKeys.value.map((dateKey) => {
     const row = grouped.get(dateKey) ?? { total: 0, categories: new Map<string, number>() }
     return {
       dateKey,
@@ -755,8 +1035,12 @@ const claimStatsRows = computed<ClaimStatRow[]>(() => {
     .filter((row) => row.claimCount > 0 || row.spending > 0)
     .sort((left, right) => right.claimCount - left.claimCount || right.spending - left.spending || new Date(right.latestAt).getTime() - new Date(left.latestAt).getTime() || left.label.localeCompare(right.label, 'zh-CN'))
 })
-  const claimStatsMaxCount = computed(() => Math.max(1, ...claimStatsRows.value.map((row) => row.claimCount)))
+const claimStatsMaxCount = computed(() => Math.max(1, ...claimStatsRows.value.map((row) => row.claimCount)))
 const claimStatsMaxSpending = computed(() => Math.max(1, ...claimStatsRows.value.map((row) => row.spending)))
+const claimCountRows = computed(() => claimStatsRows.value.filter((row) => row.claimCount > 0).sort((left, right) => right.claimCount - left.claimCount || right.spending - left.spending))
+const claimSpendingRows = computed(() => claimStatsRows.value.filter((row) => row.spending > 0).sort((left, right) => right.spending - left.spending || right.claimCount - left.claimCount))
+const claimTotalCount = computed(() => claimStatsRows.value.reduce((sum, row) => sum + row.claimCount, 0))
+const claimTotalSpending = computed(() => claimStatsRows.value.reduce((sum, row) => sum + row.spending, 0))
 
 function formatWaterfallPercent(ratio: number) {
   return `${Number((ratio * 100).toFixed(4))}%`
@@ -797,10 +1081,15 @@ watch([activeMetric, activeScope, activeRange, anchorDateKey], () => {
   isCompletedListExpanded.value = false
   isMessageListExpanded.value = false
   progressUsageSelectedDateKey.value = null
+  coinUsageSelectedDateKey.value = null
 })
 
 function toggleProgressUsageDate(dateKey: string) {
   progressUsageSelectedDateKey.value = progressUsageSelectedDateKey.value === dateKey ? null : dateKey
+}
+
+function toggleCoinUsageDate(dateKey: string) {
+  coinUsageSelectedDateKey.value = coinUsageSelectedDateKey.value === dateKey ? null : dateKey
 }
 
 function createImageEvent(id: string, createdAt: string, memberId: string, wish: WishRecord, title: string): ReviewEvent {
@@ -1180,18 +1469,16 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
           <strong>{{ activeRange === 'week' ? '本周推进分布' : '本月推进分布' }}</strong>
           <div class="review-usage-header-summary">
             <span class="review-usage-caption">{{ progressUsageSummaryLabel }} · <strong class="review-usage-caption-strong">{{ progressUsageSelectedDateKey ? progressUsageFocusedTotalUnits : progressUsageTotalUnits }} 次推进</strong></span>
-            <div class="review-usage-palette-switch" role="tablist" aria-label="推进图配色">
-              <button type="button" class="is-active" aria-pressed="true">
-                {{ activeUsagePaletteLabel }}
-              </button>
-            </div>
-            <span class="review-usage-palette-note">每日自动轮换，今天是 {{ activeUsagePaletteLabel }}</span>
+            <p class="review-usage-palette-note">每日自动轮换，今天是 <span class="review-usage-palette-chip">{{ activeUsagePaletteLabel }}</span></p>
           </div>
         </div>
         <div class="review-usage-summary">
           <div v-if="!progressUsageSelectedDateKey" class="review-usage-summary-inline">
             <p class="review-usage-compare">{{ progressUsageCompareLine }}</p>
-            <p class="review-usage-avg">{{ progressUsageAverageLine }}</p>
+            <div class="review-usage-avg-row">
+              <p class="review-usage-avg">{{ progressUsageAverageLine }}</p>
+              <p class="review-usage-avg">{{ progressUsageAverageCompareLine }}</p>
+            </div>
           </div>
           <p v-else class="review-usage-avg">点击同一柱可返回{{ activeRange === 'week' ? '本周' : '本月' }}视图</p>
         </div>
@@ -1204,7 +1491,7 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
 
           <div class="review-usage-week-chart-wrap">
             <div class="review-usage-average-line" :style="{ bottom: progressUsageAverageAxis.bottom }" aria-hidden="true"></div>
-            <div :class="['review-usage-week-chart', { 'has-selection': progressUsageSelectedDateKey !== null, 'is-month': activeRange === 'month' }]" :style="{ gridTemplateColumns: `repeat(${activePeriodDateKeys.length}, minmax(0, 1fr))` }">
+            <div :class="['review-usage-week-chart', { 'has-selection': progressUsageSelectedDateKey !== null, 'is-month': activeRange === 'month' }]" :style="{ gridTemplateColumns: `repeat(${progressUsageBars.length}, minmax(0, 1fr))` }">
               <article
                 v-for="bar in progressUsageBars"
                 :key="bar.dateKey"
@@ -1285,25 +1572,101 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
     </section>
 
     <section v-else-if="activeMetric === 'coins'" class="monthly-fact-layout">
+      <section v-if="showCoinUsageCopy" :class="['review-usage-layout', `theme-${activeUsagePalette}`]">
+        <article class="monthly-preview-panel review-usage-panel">
+          <div class="review-usage-header">
+            <strong>{{ activeRange === 'week' ? '本周星币入账分布' : '本月星币入账分布' }}</strong>
+            <div class="review-usage-header-summary">
+              <span class="review-usage-caption">{{ coinUsageSummaryLabel }} · <strong class="review-usage-caption-strong">{{ formatNumber(coinUsageSelectedDateKey ? coinUsageFocusedTotalUnits : coinUsageTotalUnits) }} 星币入账</strong></span>
+              <p class="review-usage-palette-note">每日自动轮换，今天是 <span class="review-usage-palette-chip">{{ activeUsagePaletteLabel }}</span></p>
+            </div>
+          </div>
+          <div class="review-usage-summary">
+            <div v-if="!coinUsageSelectedDateKey" class="review-usage-summary-inline">
+              <p class="review-usage-compare">{{ coinUsageCompareLine }}</p>
+              <div class="review-usage-avg-row">
+                <p class="review-usage-avg">{{ coinUsageAverageLine }}</p>
+                <p class="review-usage-avg">{{ coinUsageAverageCompareLine }}</p>
+              </div>
+            </div>
+            <p v-else class="review-usage-avg">点击同一柱可返回{{ activeRange === 'week' ? '本周' : '本月' }}视图</p>
+          </div>
+
+          <div class="review-usage-week-panel">
+            <div class="review-usage-week-axis" aria-hidden="true">
+              <span class="review-usage-week-axis-average" :style="{ bottom: coinUsageAverageAxis.bottom }">{{ coinUsageAverageAxis.label }}</span>
+              <span v-for="tick in coinUsageAxisTicks" :key="tick.key" :style="{ bottom: tick.bottom }">{{ tick.label }}</span>
+            </div>
+
+            <div class="review-usage-week-chart-wrap">
+              <div class="review-usage-average-line" :style="{ bottom: coinUsageAverageAxis.bottom }" aria-hidden="true"></div>
+              <div :class="['review-usage-week-chart', { 'has-selection': coinUsageSelectedDateKey !== null, 'is-month': activeRange === 'month' }]" :style="{ gridTemplateColumns: `repeat(${coinUsageBars.length}, minmax(0, 1fr))` }">
+                <article
+                  v-for="bar in coinUsageBars"
+                  :key="bar.dateKey"
+                  :class="['review-usage-week-bar', { active: bar.active, empty: !bar.hasValue }]"
+                  :title="`${formatDateLabel(bar.dateKey)} · ${formatNumber(bar.total)} 星币入账`"
+                  @click="bar.hasValue && toggleCoinUsageDate(bar.dateKey)"
+                >
+                  <i>
+                    <b v-for="layer in bar.layers" :key="layer.key" :class="['review-usage-layer', layer.className]" :style="{ height: `${layer.ratio}%` }"></b>
+                  </i>
+                  <span v-if="activeRange === 'week'">{{ bar.weekdayLabel }}</span>
+                  <em v-if="activeRange === 'week'">{{ bar.dayLabel }}</em>
+                </article>
+              </div>
+            </div>
+          </div>
+
+          <div class="review-usage-meta">
+            <div class="review-usage-legend" aria-hidden="true">
+              <span v-for="layer in coinUsageLegend" :key="layer.label"><i :class="layer.className"></i>{{ layer.label }}</span>
+            </div>
+            <p v-if="coinUsageCategorySummary.length" class="review-usage-category-inline">
+              <span v-for="row in coinUsageCategorySummary" :key="row.category">{{ row.category }} {{ formatNumber(row.units) }} 星币（{{ row.percent }}%）</span>
+            </p>
+            <p v-else class="monthly-empty-note">这个范围里还没有星币入账记录。</p>
+          </div>
+        </article>
+
+        <article class="monthly-preview-panel review-usage-panel monthly-coin-wish-panel">
+          <div class="monthly-section-head">
+            <div><h2>星币入账愿望明细</h2></div>
+            <span>{{ formatNumber(coinUsageSelectedDateKey ? coinUsageFocusedTotalUnits : coinUsageTotalUnits) }} 星币入账</span>
+          </div>
+          <div class="review-usage-wish-list">
+            <p v-if="!coinUsageWishRows.length" class="monthly-empty-note">这个范围里还没有与愿望关联的星币入账。</p>
+            <RouterLink
+              v-for="row in coinUsageWishRows"
+              v-else
+              :key="row.wishId"
+              class="review-usage-wish-row"
+              :to="{ name: 'wish-detail', params: { id: row.wishId } }"
+            >
+              <div class="review-usage-wish-copy">
+                <strong>{{ row.title }}</strong>
+                <span>{{ row.category }} · +{{ formatNumber(row.units) }} 星币</span>
+              </div>
+              <i><b :style="{ width: `${Math.max(6, Math.round((row.units / coinUsageMaxWishUnits) * 100))}%` }"></b></i>
+            </RouterLink>
+          </div>
+        </article>
+      </section>
+
       <article class="monthly-preview-panel monthly-ledger-panel">
         <div class="monthly-section-head">
           <div>
-            <p>星币账本</p>
-            <h2>星币收支与余额</h2>
+            <h2>本期入账、支出与结余</h2>
           </div>
         </div>
-        <div v-if="hasStarCoinWaterfall" class="monthly-waterfall" aria-label="星币来源阶梯瀑布图">
-          <div class="monthly-waterfall-stage">
+        <div v-if="hasStarCoinWaterfall" class="monthly-waterfall" aria-label="星币入账与支出文字汇总">
+          <div class="monthly-waterfall-stage is-text-only" :style="{ gridTemplateColumns: `repeat(${starCoinWaterfallSteps.length}, minmax(0, 1fr))` }">
             <article
               v-for="step in starCoinWaterfallSteps"
               :key="step.key"
               class="monthly-waterfall-step"
               :class="`is-${step.tone}`"
             >
-              <div class="monthly-waterfall-column">
-                <span v-if="step.isEndpoint" class="monthly-waterfall-marker" :style="{ bottom: step.markerBottom }"><em></em></span>
-                <i v-else :style="{ height: step.height, bottom: step.bottom }"></i>
-              </div>
               <div class="monthly-waterfall-copy">
                 <span>{{ step.label }}</span>
                 <strong>{{ step.isEndpoint ? formatNumber(step.signedAmount) : `${step.signedAmount > 0 ? '+' : step.signedAmount < 0 ? '-' : ''}${formatNumber(step.amount)}` }}</strong>
@@ -1311,49 +1674,62 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
             </article>
           </div>
         </div>
-        <p v-else class="monthly-empty-note">这个范围里还没有星币变化。</p>
+        <p v-else class="monthly-empty-note">这个范围里还没有星币入账或支出变化。</p>
       </article>
     </section>
 
     <section v-else-if="activeMetric === 'claims'" class="monthly-fact-layout">
-      <article class="monthly-preview-panel monthly-claims-panel">
-        <div class="monthly-section-head">
-          <div><p>领奖统计</p><h2>本期领奖重点</h2></div>
-          <span>{{ claimStatsRows.length }} 项</span>
-        </div>
-        <div v-if="claimStatsRows.length" class="monthly-claims-chart-shell">
-          <div class="monthly-claims-chart" role="img" aria-label="领奖次数与花费对比图，按次数排序">
-            <article v-for="row in claimStatsRows" :key="row.key" class="monthly-claims-item">
-              <strong :title="row.label">{{ row.label }}</strong>
-              <div class="monthly-claims-compare-grid">
-                <div class="monthly-claims-metric-block">
-                  <div class="monthly-claims-metric-head">
-                    <span>次数</span>
-                    <strong>{{ row.claimCount }}</strong>
-                  </div>
-                  <div class="monthly-claims-bars" aria-hidden="true">
-                    <i class="is-count" :style="{ width: `${row.claimCount > 0 ? Math.max(4, Math.round((row.claimCount / claimStatsMaxCount) * 100)) : 0}%` }"></i>
-                  </div>
-                </div>
-                <div class="monthly-claims-metric-block">
-                  <div class="monthly-claims-metric-head">
-                    <span>花费</span>
-                    <strong>{{ formatNumber(row.spending) }}</strong>
-                  </div>
-                  <div class="monthly-claims-bars" aria-hidden="true">
-                    <i class="is-spending" :style="{ width: `${row.spending > 0 ? Math.max(4, Math.round((row.spending / claimStatsMaxSpending) * 100)) : 0}%` }"></i>
-                  </div>
-                </div>
+      <section :class="['review-usage-layout', `theme-${activeUsagePalette}`]">
+        <article class="monthly-preview-panel review-usage-panel">
+          <div class="review-usage-header">
+            <strong>{{ activeRange === 'week' ? '本周领奖次数分布' : '本月领奖次数分布' }}</strong>
+            <div class="review-usage-header-summary">
+              <span class="review-usage-caption">{{ activePeriodLabel }} · <strong class="review-usage-caption-strong">{{ claimTotalCount }} 次</strong></span>
+            </div>
+          </div>
+          <div class="review-usage-wish-list">
+            <p v-if="!claimCountRows.length" class="monthly-empty-note">这个范围里还没有领奖次数记录。</p>
+            <RouterLink
+              v-for="row in claimCountRows"
+              v-else
+              :key="`count-${row.key}`"
+              class="review-usage-wish-row"
+              :to="{ name: 'space', hash: '#space-reward-center' }"
+            >
+              <div class="review-usage-wish-copy">
+                <strong :title="row.label">{{ row.label }}</strong>
+                <span>{{ row.claimCount }} 次</span>
               </div>
-            </article>
+              <i><b :style="{ width: `${Math.max(6, Math.round((row.claimCount / claimStatsMaxCount) * 100))}%` }"></b></i>
+            </RouterLink>
           </div>
-          <div class="monthly-claims-legend" aria-hidden="true">
-            <span><i class="is-count"></i> 次数</span>
-            <span><i class="is-spending"></i> 花费</span>
+        </article>
+
+        <article class="monthly-preview-panel review-usage-panel monthly-claims-panel">
+          <div class="review-usage-header">
+            <strong>{{ activeRange === 'week' ? '本周领奖花费分布' : '本月领奖花费分布' }}</strong>
+            <div class="review-usage-header-summary">
+              <span class="review-usage-caption">{{ activePeriodLabel }} · <strong class="review-usage-caption-strong">{{ formatNumber(claimTotalSpending) }} 星币</strong></span>
+            </div>
           </div>
-        </div>
-        <p v-else class="monthly-empty-note">这个范围里还没有领奖记录。</p>
-      </article>
+          <div class="review-usage-wish-list">
+            <p v-if="!claimSpendingRows.length" class="monthly-empty-note">这个范围里还没有领奖花费记录。</p>
+            <RouterLink
+              v-for="row in claimSpendingRows"
+              v-else
+              :key="`spending-${row.key}`"
+              class="review-usage-wish-row"
+              :to="{ name: 'space', hash: '#space-reward-center' }"
+            >
+              <div class="review-usage-wish-copy">
+                <strong :title="row.label">{{ row.label }}</strong>
+                <span>花费 {{ formatNumber(row.spending) }}</span>
+              </div>
+              <i><b :style="{ width: `${Math.max(6, Math.round((row.spending / claimStatsMaxSpending) * 100))}%` }"></b></i>
+            </RouterLink>
+          </div>
+        </article>
+      </section>
     </section>
 
     <section v-else class="monthly-fact-layout">
@@ -1930,43 +2306,28 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
   gap: 0.2rem;
 }
 
-.review-usage-palette-switch {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.18rem;
-  opacity: 0.78;
-}
-
-.review-usage-palette-switch button {
-  border: 1px solid color-mix(in srgb, var(--usage-accent) 18%, white);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--usage-accent-pale) 10%, white);
-  color: color-mix(in srgb, var(--usage-accent-deep) 60%, #595959);
-  font: inherit;
-  font-size: 0.62rem;
-  line-height: 1;
-  padding: 0.16rem 0.4rem;
-  cursor: default;
-  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease, opacity 160ms ease;
-}
-
-.review-usage-palette-switch button:hover {
-  transform: none;
-}
-
-.review-usage-palette-switch button.is-active {
-  border-color: color-mix(in srgb, var(--usage-accent-deep) 32%, white);
-  background: color-mix(in srgb, var(--usage-accent) 9%, white);
-  color: var(--usage-accent-deep);
-  font-weight: 600;
-  opacity: 1;
-}
-
 .review-usage-palette-note {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
   color: color-mix(in srgb, var(--text-soft) 88%, white);
   font-size: 0.62rem;
   line-height: 1.2;
+}
+
+.review-usage-palette-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--usage-accent-deep) 30%, white);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--usage-accent) 14%, white);
+  color: var(--usage-accent-deep);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  padding: 0.14rem 0.42rem;
 }
 
 .review-usage-caption {
@@ -1987,11 +2348,18 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
   align-items: center;
 }
 
+.review-usage-avg-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: nowrap;
+}
+
 .review-usage-compare,
 .review-usage-avg {
   margin: 0;
-  font-size: 0.8rem;
-  line-height: 1.5;
+  font-size: 0.74rem;
+  line-height: 1.35;
 }
 
 .review-usage-compare {
@@ -2526,6 +2894,18 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
   border-radius: 18px;
   border: 1px solid var(--line-soft);
   background: rgba(255, 255, 255, 0.42);
+}
+
+.monthly-waterfall-stage.is-text-only {
+  min-height: auto;
+  padding: 0.2rem 0.24rem 0;
+  border: 0;
+  background: transparent;
+}
+
+.monthly-waterfall-stage.is-text-only .monthly-waterfall-step {
+  grid-template-rows: auto;
+  gap: 0;
 }
 
 .monthly-waterfall-step {

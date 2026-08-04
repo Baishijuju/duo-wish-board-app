@@ -45,6 +45,13 @@ export interface WishCommentImageRowLike {
   created_at: string
 }
 
+export interface WishCountProgressDailyRowLike {
+  wish_id: string
+  owner_id: string
+  progress_date: string
+  progress_units: number
+}
+
 export interface WishImageLike {
   id: string
   createdAt: string
@@ -63,6 +70,7 @@ export function buildWishThreadEntriesFromRows(
   reactions: ThreadReactionRecord[],
   imageFactory: (input: Omit<WishImageLike, 'note'> & { note?: string }) => WishImageLike,
   imageUrlMap: Map<string, string>,
+  countProgressDailyRows: WishCountProgressDailyRowLike[] = [],
 ) {
   const imagesByThreadId = new Map<string, WishImageLike[]>()
 
@@ -100,7 +108,7 @@ export function buildWishThreadEntriesFromRows(
     }),
   )
 
-  const normalizedEntries = mergeCountStarCoinThreadEntries(baseEntries)
+  const normalizedEntries = mergeCountStarCoinThreadEntries(baseEntries, countProgressDailyRows)
 
   return attachThreadReactions(normalizedEntries, reactions)
 }
@@ -176,8 +184,9 @@ function attachThreadReactions(entries: WishThreadEntry[], reactions: ThreadReac
     .sort((left, right) => compareIsoAscending(left.createdAt, right.createdAt) || left.id.localeCompare(right.id))
 }
 
-function mergeCountStarCoinThreadEntries(entries: WishThreadEntry[]) {
+function mergeCountStarCoinThreadEntries(entries: WishThreadEntry[], countProgressDailyRows: WishCountProgressDailyRowLike[]) {
   const groupByKey = new Map<string, { index: number; quantity: number; starCoinDelta: number }>()
+  const dailyProgressUnitsByGroupKey = buildCountProgressDailyMap(countProgressDailyRows)
   const normalizedEntries: WishThreadEntry[] = []
 
   for (const entry of [...entries].sort((left, right) => compareIsoAscending(left.createdAt, right.createdAt) || left.id.localeCompare(right.id))) {
@@ -189,6 +198,11 @@ function mergeCountStarCoinThreadEntries(entries: WishThreadEntry[]) {
     const groupKey = `${getBeijingDateKey(entry.createdAt)}:${entry.wishId ?? 'no-wish'}:${entry.actorId ?? 'no-actor'}`
     const quantity = Math.max(1, getNumericMetaValue(entry.meta, 'quantity') ?? 1)
     const starCoinDelta = Math.max(0, getNumericMetaValue(entry.meta, 'starCoinDelta') ?? 0)
+    const groupWishId = entry.wishId ?? 'no-wish'
+    const dailyQuantity =
+      dailyProgressUnitsByGroupKey.byActorGroupKey.get(groupKey)
+      ?? dailyProgressUnitsByGroupKey.byWishDateKey.get(`${getBeijingDateKey(entry.createdAt)}:${groupWishId}`)
+    const resolvedQuantity = dailyQuantity && dailyQuantity > 0 ? dailyQuantity : quantity
     const existingGroup = groupByKey.get(groupKey)
 
     if (!existingGroup) {
@@ -200,10 +214,10 @@ function mergeCountStarCoinThreadEntries(entries: WishThreadEntry[]) {
             ...entry.meta,
             claimIds,
             claimKind: 'count_star_coin',
-            quantity,
+            quantity: resolvedQuantity,
             starCoinDelta,
           },
-          messageText: mergeCountStarCoinMessage(entry.messageText, quantity, starCoinDelta),
+          messageText: mergeCountStarCoinMessage(entry.messageText, resolvedQuantity, starCoinDelta),
         }),
       )
 
@@ -216,18 +230,19 @@ function mergeCountStarCoinThreadEntries(entries: WishThreadEntry[]) {
     }
 
     const mergedQuantity = existingGroup.quantity + quantity
+    const resolvedMergedQuantity = dailyQuantity && dailyQuantity > 0 ? dailyQuantity : mergedQuantity
     const mergedStarCoinDelta = existingGroup.starCoinDelta + starCoinDelta
     const currentEntry = normalizedEntries[existingGroup.index]!
     const claimIds = mergeClaimIds(currentEntry.meta.claimIds, entry.id, entry.meta)
 
     normalizedEntries[existingGroup.index] = createWishThreadEntry({
       ...currentEntry,
-      messageText: mergeCountStarCoinMessage(currentEntry.messageText, mergedQuantity, mergedStarCoinDelta),
+      messageText: mergeCountStarCoinMessage(currentEntry.messageText, resolvedMergedQuantity, mergedStarCoinDelta),
       meta: {
         ...currentEntry.meta,
         claimIds,
         claimKind: 'count_star_coin',
-        quantity: mergedQuantity,
+        quantity: resolvedMergedQuantity,
         starCoinDelta: mergedStarCoinDelta,
       },
       updatedAt: compareIsoAscending(currentEntry.updatedAt, entry.updatedAt) < 0 ? entry.updatedAt : currentEntry.updatedAt,
@@ -235,12 +250,31 @@ function mergeCountStarCoinThreadEntries(entries: WishThreadEntry[]) {
 
     groupByKey.set(groupKey, {
       index: existingGroup.index,
-      quantity: mergedQuantity,
+      quantity: resolvedMergedQuantity,
       starCoinDelta: mergedStarCoinDelta,
     })
   }
 
   return normalizedEntries
+}
+
+function buildCountProgressDailyMap(rows: WishCountProgressDailyRowLike[]) {
+  const byActorGroupKey = new Map<string, number>()
+  const byWishDateKey = new Map<string, number>()
+
+  for (const row of rows) {
+    const actorKey = `${row.progress_date}:${row.wish_id}:${row.owner_id}`
+    const wishDateKey = `${row.progress_date}:${row.wish_id}`
+    const units = Number.isFinite(row.progress_units) ? Math.max(0, Math.trunc(row.progress_units)) : 0
+
+    byActorGroupKey.set(actorKey, (byActorGroupKey.get(actorKey) ?? 0) + units)
+    byWishDateKey.set(wishDateKey, (byWishDateKey.get(wishDateKey) ?? 0) + units)
+  }
+
+  return {
+    byActorGroupKey,
+    byWishDateKey,
+  }
 }
 
 function isCountStarCoinThreadEntry(entry: WishThreadEntry) {

@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "supabase": "npx --yes --cache ./.npx-cache supabase@2.111.0",
+    "db:audit": "npm run supabase -- db query --linked -f \"supabase/diagnostics/20260804_schema_health_audit.sql\"",
+    "db:acceptance": "npm run supabase -- db query --linked -f \"supabase/diagnostics/20260804_post_migration_acceptance.sql\"",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "playwright:install": "playwright install chromium",

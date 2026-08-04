@@ -39,6 +39,14 @@
 
 如果你后面继续扩功能或排查“为什么这个环境能跑、另一个环境不能跑”，请优先对照这份文档，而不是只看页面报错。
 
+## Migration 分层索引
+
+为避免历史 SQL 越积越多后难以判断“哪些该默认执行、哪些只用于历史修复”，请同步查看：
+
+- [migrations/README.md](migrations/README.md)
+
+该文件把迁移分成 default-chain、historical-patch、deprecated-history 三层，并给出了新环境与老环境的执行建议。
+
 ### 推荐新增：显式 capability 契约
 
 如果你准备继续维护这套联网版，建议补执行 [202606060001_app_capabilities_contract.sql](migrations/202606060001_app_capabilities_contract.sql)。
