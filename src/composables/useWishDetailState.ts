@@ -81,6 +81,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
   const currentMemberStarCoins = computed(() => buildCurrentStarCoinBalance({
     claims: wishStore.rewardClaims,
     memberId: currentMemberId.value,
+    wishes: wishStore.wishes,
   }))
   const currentWishStarCoinSummary = computed(() => {
     const summary = buildWishStarCoinSummary({

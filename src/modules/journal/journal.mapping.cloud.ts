@@ -71,6 +71,7 @@ export function buildWishThreadEntriesFromRows(
   imageFactory: (input: Omit<WishImageLike, 'note'> & { note?: string }) => WishImageLike,
   imageUrlMap: Map<string, string>,
   countProgressDailyRows: WishCountProgressDailyRowLike[] = [],
+  countProgressStarCoinValueByWishId: Map<string, number> = new Map(),
 ) {
   const imagesByThreadId = new Map<string, WishImageLike[]>()
 
@@ -108,7 +109,7 @@ export function buildWishThreadEntriesFromRows(
     }),
   )
 
-  const normalizedEntries = mergeCountStarCoinThreadEntries(baseEntries, countProgressDailyRows)
+  const normalizedEntries = mergeCountStarCoinThreadEntries(baseEntries, countProgressDailyRows, countProgressStarCoinValueByWishId)
 
   return attachThreadReactions(normalizedEntries, reactions)
 }
@@ -184,7 +185,11 @@ function attachThreadReactions(entries: WishThreadEntry[], reactions: ThreadReac
     .sort((left, right) => compareIsoAscending(left.createdAt, right.createdAt) || left.id.localeCompare(right.id))
 }
 
-function mergeCountStarCoinThreadEntries(entries: WishThreadEntry[], countProgressDailyRows: WishCountProgressDailyRowLike[]) {
+function mergeCountStarCoinThreadEntries(
+  entries: WishThreadEntry[],
+  countProgressDailyRows: WishCountProgressDailyRowLike[],
+  countProgressStarCoinValueByWishId: Map<string, number>,
+) {
   const groupByKey = new Map<string, { index: number; quantity: number; starCoinDelta: number }>()
   const dailyProgressUnitsByGroupKey = buildCountProgressDailyMap(countProgressDailyRows)
   const normalizedEntries: WishThreadEntry[] = []
@@ -203,6 +208,12 @@ function mergeCountStarCoinThreadEntries(entries: WishThreadEntry[], countProgre
       dailyProgressUnitsByGroupKey.byActorGroupKey.get(groupKey)
       ?? dailyProgressUnitsByGroupKey.byWishDateKey.get(`${getBeijingDateKey(entry.createdAt)}:${groupWishId}`)
     const resolvedQuantity = dailyQuantity && dailyQuantity > 0 ? dailyQuantity : quantity
+    const resolvedStarCoinDelta = resolveCountProgressStarCoinDelta(
+      entry.wishId,
+      resolvedQuantity,
+      starCoinDelta,
+      countProgressStarCoinValueByWishId,
+    )
     const existingGroup = groupByKey.get(groupKey)
 
     if (!existingGroup) {
@@ -215,23 +226,29 @@ function mergeCountStarCoinThreadEntries(entries: WishThreadEntry[], countProgre
             claimIds,
             claimKind: 'count_star_coin',
             quantity: resolvedQuantity,
-            starCoinDelta,
+            starCoinDelta: resolvedStarCoinDelta,
           },
-          messageText: mergeCountStarCoinMessage(entry.messageText, resolvedQuantity, starCoinDelta),
+          messageText: mergeCountStarCoinMessage(entry.messageText, resolvedQuantity, resolvedStarCoinDelta),
         }),
       )
 
       groupByKey.set(groupKey, {
         index: normalizedEntries.length - 1,
         quantity,
-        starCoinDelta,
+        starCoinDelta: resolvedStarCoinDelta,
       })
       continue
     }
 
     const mergedQuantity = existingGroup.quantity + quantity
     const resolvedMergedQuantity = dailyQuantity && dailyQuantity > 0 ? dailyQuantity : mergedQuantity
-    const mergedStarCoinDelta = existingGroup.starCoinDelta + starCoinDelta
+    const mergedFallbackStarCoinDelta = existingGroup.starCoinDelta + starCoinDelta
+    const mergedStarCoinDelta = resolveCountProgressStarCoinDelta(
+      entry.wishId,
+      resolvedMergedQuantity,
+      mergedFallbackStarCoinDelta,
+      countProgressStarCoinValueByWishId,
+    )
     const currentEntry = normalizedEntries[existingGroup.index]!
     const claimIds = mergeClaimIds(currentEntry.meta.claimIds, entry.id, entry.meta)
 
@@ -339,6 +356,25 @@ function mergeCountStarCoinMessage(messageText: string, quantity: number, starCo
   }
 
   return conciseMessage
+}
+
+function resolveCountProgressStarCoinDelta(
+  wishId: string | null,
+  quantity: number,
+  fallbackStarCoinDelta: number,
+  countProgressStarCoinValueByWishId: Map<string, number>,
+) {
+  if (!wishId) {
+    return fallbackStarCoinDelta
+  }
+
+  const perUnitValue = countProgressStarCoinValueByWishId.get(wishId)
+
+  if (perUnitValue === undefined) {
+    return fallbackStarCoinDelta
+  }
+
+  return Math.max(0, quantity) * Math.max(0, perUnitValue)
 }
 
 function getBeijingDateKey(dateValue: string | Date = new Date()) {

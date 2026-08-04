@@ -35,6 +35,7 @@ export function getPendingRewardSettledCopy(kind: 'count' | 'step') {
 export function buildCurrentStarCoinBalance(params: {
   claims: RewardClaimRecord[]
   memberId: string | null | undefined
+  wishes?: WishRecord[]
 }) {
   if (!params.memberId) {
     return 0
@@ -47,6 +48,7 @@ export function buildCurrentStarCoinBalance(params: {
     memberIds: [params.memberId],
     sourceKinds: ['count_star_coin', 'step_star_coin', 'wish_completion_bonus', 'reward_deposit'],
     startDateKey: '0000-01-01',
+    wishCountStarCoinValueByWishId: buildWishCountStarCoinValueMap(params.wishes ?? []),
   })
 
   return ledger.endBalance
@@ -68,9 +70,10 @@ export function buildWishStarCoinSummary(params: {
   }
 
   const starCoinClaimKinds = new Set<RewardClaimKind>(['step_star_coin', 'count_star_coin', 'wish_completion_bonus'])
+  const wishCountStarCoinValueByWishId = buildWishCountStarCoinValueMap([wish])
   const earned = params.claims
     .filter((claim) => claim.sourceWishId === wish.id && starCoinClaimKinds.has(claim.claimKind))
-    .reduce((total, claim) => total + Math.max(0, claim.starCoinDelta), 0)
+    .reduce((total, claim) => total + Math.max(0, resolveClaimStarCoinDelta(claim, wishCountStarCoinValueByWishId)), 0)
 
   let remaining = 0
 
@@ -125,6 +128,7 @@ export function buildVisibleStarCoinLedger(params: {
   startDateKey: string
   getDateKey: (createdAt: string) => string
   sourceKinds: StarCoinWaterfallKind[]
+  wishCountStarCoinValueByWishId?: Map<string, number>
 }): StarCoinVisibleLedger {
   const memberIdSet = new Set(params.memberIds)
   const sourceTotals = new Map<StarCoinWaterfallKind, number>(params.sourceKinds.map((kind) => [kind, 0]))
@@ -148,7 +152,8 @@ export function buildVisibleStarCoinLedger(params: {
     }
 
     const beforeBalance = balances.get(claim.ownerId) ?? 0
-    const afterBalance = Math.max(0, beforeBalance + claim.starCoinDelta)
+    const resolvedDelta = resolveClaimStarCoinDelta(claim, params.wishCountStarCoinValueByWishId)
+    const afterBalance = Math.max(0, beforeBalance + resolvedDelta)
     balances.set(claim.ownerId, afterBalance)
 
     if (dateKey < params.startDateKey) {
@@ -184,6 +189,33 @@ function isStarCoinWaterfallKind(kind: RewardClaimKind, sourceKinds: StarCoinWat
 
 function getVisibleBalanceTotal(balances: Map<string, number>, memberIds: string[]) {
   return memberIds.reduce((total, memberId) => total + Math.max(0, balances.get(memberId) ?? 0), 0)
+}
+
+function buildWishCountStarCoinValueMap(wishes: WishRecord[]) {
+  const map = new Map<string, number>()
+
+  wishes.forEach((wish) => {
+    map.set(wish.id, Math.max(0, wish.progressStarCoinValue))
+  })
+
+  return map
+}
+
+function resolveClaimStarCoinDelta(
+  claim: RewardClaimRecord,
+  wishCountStarCoinValueByWishId: Map<string, number> | undefined,
+) {
+  if (claim.claimKind !== 'count_star_coin' || !claim.sourceWishId) {
+    return claim.starCoinDelta
+  }
+
+  const perUnitValue = wishCountStarCoinValueByWishId?.get(claim.sourceWishId)
+
+  if (perUnitValue === undefined) {
+    return claim.starCoinDelta
+  }
+
+  return Math.max(0, claim.quantity) * Math.max(0, perUnitValue)
 }
 
 function getSimpleDateKey(createdAt: string) {

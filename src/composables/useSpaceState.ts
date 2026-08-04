@@ -62,6 +62,7 @@ export function useSpaceState() {
   const currentMemberStarCoins = computed(() => buildCurrentStarCoinBalance({
     claims: wishStore.rewardClaims,
     memberId: currentMemberId.value,
+    wishes: wishStore.wishes,
   }))
   const currentMemberDailyRewards = computed(() => {
     return currentMemberId.value ? wishStore.getRewardPoolItems(currentMemberId.value, 'daily') : []

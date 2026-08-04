@@ -217,6 +217,28 @@ const metricPeriodEvents = computed(() => {
 const currentPeriodRewardClaims = computed(() => wishStore.rewardClaims.filter((claim) => {
   return activePeriodDateSet.value.has(getBeijingDateKey(claim.createdAt)) && activeLedgerMemberIdSet.value.has(claim.ownerId)
 }))
+const countProgressStarCoinValueByWishId = computed(() => {
+  const map = new Map<string, number>()
+
+  wishStore.wishes.forEach((wish) => {
+    map.set(wish.id, Math.max(0, wish.progressStarCoinValue))
+  })
+
+  return map
+})
+const resolveClaimStarCoinDelta = (claim: { claimKind: RewardClaimKind; sourceWishId: string | null; quantity: number; starCoinDelta: number }) => {
+  if (claim.claimKind !== 'count_star_coin' || !claim.sourceWishId) {
+    return claim.starCoinDelta
+  }
+
+  const perUnitValue = countProgressStarCoinValueByWishId.value.get(claim.sourceWishId)
+
+  if (perUnitValue === undefined) {
+    return claim.starCoinDelta
+  }
+
+  return Math.max(0, claim.quantity) * Math.max(0, perUnitValue)
+}
 const currentPeriodComments = computed<MessageEntry[]>(() => {
   return wishStore.wishes
     .flatMap((wish) => wish.comments
@@ -245,6 +267,7 @@ const starCoinLedger = computed(() => buildVisibleStarCoinLedger({
   memberIds: activeLedgerMemberIds.value,
   sourceKinds: starCoinWaterfallKinds.map((source) => source.kind),
   startDateKey: periodStartDateKey.value,
+  wishCountStarCoinValueByWishId: countProgressStarCoinValueByWishId.value,
 }))
 const periodStarCoinEndBalance = computed(() => starCoinLedger.value.endBalance)
 const periodStarCoinStartBalance = computed(() => starCoinLedger.value.startBalance)
@@ -330,7 +353,8 @@ const reviewEvents = computed<ReviewEvent[]>(() => {
   })
 
   wishStore.rewardClaims.forEach((claim) => {
-    const amount = Math.abs(claim.starCoinDelta)
+    const resolvedCoinDelta = resolveClaimStarCoinDelta(claim)
+    const amount = Math.abs(resolvedCoinDelta)
     const isRewardClaimEvent = rewardClaimHeatKinds.has(claim.claimKind)
     const countProgressUnits = Math.max(0, claim.quantity)
 
@@ -359,7 +383,7 @@ const reviewEvents = computed<ReviewEvent[]>(() => {
 
     events.push({
       id: `coin-${claim.id}`,
-      kind: claim.starCoinDelta >= 0 ? 'coin_income' : 'coin_spending',
+      kind: resolvedCoinDelta >= 0 ? 'coin_income' : 'coin_spending',
       rewardClaimKind: claim.claimKind,
       createdAt: claim.createdAt,
       dateKey: getBeijingDateKey(claim.createdAt),
@@ -371,18 +395,18 @@ const reviewEvents = computed<ReviewEvent[]>(() => {
         ? '兑换了奖励'
         : isRewardClaimEvent
           ? '接住了奖励'
-          : claim.starCoinDelta >= 0
+          : resolvedCoinDelta >= 0
             ? '获得星币'
             : '使用星币',
       detail: isRewardClaimEvent
         ? (claim.titleSnapshot.trim() || getRewardClaimKindLabel(claim.claimKind))
-        : `${getRewardClaimKindLabel(claim.claimKind)} ${claim.starCoinDelta >= 0 ? '+' : '-'}${formatNumber(amount)}`,
+        : `${getRewardClaimKindLabel(claim.claimKind)} ${resolvedCoinDelta >= 0 ? '+' : '-'}${formatNumber(amount)}`,
       messageText: '',
       activityScore: Math.min(5, Math.ceil(amount / 2)),
       messageScore: 0,
       progressScore: 0,
       coinScore: amount,
-      coinDelta: claim.starCoinDelta,
+      coinDelta: resolvedCoinDelta,
     })
   })
 
@@ -556,7 +580,8 @@ const coinUsageEvents = computed<ProgressUsageEvent[]>(() => {
   const events: ProgressUsageEvent[] = []
 
   currentPeriodRewardClaims.value.forEach((claim) => {
-    if (!claim.sourceWishId || claim.starCoinDelta <= 0) return
+    const resolvedCoinDelta = resolveClaimStarCoinDelta(claim)
+    if (!claim.sourceWishId || resolvedCoinDelta <= 0) return
 
     const wish = wishStore.findById(claim.sourceWishId)
     if (!wish) return
@@ -568,7 +593,7 @@ const coinUsageEvents = computed<ProgressUsageEvent[]>(() => {
       wishId: wish.id,
       category: wish.category || '未分类',
       title: wish.title,
-      units: claim.starCoinDelta,
+      units: resolvedCoinDelta,
     })
   })
 
@@ -578,7 +603,8 @@ const previousCoinIncomeEvents = computed<ProgressUsageEvent[]>(() => {
   const events: ProgressUsageEvent[] = []
 
   wishStore.rewardClaims.forEach((claim) => {
-    if (!claim.sourceWishId || claim.starCoinDelta <= 0) return
+    const resolvedCoinDelta = resolveClaimStarCoinDelta(claim)
+    if (!claim.sourceWishId || resolvedCoinDelta <= 0) return
     if (!previousProgressDateSet.value.has(getBeijingDateKey(claim.createdAt))) return
     if (!activeLedgerMemberIdSet.value.has(claim.ownerId)) return
 
@@ -592,7 +618,7 @@ const previousCoinIncomeEvents = computed<ProgressUsageEvent[]>(() => {
       wishId: wish.id,
       category: wish.category || '未分类',
       title: wish.title,
-      units: claim.starCoinDelta,
+      units: resolvedCoinDelta,
     })
   })
 
@@ -605,10 +631,11 @@ const previousCoinUsageDailyAverage = computed(() => {
   const previousDateSet = new Set(previousComparableProgressDateKeys.value)
   const previousComparableCount = Math.max(1, previousComparableProgressDateKeys.value.length)
   const total = wishStore.rewardClaims.reduce((sum, claim) => {
-    if (!claim.sourceWishId || claim.starCoinDelta <= 0) return sum
+    const resolvedCoinDelta = resolveClaimStarCoinDelta(claim)
+    if (!claim.sourceWishId || resolvedCoinDelta <= 0) return sum
     if (!previousDateSet.has(getBeijingDateKey(claim.createdAt))) return sum
     if (!activeLedgerMemberIdSet.value.has(claim.ownerId)) return sum
-    return sum + claim.starCoinDelta
+    return sum + resolvedCoinDelta
   }, 0)
 
   return total / previousComparableCount
@@ -986,7 +1013,7 @@ const claimStatsRows = computed<ClaimStatRow[]>(() => {
     }
 
     if (claim.claimKind === 'reward_deposit') {
-      existingRow.spending += Math.abs(Math.min(0, claim.starCoinDelta))
+      existingRow.spending += Math.abs(Math.min(0, resolveClaimStarCoinDelta(claim)))
     }
 
     if (new Date(claim.createdAt).getTime() > new Date(existingRow.latestAt).getTime()) {

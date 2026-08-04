@@ -81,6 +81,14 @@ export function composeWishCloudState(fetchResult: WishCloudFetchResult) {
     fetchResult.countProgressDailyRows,
     fetchResult.rewardClaimRows,
   )
+  const countProgressStarCoinValueByWishId = new Map(
+    fetchResult.wishRows.map((row) => [
+      row.id,
+      typeof row.progress_star_coin_value === 'number' && Number.isFinite(row.progress_star_coin_value)
+        ? Math.max(0, row.progress_star_coin_value)
+        : 0,
+    ]),
+  )
 
   const nextWishThreads = fetchResult.hasUnifiedThreadData
     ? buildWishThreadEntriesFromRows(
@@ -90,6 +98,7 @@ export function composeWishCloudState(fetchResult: WishCloudFetchResult) {
       createWishImageRecord,
       fetchResult.commentImageUrlMap,
       resolvedCountProgressDailyRows,
+      countProgressStarCoinValueByWishId,
     )
     : buildDerivedWishThreadEntries(nextWishes, nextRewardClaims, fetchResult.threadReactionRows)
 
