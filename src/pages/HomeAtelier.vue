@@ -774,8 +774,8 @@ function formatRecentThreadTime(timestamp: string) {
       >
         <div class="atelier-stage-note">
           <div class="wish-bottle-story">
-            <p class="wish-bottle-story-kicker">愿望瓶</p>
             <h2 class="wish-bottle-story-title">{{ getWishBottleHeroHeading() }}</h2>
+            <strong class="atelier-progress-value atelier-progress-value-story">{{ wishBottleSnapshot.overallPercent }}%</strong>
           </div>
         </div>
 
@@ -1007,17 +1007,7 @@ function formatRecentThreadTime(timestamp: string) {
             </div>
           </div>
 
-          <div class="atelier-stage-metrics">
-            <div class="atelier-progress-hero">
-              <p class="wish-bottle-dashboard-kicker">{{ wishBottleDashboardHeadline }}</p>
-              <strong class="atelier-progress-value">{{ wishBottleSnapshot.overallPercent }}%</strong>
 
-              <div class="wish-bottle-progress-bar atelier-stage-progress" aria-hidden="true">
-                <span class="wish-bottle-progress-fill" :style="{ width: `${wishBottleSnapshot.overallPercent}%` }"></span>
-              </div>
-            </div>
-
-          </div>
         </div>
       </article>
     </section>
@@ -2017,6 +2007,15 @@ function formatRecentThreadTime(timestamp: string) {
   line-height: var(--type-card-title-line);
   letter-spacing: var(--type-card-title-tracking);
   text-wrap: balance;
+}
+
+.atelier-progress-value-story {
+  display: block;
+  margin: 0;
+  font-size: clamp(1.8rem, 4.2vw, 2.35rem);
+  line-height: 0.94;
+  letter-spacing: -0.05em;
+  text-shadow: 0 5px 14px var(--accent-shadow-soft);
 }
 
 .wish-bottle-main {

@@ -369,8 +369,8 @@ function formatRecentThreadTime(timestamp: string) {
   >
     <div class="atelier-stage-note">
       <div class="wish-bottle-story">
-        <p class="wish-bottle-story-kicker">愿望瓶 <span>Wish Bottle</span></p>
         <h2 class="wish-bottle-story-title">{{ getWishBottleHeroHeading() }}</h2>
+        <strong class="atelier-progress-value atelier-progress-value-story">{{ wishBottleSnapshot.overallPercent }}%</strong>
       </div>
     </div>
 
@@ -749,6 +749,15 @@ function formatRecentThreadTime(timestamp: string) {
   line-height: var(--type-card-title-line);
   letter-spacing: var(--type-card-title-tracking);
   text-wrap: balance;
+}
+
+.atelier-progress-value-story {
+  display: block;
+  margin: 0;
+  font-size: clamp(1.8rem, 4.2vw, 2.35rem);
+  line-height: 0.94;
+  letter-spacing: -0.05em;
+  text-shadow: 0 5px 14px rgba(70, 165, 235, 0.22);
 }
 
 .atelier-stage-copy {
