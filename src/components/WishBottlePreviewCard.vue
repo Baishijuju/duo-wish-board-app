@@ -290,16 +290,6 @@ function getWishBottleHeroHeading() {
   return `愿望瓶已经亮起 ${displayStarCount} 颗星星`
 }
 
-function getWishBottleHeroSubcopy() {
-  const snapshot = wishBottleSnapshot.value
-
-  if (!snapshot.activeWishCount) {
-    return '等下一条愿望写下后，这里会先亮起来。'
-  }
-
-  return `${snapshot.activeWishCount} 个愿望还${WISH_BOTTLE_STATUS_LABELS.active}。`
-}
-
 function getWishBottleDashboardHint() {
   const snapshot = wishBottleSnapshot.value
   const approachingWishCount =
@@ -384,7 +374,9 @@ function formatRecentThreadTime(timestamp: string) {
       </div>
     </div>
 
-    <p class="wish-bottle-progress-note atelier-stage-copy">{{ getWishBottleHeroSubcopy() }}</p>
+    <div class="wish-bottle-progress-bar atelier-stage-progress" aria-hidden="true">
+      <span class="wish-bottle-progress-fill" :style="{ width: `${wishBottleSnapshot.overallPercent}%` }"></span>
+    </div>
 
     <div class="wish-bottle-main atelier-bottle-main">
       <div class="wish-bottle-visual">
