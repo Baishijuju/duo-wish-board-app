@@ -436,14 +436,24 @@ function getWishBottleHeroHeading() {
   return `愿望瓶已经亮起 ${displayStarCount} 颗星星`
 }
 
-function getWishBottleHeroSubcopy() {
+function getWishBottleHeroTitle() {
   const todayLitStars = todayLitStarCount.value
 
   if (!todayLitStars) {
     return '今天还没有星星被点亮。'
   }
 
-  return `今天有 ${todayLitStars} 颗星星被点亮。`
+  return `今天有 ${todayLitStars} 颗星星亮起来了。`
+}
+
+function getWishBottleHeroSubcopy() {
+  const todayLitStars = todayLitStarCount.value
+
+  if (!todayLitStars) {
+    return '星光会在下一次推进里慢慢落下来。'
+  }
+
+  return '星星正一点点把愿望照亮。'
 }
 
 function getBeijingDateKey(timestamp: string) {
@@ -756,8 +766,7 @@ function formatRecentThreadTime(timestamp: string) {
         <h1>
           <span class="atelier-hero-name">{{ viewerName }}</span>
           <span class="atelier-hero-promise">
-            <span class="atelier-hero-line">先看看愿望瓶里</span>
-            <span class="atelier-hero-line is-tight">今天亮了几颗星。</span>
+            <span class="atelier-hero-line">{{ getWishBottleHeroTitle() }}</span>
           </span>
         </h1>
       </div>
