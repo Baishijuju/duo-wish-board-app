@@ -575,7 +575,7 @@ function formatRecentThreadTime(timestamp: string) {
           <strong class="atelier-progress-value">{{ wishBottleSnapshot.overallPercent }}%</strong>
           <p class="atelier-progress-caption">{{ getWishBottleDashboardHint() }}</p>
 
-          <div class="wish-bottle-progress-bar" aria-hidden="true">
+          <div class="wish-bottle-progress-bar atelier-stage-progress" aria-hidden="true">
             <span class="wish-bottle-progress-fill" :style="{ width: `${wishBottleSnapshot.overallPercent}%` }"></span>
           </div>
         </div>
@@ -918,12 +918,16 @@ function formatRecentThreadTime(timestamp: string) {
 
 .atelier-progress-hero {
   display: grid;
-  gap: 0.42rem;
+  gap: 0.3rem;
   padding: 0.88rem 0.94rem 0.96rem;
   border-radius: 28px;
   background: rgba(255, 255, 255, 0.54);
   border: 1px solid rgba(144, 117, 94, 0.12);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
+}
+
+.atelier-stage-progress {
+  margin-top: 0.02rem;
 }
 
 .atelier-progress-value {
