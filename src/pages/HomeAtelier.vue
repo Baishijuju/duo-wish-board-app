@@ -412,21 +412,6 @@ function getWishBottleDreamfieldOpacity() {
   return Math.min(0.88, Math.max(0.14, snapshot.overallPercent / 135))
 }
 
-function getWishBottleHeroHeading() {
-  const snapshot = wishBottleSnapshot.value
-  const displayStarCount = wishBottleDisplayStarCount.value
-
-  if (!snapshot.activeWishCount) {
-    return '愿望瓶正在等新的愿望住进来'
-  }
-
-  if (!displayStarCount) {
-    return '愿望瓶正在等第一颗星星落下来'
-  }
-
-  return `愿望瓶已经亮起 ${displayStarCount} 颗星星`
-}
-
 function getWishBottleHeroTitle() {
   const todayLitStars = todayLitStarCount.value
 
@@ -437,8 +422,15 @@ function getWishBottleHeroTitle() {
   return `今天有 ${todayLitStars} 颗星星亮起来了。`
 }
 
-function getWishBottleHeroDetail() {
-  return `${getWishBottleHeroHeading()} · ${getWishBottleDashboardHint()}`
+function getWishBottleHeroSubcopy() {
+  const displayStarCount = wishBottleDisplayStarCount.value
+  const dashboardHint = getWishBottleDashboardHint()
+
+  if (!displayStarCount) {
+    return dashboardHint
+  }
+
+  return `愿望瓶已亮起 ${displayStarCount} 颗星星 · ${dashboardHint}`
 }
 
 function getBeijingDateKey(timestamp: string) {
@@ -457,10 +449,10 @@ function getWishBottleDashboardHint() {
     snapshot.progressedWishCount || snapshot.trackedWishCount || snapshot.activeWishCount
 
   if (!snapshot.activeWishCount) {
-    return '下一次推进会让这里亮起来。'
+    return '下一次推进会让这里亮起来'
   }
 
-  return `${approachingWishCount} 个愿望正在靠近。`
+  return `${approachingWishCount} 个愿望在靠近`
 }
 
 function getThreadMessageSummary(messageText: string) {
@@ -756,6 +748,18 @@ function formatRecentThreadTime(timestamp: string) {
         </h1>
       </div>
 
+      <div class="atelier-stage-metrics">
+        <div class="atelier-progress-hero">
+          <p class="wish-bottle-dashboard-kicker">愿望瓶</p>
+          <h2 class="wish-bottle-story-title">{{ getWishBottleHeroSubcopy() }}</h2>
+          <strong class="atelier-progress-value">{{ wishBottleSnapshot.overallPercent }}%</strong>
+
+          <div class="wish-bottle-progress-bar" aria-hidden="true">
+            <span class="wish-bottle-progress-fill" :style="{ width: `${wishBottleSnapshot.overallPercent}%` }"></span>
+          </div>
+        </div>
+      </div>
+
       <article
         :class="[
           'wish-bottle-card',
@@ -991,18 +995,6 @@ function formatRecentThreadTime(timestamp: string) {
             </div>
           </div>
 
-          <div class="atelier-stage-metrics">
-            <div class="atelier-progress-hero">
-              <p class="wish-bottle-dashboard-kicker">愿望瓶</p>
-              <h2 class="wish-bottle-story-title">{{ getWishBottleHeroDetail() }}</h2>
-              <strong class="atelier-progress-value">{{ wishBottleSnapshot.overallPercent }}%</strong>
-
-              <div class="wish-bottle-progress-bar" aria-hidden="true">
-                <span class="wish-bottle-progress-fill" :style="{ width: `${wishBottleSnapshot.overallPercent}%` }"></span>
-              </div>
-            </div>
-
-          </div>
         </div>
       </article>
     </section>
