@@ -196,9 +196,6 @@ const wishBottleDisplayedStarsPlan = computed(() => {
 const visibleWishBottleStars = computed(() => {
   return wishBottleDisplayedStarsPlan.value.stars
 })
-const wishBottleUsesCompoundStars = computed(() => {
-  return wishBottleDisplayedStarsPlan.value.usesCompoundStars
-})
 const wishBottleHiddenStarCount = computed(() => {
   return wishBottleDisplayedStarsPlan.value.hiddenStars
 })
@@ -398,28 +395,6 @@ const yesterdayMemberCards = computed(() => {
 })
 const sharedTodayMoment = computed(() => todayHomeThreads.value.find((thread) => thread.actorId === null) ?? null)
 const sharedYesterdayMoment = computed(() => yesterdayHomeThreads.value.find((thread) => thread.actorId === null) ?? null)
-const stageMetrics = computed(() => {
-  const snapshot = wishBottleSnapshot.value
-  const displayStarCount = wishBottleDisplayStarCount.value
-  const starNote = wishBottleHiddenStarCount.value
-    ? `高阶星等已折叠显示，另有 ${wishBottleHiddenStarCount.value} 颗收起`
-    : wishBottleUsesCompoundStars.value
-      ? '星星会按 10 / 100 / 1000 / 10000 合成高阶星等'
-      : '数字推进和完成步骤都会落成星星'
-
-  return [
-    {
-      label: WISH_BOTTLE_STATUS_LABELS.active,
-      note: '今天还在推进中的愿望',
-      value: snapshot.activeWishCount ? `${snapshot.activeWishCount} 个` : '等待开始',
-    },
-    {
-      label: WISH_BOTTLE_STATUS_LABELS.done,
-      note: starNote,
-      value: displayStarCount ? `${displayStarCount} 颗` : '等待第一颗',
-    },
-  ]
-})
 const bottleMoodChips = computed(() => {
   const snapshot = wishBottleSnapshot.value
   const displayStarCount = wishBottleDisplayStarCount.value
@@ -1058,18 +1033,6 @@ function formatRecentThreadTime(timestamp: string) {
               <div class="wish-bottle-progress-bar" aria-hidden="true">
                 <span class="wish-bottle-progress-fill" :style="{ width: `${wishBottleSnapshot.overallPercent}%` }"></span>
               </div>
-            </div>
-
-            <div class="atelier-metric-grid">
-              <article
-                v-for="(metric, index) in stageMetrics"
-                :key="metric.label"
-                :class="['atelier-metric-card', { 'is-wide': index === stageMetrics.length - 1 }]"
-              >
-                <span>{{ metric.label }}</span>
-                <strong>{{ metric.value }}</strong>
-                <small>{{ metric.note }}</small>
-              </article>
             </div>
 
             <div class="atelier-chip-row atelier-chip-row-inline">
