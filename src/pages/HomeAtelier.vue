@@ -196,9 +196,6 @@ const wishBottleDisplayedStarsPlan = computed(() => {
 const visibleWishBottleStars = computed(() => {
   return wishBottleDisplayedStarsPlan.value.stars
 })
-const wishBottleHiddenStarCount = computed(() => {
-  return wishBottleDisplayedStarsPlan.value.hiddenStars
-})
 const memberDisplayNameMap = computed(() => {
   return new Map(authStore.members.map((member) => [member.id, member.displayName]))
 })
@@ -395,30 +392,6 @@ const yesterdayMemberCards = computed(() => {
 })
 const sharedTodayMoment = computed(() => todayHomeThreads.value.find((thread) => thread.actorId === null) ?? null)
 const sharedYesterdayMoment = computed(() => yesterdayHomeThreads.value.find((thread) => thread.actorId === null) ?? null)
-const bottleMoodChips = computed(() => {
-  const snapshot = wishBottleSnapshot.value
-  const displayStarCount = wishBottleDisplayStarCount.value
-
-  if (!snapshot.activeWishCount) {
-    return ['下一条愿望会住进来', '第一颗星星会在这里亮起', '先从一件小事开始']
-  }
-
-  const approachingWishCount =
-    snapshot.progressedWishCount || snapshot.trackedWishCount || snapshot.activeWishCount
-
-  const chips = [
-    `${snapshot.activeWishCount} 个愿望${WISH_BOTTLE_STATUS_LABELS.active}`,
-    displayStarCount ? `${WISH_BOTTLE_STATUS_LABELS.done} ${displayStarCount} 颗星星` : `第一颗星星还${WISH_BOTTLE_STATUS_LABELS.active}`,
-    `${approachingWishCount} 条愿望正在靠近`,
-  ]
-
-  if (wishBottleHiddenStarCount.value) {
-    chips.push(`另有 ${wishBottleHiddenStarCount.value} 颗星星收起`)
-  }
-
-  return chips
-})
-
 function getWishBottleRevealHeight() {
   const snapshot = wishBottleSnapshot.value
 
@@ -1035,9 +1008,6 @@ function formatRecentThreadTime(timestamp: string) {
               </div>
             </div>
 
-            <div class="atelier-chip-row atelier-chip-row-inline">
-              <span v-for="chip in bottleMoodChips" :key="chip" class="atelier-chip">{{ chip }}</span>
-            </div>
           </div>
         </div>
       </article>
