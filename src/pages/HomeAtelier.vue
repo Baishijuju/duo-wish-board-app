@@ -426,14 +426,14 @@ function getWishBottleHeroHeading() {
   const displayStarCount = wishBottleDisplayStarCount.value
 
   if (!snapshot.activeWishCount) {
-    return '愿望瓶正在等新的愿望住进来'
+    return '等新的愿望住进来'
   }
 
   if (!displayStarCount) {
-    return '愿望瓶正在等第一颗星星落下来'
+    return '等第一颗星星落下来'
   }
 
-  return `愿望瓶已经亮起 ${displayStarCount} 颗星星`
+  return `已经亮起 ${displayStarCount} 颗星星`
 }
 
 function getWishBottleHeroTitle() {
