@@ -196,6 +196,15 @@ const wishBottleDisplayedStarsPlan = computed(() => {
 const visibleWishBottleStars = computed(() => {
   return wishBottleDisplayedStarsPlan.value.stars
 })
+const wishBottleDashboardHeadline = computed(() => {
+  const snapshot = wishBottleSnapshot.value
+
+  if (!snapshot.activeWishCount) {
+    return '现在的愿望瓶 · 等下一条愿望写下后，这里会先亮起来。'
+  }
+
+  return `现在的愿望瓶 · ${getWishBottleDashboardHint()}`
+})
 const memberDisplayNameMap = computed(() => {
   return new Map(authStore.members.map((member) => [member.id, member.displayName]))
 })
@@ -999,9 +1008,8 @@ function formatRecentThreadTime(timestamp: string) {
 
           <div class="atelier-stage-metrics">
             <div class="atelier-progress-hero">
-              <p class="wish-bottle-dashboard-kicker">现在的愿望瓶</p>
+              <p class="wish-bottle-dashboard-kicker">{{ wishBottleDashboardHeadline }}</p>
               <strong class="atelier-progress-value">{{ wishBottleSnapshot.overallPercent }}%</strong>
-              <p class="atelier-progress-caption">{{ getWishBottleDashboardHint() }}</p>
 
               <div class="wish-bottle-progress-bar" aria-hidden="true">
                 <span class="wish-bottle-progress-fill" :style="{ width: `${wishBottleSnapshot.overallPercent}%` }"></span>
