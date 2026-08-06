@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { WISH_BOTTLE_STATUS_LABELS } from '../shared/statusSemantics'
 import { useAuthStore } from '../stores/auth'
 import { type WishThreadEntry, useWishStore } from '../stores/wishes'
 
@@ -195,15 +194,6 @@ const wishBottleDisplayedStarsPlan = computed(() => {
 })
 const visibleWishBottleStars = computed(() => {
   return wishBottleDisplayedStarsPlan.value.stars
-})
-const wishBottleDashboardHeadline = computed(() => {
-  const snapshot = wishBottleSnapshot.value
-
-  if (!snapshot.activeWishCount) {
-    return '现在的愿望瓶 · 等下一条愿望写下后，这里会先亮起来。'
-  }
-
-  return `现在的愿望瓶 · ${getWishBottleDashboardHint()}`
 })
 const memberDisplayNameMap = computed(() => {
   return new Map(authStore.members.map((member) => [member.id, member.displayName]))
@@ -454,18 +444,6 @@ function getBeijingDateKey(timestamp: string) {
   }
 
   return `${parts.year}-${parts.month}-${parts.day}`
-}
-
-function getWishBottleDashboardHint() {
-  const snapshot = wishBottleSnapshot.value
-  const approachingWishCount =
-    snapshot.progressedWishCount || snapshot.trackedWishCount || snapshot.activeWishCount
-
-  if (!snapshot.activeWishCount) {
-    return '下一次推进会让这里亮起来。'
-  }
-
-  return `${approachingWishCount} 个愿望正在靠近。`
 }
 
 function getThreadMessageSummary(messageText: string) {
