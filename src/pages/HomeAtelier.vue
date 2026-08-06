@@ -196,15 +196,6 @@ const wishBottleDisplayedStarsPlan = computed(() => {
 const visibleWishBottleStars = computed(() => {
   return wishBottleDisplayedStarsPlan.value.stars
 })
-const wishBottleDashboardHeadline = computed(() => {
-  const snapshot = wishBottleSnapshot.value
-
-  if (!snapshot.activeWishCount) {
-    return '现在的愿望瓶 · 等下一条愿望写下后，这里会先亮起来。'
-  }
-
-  return `现在的愿望瓶 · ${getWishBottleDashboardHint()}`
-})
 const memberDisplayNameMap = computed(() => {
   return new Map(authStore.members.map((member) => [member.id, member.displayName]))
 })
@@ -446,14 +437,8 @@ function getWishBottleHeroTitle() {
   return `今天有 ${todayLitStars} 颗星星亮起来了。`
 }
 
-function getWishBottleHeroSubcopy() {
-  const todayLitStars = todayLitStarCount.value
-
-  if (!todayLitStars) {
-    return '星光会在下一次推进里慢慢落下来。'
-  }
-
-  return '星星正一点点把愿望照亮。'
+function getWishBottleHeroDetail() {
+  return `${getWishBottleHeroHeading()} · ${getWishBottleDashboardHint()}`
 }
 
 function getBeijingDateKey(timestamp: string) {
@@ -782,15 +767,6 @@ function formatRecentThreadTime(timestamp: string) {
           },
         ]"
       >
-        <div class="atelier-stage-note">
-          <div class="wish-bottle-story">
-            <p class="wish-bottle-story-kicker">愿望瓶</p>
-            <h2 class="wish-bottle-story-title">{{ getWishBottleHeroHeading() }}</h2>
-          </div>
-        </div>
-
-        <p class="wish-bottle-progress-note atelier-stage-copy">{{ getWishBottleHeroSubcopy() }}</p>
-
         <div class="wish-bottle-main atelier-bottle-main">
           <div class="wish-bottle-visual">
             <div class="wish-bottle-aura"></div>
@@ -1017,7 +993,8 @@ function formatRecentThreadTime(timestamp: string) {
 
           <div class="atelier-stage-metrics">
             <div class="atelier-progress-hero">
-              <p class="wish-bottle-dashboard-kicker">{{ wishBottleDashboardHeadline }}</p>
+              <p class="wish-bottle-dashboard-kicker">愿望瓶</p>
+              <h2 class="wish-bottle-story-title">{{ getWishBottleHeroDetail() }}</h2>
               <strong class="atelier-progress-value">{{ wishBottleSnapshot.overallPercent }}%</strong>
 
               <div class="wish-bottle-progress-bar" aria-hidden="true">
@@ -1489,15 +1466,6 @@ function formatRecentThreadTime(timestamp: string) {
     linear-gradient(180deg, var(--warm-panel-strong), var(--surface-soft)),
     radial-gradient(circle at 80% 10%, var(--cool-glow), transparent 26%);
   box-shadow: var(--shadow-card);
-}
-
-.atelier-stage-note {
-  display: grid;
-  gap: 0.46rem;
-}
-
-.atelier-stage-copy {
-  max-width: 25rem;
 }
 
 .atelier-bottle-main {
