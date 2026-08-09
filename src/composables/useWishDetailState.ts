@@ -67,6 +67,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
   const rewardFeedbackTone = ref<'success' | 'danger'>('success')
   const stepRewardFeedbackTargetId = ref('')
   const isCountProgressFeedback = ref(false)
+  const isAdjustingCountProgress = ref(false)
   const isSubmittingReward = ref(false)
 
   const deletableImageCount = computed(() => selectedWish.value?.images.filter((image) => canDeleteImage(image.createdBy)).length ?? 0)
@@ -870,37 +871,48 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
       return false
     }
 
+    if (isAdjustingCountProgress.value) {
+      setRewardFeedback('上一笔推进还在同步，请稍等一下。', 'success', '', 'count')
+      return false
+    }
+
     if (!canProgressSelectedWish.value) {
       setRewardFeedback('只有这条愿望的归属人可以推进它。', 'danger', '', 'count')
       return false
     }
 
-    const previousCurrent = selectedWish.value.progressCurrent
-    const updated = await wishStore.incrementWishCountProgress(selectedWish.value.id, delta)
+    isAdjustingCountProgress.value = true
 
-    if (!updated) {
-      setRewardFeedback(wishStore.syncMessage || '数字进度暂时没有更新。', 'danger', '', 'count')
-      return false
-    }
+    try {
+      const previousCurrent = selectedWish.value.progressCurrent
+      const updated = await wishStore.incrementWishCountProgress(selectedWish.value.id, delta)
 
-    const nextCurrent = selectedWish.value?.progressCurrent ?? previousCurrent
-    const gainedUnits = Math.max(nextCurrent - previousCurrent, 0)
+      if (!updated) {
+        setRewardFeedback(wishStore.syncMessage || '数字进度暂时没有更新。', 'danger', '', 'count')
+        return false
+      }
 
-    setRewardFeedback(
-      gainedUnits
-        ? `数字进度先往前走了 ${gainedUnits} 点，${formatStarCoinAmount(gainedUnits * selectedWish.value.progressStarCoinValue)} 枚星星币已经自动到账。`
-        : nextCurrent < previousCurrent
-          ? getPendingRewardSettledCopy('count')
-          : '数字进度已经更新。',
-      'success',
-      '',
-      'count',
-    )
+      const nextCurrent = selectedWish.value?.progressCurrent ?? previousCurrent
+      const gainedUnits = Math.max(nextCurrent - previousCurrent, 0)
 
-    const autoCompleted = gainedUnits > 0 ? await completeWishAfterProgressIfReady('count') : false
-    return {
-      autoCompleted,
-      gainedProgress: gainedUnits > 0,
+      setRewardFeedback(
+        gainedUnits
+          ? `数字进度先往前走了 ${gainedUnits} 点，${formatStarCoinAmount(gainedUnits * selectedWish.value.progressStarCoinValue)} 枚星星币已经自动到账。`
+          : nextCurrent < previousCurrent
+            ? getPendingRewardSettledCopy('count')
+            : '数字进度已经更新。',
+        'success',
+        '',
+        'count',
+      )
+
+      const autoCompleted = gainedUnits > 0 ? await completeWishAfterProgressIfReady('count') : false
+      return {
+        autoCompleted,
+        gainedProgress: gainedUnits > 0,
+      }
+    } finally {
+      isAdjustingCountProgress.value = false
     }
   }
 
@@ -1373,6 +1385,7 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
     imageNoteDraft,
     isCommentThread,
     isCountProgressFeedback,
+    isAdjustingCountProgress,
     isCoverImage,
     isDraggedImage,
     isDropTargetImage,

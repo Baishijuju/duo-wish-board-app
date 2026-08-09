@@ -288,7 +288,7 @@ export async function setWishCountProgressWrite(options: {
   }
 
   if (options.supabase && options.isUsingCloudWishes) {
-    return options.runCloudMutation(
+    const synced = await options.runCloudMutation(
       async () => {
         const rpcResult = await options.supabase!.rpc('set_wish_count_progress_with_star_coin', {
           next_current: options.normalizedCurrent,
@@ -320,7 +320,22 @@ export async function setWishCountProgressWrite(options: {
         return { error: legacyUpdateError }
       },
       '进度已同步到 Supabase。',
+      { syncAfterWrite: false },
     )
+
+    if (!synced) {
+      return false
+    }
+
+    return {
+      localWish: {
+        ...options.wish,
+        progressCurrent: options.normalizedCurrent,
+        updatedAt: new Date().toISOString(),
+      },
+      message: '进度已同步到 Supabase。',
+      skipLocalClaim: true,
+    }
   }
 
   return {

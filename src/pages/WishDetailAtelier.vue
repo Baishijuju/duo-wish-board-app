@@ -87,6 +87,7 @@ const {
   handleCommentImageSelection,
   handleImageSelection,
   handleWishCompletionAction,
+  isAdjustingCountProgress,
   isCommentThread,
   isCountProgressFeedback,
   canProgressSelectedWish,
@@ -515,6 +516,10 @@ const stickyCtaPrimaryLabel = computed(() => {
   }
 
   if (progressSnapshot.value?.mode === 'count') {
+    if (isAdjustingCountProgress.value) {
+      return '同步中...'
+    }
+
     return `+1${selectedWish.value.progressUnit ? ` ${selectedWish.value.progressUnit}` : ''}`
   }
 
@@ -539,6 +544,10 @@ const stickyCtaPrimaryDisabled = computed(() => {
 
   if (progressSnapshot.value?.mode === 'steps') {
     return Boolean(mobilePrimaryStep.value?.isDone)
+  }
+
+  if (progressSnapshot.value?.mode === 'count') {
+    return isAdjustingCountProgress.value
   }
 
   return false
@@ -625,6 +634,13 @@ const stickyCtaFeedbackState = computed(() => {
   }
 
   if (progressSnapshot.value?.mode === 'count') {
+    if (isAdjustingCountProgress.value) {
+      return {
+        message: '正在把这次 +1 写入云端，完成后会自动恢复按钮。',
+        tone: 'neutral' as const,
+      }
+    }
+
     return {
       message: '每次 +1 都会记进这页，并按规则发放星星币。',
       tone: 'neutral' as const,
@@ -1072,13 +1088,23 @@ async function runWishStepToggle(stepId: string) {
 }
 
 async function runCountProgressAdjustment(delta: number) {
+  const canPreTriggerStarDrop = delta > 0
+    && canProgressSelectedWish.value
+    && progressSnapshot.value?.mode === 'count'
+    && !!selectedWish.value
+    && selectedWish.value.progressCurrent < Math.max(1, selectedWish.value.progressTarget)
+
+  if (canPreTriggerStarDrop) {
+    void triggerStepStarDrop()
+  }
+
   const result = await adjustCountProgress(delta)
 
   if (!result || typeof result !== 'object') {
     return
   }
 
-  if (result.gainedProgress) {
+  if (result.gainedProgress && !canPreTriggerStarDrop) {
     await triggerStepStarDrop()
   }
 
@@ -1271,6 +1297,15 @@ async function runStickyCtaSecondaryAction() {
           </div>
 
           <div v-if="progressSnapshot?.mode === 'count'" class="detail-atelier-progress-stack"></div>
+
+          <p
+            v-if="progressSnapshot?.mode === 'count' && rewardFeedback && isCountProgressFeedback && rewardFeedbackTone === 'danger'"
+            class="detail-atelier-feedback detail-atelier-count-rollback-feedback danger"
+            role="status"
+            aria-live="polite"
+          >
+            这次 +1 没记上，已回到原来的进度。{{ rewardFeedback }}
+          </p>
 
           <div v-else-if="progressSnapshot?.mode === 'steps'" class="detail-atelier-progress-stack">
             <div v-if="selectedWish.steps.length" class="detail-atelier-step-list detail-atelier-desktop-only">
@@ -5127,6 +5162,10 @@ async function runStickyCtaSecondaryAction() {
   font-size: var(--type-l7-size);
   line-height: 1.35;
   letter-spacing: var(--type-l7-spacing);
+}
+
+.detail-atelier-count-rollback-feedback {
+  margin: 0.62rem 0 0;
 }
 
 .detail-atelier-progress-quick-action .detail-atelier-step-feedback {

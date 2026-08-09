@@ -18,6 +18,10 @@
 5. 安装截图浏览器：`npm run playwright:install`
 6. 生成正式页面截图：`npm run test:screenshots`
 
+如果你感觉启动变慢，可以先运行：`npm run clean:workspace`
+
+这个命令会清理本地构建和缓存目录（如 `dist`、`node_modules/.vite`、`.npx-cache`）。
+
 截图会输出到 `playwright-screenshots/`，默认覆盖桌面 `1440×900` 和 iPhone `390×844` 两个视口下的首页、清单页、写下页、回顾页和空间页。
 
 ## 环境变量

@@ -2701,10 +2701,40 @@ export const useWishStore = defineStore('wishes', () => {
 
     const wish = findById(id)
     const normalizedCurrent = wish ? Math.min(normalizeProgressNumber(nextCurrent), Math.max(1, wish.progressTarget)) : 0
+    const previousCurrent = wish?.progressCurrent ?? 0
+    const gainedUnitsPreview = Math.max(normalizedCurrent - previousCurrent, 0)
+    const isCloudCountProgressWrite = !!(wish && supabase && isUsingCloudWishes.value)
+    let optimisticClaimId = ''
 
     if (wish && !isCurrentMemberWishOwner(wish)) {
       syncMessage.value = '只有这条愿望的归属人可以推进它。'
       return false
+    }
+
+    if (wish && isCloudCountProgressWrite) {
+      const optimisticWish = {
+        ...wish,
+        progressCurrent: normalizedCurrent,
+        updatedAt: new Date().toISOString(),
+      }
+
+      wishes.value = wishes.value.map((entry) => entry.id === id ? optimisticWish : entry)
+
+      if (gainedUnitsPreview > 0) {
+        const optimisticStarCoinDelta = gainedUnitsPreview * Math.max(0, wish.progressStarCoinValue)
+        const optimisticClaim = createAutomaticStarCoinClaim({
+          claimKind: 'count_star_coin',
+          noteSnapshot: `「${wish.title}」数字进度新增 ${gainedUnitsPreview} ${wish.progressUnit || '点'}，自动获得星星币。`,
+          ownerId: wish.ownerId,
+          quantity: gainedUnitsPreview,
+          sourceWishId: id,
+          starCoinDelta: optimisticStarCoinDelta,
+          titleSnapshot: `${formatStarCoinAmount(optimisticStarCoinDelta)} 星星币`,
+        })
+
+        rewardClaims.value.unshift(optimisticClaim)
+        optimisticClaimId = optimisticClaim.id
+      }
     }
 
     const result = await setWishCountProgressWrite({
@@ -2720,10 +2750,10 @@ export const useWishStore = defineStore('wishes', () => {
     })
 
     if (result && typeof result === 'object' && 'localWish' in result) {
-      const previousCurrent = wish?.progressCurrent ?? 0
       const gainedUnits = Math.max(result.localWish.progressCurrent - previousCurrent, 0)
       wishes.value = wishes.value.map((entry) => entry.id === id ? result.localWish : entry)
-      if (wish && gainedUnits > 0) {
+      const shouldCreateLocalClaim = !('skipLocalClaim' in result) || !result.skipLocalClaim
+      if (wish && gainedUnits > 0 && shouldCreateLocalClaim) {
         const starCoinDelta = gainedUnits * Math.max(0, wish.progressStarCoinValue)
         rewardClaims.value.unshift(createAutomaticStarCoinClaim({
           claimKind: 'count_star_coin',
@@ -2738,6 +2768,17 @@ export const useWishStore = defineStore('wishes', () => {
       syncMessage.value = result.message
       clearRetryableAction()
       return true
+    }
+
+    if (wish && isCloudCountProgressWrite) {
+      wishes.value = wishes.value.map((entry) => entry.id === id ? wish : entry)
+
+      if (optimisticClaimId) {
+        rewardClaims.value = rewardClaims.value.filter((claim) => claim.id !== optimisticClaimId)
+      }
+
+      const failureReason = syncMessage.value ? `（${syncMessage.value}）` : ''
+      syncMessage.value = `同步没成功，这次推进已回到原来的进度${failureReason}`
     }
 
     trackRetryableActionResult(result, '重试推进数字进度', () => setWishCountProgress(id, nextCurrent))
