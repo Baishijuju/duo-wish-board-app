@@ -79,6 +79,7 @@ type MessageEntry = {
   timeLabel: string
   wishId: string
   wishTitle: string
+  wishOwnerName: string
 }
 
 type ProgressUsageEvent = {
@@ -252,6 +253,7 @@ const currentPeriodComments = computed<MessageEntry[]>(() => {
         timeLabel: formatDateTimeLabel(comment.createdAt),
         wishId: wish.id,
         wishTitle: wish.title,
+        wishOwnerName: getMemberName(wish.ownerId),
       })))
     .filter((entry) => {
       if (activeScope.value === 'me') return entry.authorName === currentMember.value.displayName
@@ -1552,7 +1554,10 @@ function getRewardClaimKindLabel(kind: RewardClaimKind) {
             class="monthly-message-item monthly-message-link"
             :to="{ name: 'wish-detail', params: { id: entry.wishId } }"
           >
-            <div><span>{{ entry.authorName }} · {{ entry.timeLabel }}</span><strong>{{ entry.wishTitle }}</strong></div>
+            <div>
+              <span>{{ entry.authorName }} · {{ entry.timeLabel }}</span>
+              <strong>在 {{ entry.wishOwnerName }} 的愿望「{{ entry.wishTitle }}」留言</strong>
+            </div>
             <p>{{ entry.text }}</p>
           </RouterLink>
           <p v-if="!messageBookEntries.length" class="monthly-empty-note">这个范围里还没有留言。</p>

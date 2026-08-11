@@ -747,14 +747,14 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
                 :aria-label="selectedRewardEntry.kind === 'assist' ? '快捷助力金额' : '快捷存入金额'"
               >
                 <button
-                  v-for="amount in [0.1, 0.5, 1]"
+                  v-for="amount in [0.1, 1, 10, 100]"
                   :key="amount"
                   class="reward-quick-chip"
                   type="button"
                   :disabled="space.processingRewardItemId === selectedRewardEntry.item.id || !space.canDepositReward(selectedRewardEntry.item, amount)"
                   @click="void space.depositRewardStarCoins(selectedRewardEntry.item.id, amount)"
                 >
-                  +{{ formatStarCoinAmount(amount) }}
+                  {{ formatStarCoinAmount(amount) }}
                 </button>
               </div>
               <p v-if="space.rewardMessage" :class="['feedback-message', 'space-reward-feedback', space.rewardTone]">{{ space.rewardMessage }}</p>
@@ -4221,7 +4221,7 @@ function runRewardPrimaryAction(entry: RewardKeywordEntry) {
 
   .reward-quick-chip-row {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .reward-quick-chip {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { RouterLink } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { type WishThreadEntry, useWishStore } from '../stores/wishes'
 
@@ -147,7 +148,9 @@ function buildWishBottleDisplayedStars(totalStars: number) {
 type HomeThreadSummary = {
   actorId: string | null
   actorLabel: string
+  commentJumpPath: string | null
   detailText: string
+  displayMemberId: string | null
   headlineText: string
   id: string
   timeLabel: string
@@ -204,6 +207,7 @@ function buildHomeThreadSummariesByDateKey(dateKey: string | null): HomeThreadSu
   }
 
   const wishTitleMap = new Map(wishStore.wishes.map((wish) => [wish.id, wish.title]))
+  const wishOwnerIdMap = new Map(wishStore.wishes.map((wish) => [wish.id, wish.ownerId]))
   const dailyThreads = [...wishStore.wishThreads]
     .filter((thread) => {
       return getBeijingDateKey(thread.createdAt) === dateKey
@@ -211,16 +215,51 @@ function buildHomeThreadSummariesByDateKey(dateKey: string | null): HomeThreadSu
     .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
 
   const mergedThreads = mergeCompletionMomentThreadsForHome(dailyThreads)
+  const compactedThreads = mergeDailyRewardDepositThreadsForHome(mergedThreads)
 
-  return mergedThreads
+  return compactedThreads
     .map((thread) => ({
       actorId: thread.actorId,
       actorLabel: getThreadActorLabel(thread.actorId),
+      commentJumpPath: getHomeThreadCommentJumpPath(thread),
       detailText: getHomeThreadDetail(thread, wishTitleMap),
-      headlineText: getHomeThreadHeadline(thread, wishTitleMap),
+      displayMemberId: resolveHomeThreadDisplayMemberId(thread, wishOwnerIdMap),
+      headlineText: getHomeThreadHeadline(thread, wishTitleMap, wishOwnerIdMap),
       id: thread.id,
       timeLabel: formatRecentThreadTime(thread.createdAt),
     }))
+}
+
+function getHomeThreadCommentJumpPath(thread: Pick<WishThreadEntry, 'eventKind' | 'wishId'>) {
+  if (thread.eventKind !== 'comment' || !thread.wishId) {
+    return null
+  }
+
+  return `/wish/${thread.wishId}#compose`
+}
+
+function resolveHomeThreadDisplayMemberId(thread: Pick<WishThreadEntry, 'actorId' | 'eventKind' | 'wishId'>, wishOwnerIdMap: Map<string, string>) {
+  if (thread.eventKind === 'comment' && thread.wishId) {
+    const wishOwnerId = wishOwnerIdMap.get(thread.wishId)
+    if (wishOwnerId) {
+      return wishOwnerId
+    }
+  }
+
+  return thread.actorId
+}
+
+function isCommentDirectToViewer(
+  actorId: string | null,
+  wishId: string | null,
+  wishOwnerIdMap: Map<string, string>,
+) {
+  if (!actorId || !wishId) {
+    return false
+  }
+
+  const wishOwnerId = wishOwnerIdMap.get(wishId)
+  return !!wishOwnerId && actorId !== wishOwnerId
 }
 
 function mergeCompletionMomentThreadsForHome(threads: WishThreadEntry[]) {
@@ -321,6 +360,67 @@ function isCountProgressRewardClaimForHome(thread: WishThreadEntry) {
   return claimKind === 'count_star_coin' || claimKind === 'count_reward' || (claimKind === 'star_coin' && !sourceStepId)
 }
 
+function isRewardDepositClaimForHome(thread: WishThreadEntry) {
+  if (thread.eventKind !== 'reward_claimed') {
+    return false
+  }
+
+  return getMetaString(thread.meta, 'claimKind') === 'reward_deposit'
+}
+
+function getRewardDepositMergeItemKey(thread: WishThreadEntry) {
+  return getMetaString(thread.meta, 'rewardItemId')
+    || getMetaString(thread.meta, 'titleSnapshot')
+    || 'unknown-reward-item'
+}
+
+function mergeDailyRewardDepositThreadsForHome(threads: WishThreadEntry[]) {
+  const mergedThreads: WishThreadEntry[] = []
+  const mergeIndexByKey = new Map<string, number>()
+
+  for (const thread of threads) {
+    if (!isRewardDepositClaimForHome(thread)) {
+      mergedThreads.push(thread)
+      continue
+    }
+
+    const actorKey = thread.actorId ?? 'shared'
+    const itemKey = getRewardDepositMergeItemKey(thread)
+    const mergeKey = `${actorKey}|${itemKey}`
+    const amount = Math.abs(getMetaNumber(thread.meta, 'starCoinDelta') ?? getMetaNumber(thread.meta, 'quantity') ?? 0)
+    const normalizedAmount = Math.max(0, amount)
+    const existingIndex = mergeIndexByKey.get(mergeKey)
+
+    if (existingIndex === undefined) {
+      mergedThreads.push({
+        ...thread,
+        meta: {
+          ...thread.meta,
+          mergedRewardDepositAmount: normalizedAmount,
+          mergedRewardDepositTimes: 1,
+        },
+      })
+      mergeIndexByKey.set(mergeKey, mergedThreads.length - 1)
+      continue
+    }
+
+    const existingThread = mergedThreads[existingIndex]
+    const existingAmount = Math.max(0, Math.abs(getMetaNumber(existingThread.meta, 'mergedRewardDepositAmount') ?? 0))
+    const existingTimes = Math.max(1, Math.trunc(getMetaNumber(existingThread.meta, 'mergedRewardDepositTimes') ?? 1))
+
+    mergedThreads[existingIndex] = {
+      ...existingThread,
+      meta: {
+        ...existingThread.meta,
+        mergedRewardDepositAmount: existingAmount + normalizedAmount,
+        mergedRewardDepositTimes: existingTimes + 1,
+      },
+    }
+  }
+
+  return mergedThreads
+}
+
 function getHomeThreadMinuteKey(timestamp: string) {
   const parts = getBeijingDateParts(timestamp)
 
@@ -359,32 +459,28 @@ const yesterdayHomeThreads = computed<HomeThreadSummary[]>(() => {
 })
 const todayMemberCards = computed(() => {
   return authStore.members.slice(0, 2).map((member, index) => {
-    const memberThreads = todayHomeThreads.value.filter((thread) => thread.actorId === member.id)
+    const memberThreads = todayHomeThreads.value.filter((thread) => thread.displayMemberId === member.id)
     const highlight = memberThreads[0] ?? null
-    const isViewer = authStore.currentMember?.id === member.id
 
     return {
       followUps: memberThreads.slice(1),
       highlight,
       memberId: member.id,
       memberName: member.displayName,
-      roleLabel: isViewer ? '你今天捎来一句' : '对方今天捎来一句',
       toneClass: index % 2 === 0 ? 'is-rose' : 'is-sage',
     }
   })
 })
 const yesterdayMemberCards = computed(() => {
   return authStore.members.slice(0, 2).map((member, index) => {
-    const memberThreads = yesterdayHomeThreads.value.filter((thread) => thread.actorId === member.id)
+    const memberThreads = yesterdayHomeThreads.value.filter((thread) => thread.displayMemberId === member.id)
     const highlight = memberThreads[0] ?? null
-    const isViewer = authStore.currentMember?.id === member.id
 
     return {
       followUps: memberThreads.slice(1),
       highlight,
       memberId: member.id,
       memberName: member.displayName,
-      roleLabel: isViewer ? '你昨天捎来一句' : '对方昨天捎来一句',
       toneClass: index % 2 === 0 ? 'is-rose' : 'is-sage',
     }
   })
@@ -515,17 +611,24 @@ function getThreadActorLabel(actorId: string | null) {
 
 function getHomeThreadHeadline(
   thread: {
+    actorId: string | null
     eventKind: string
     messageText: string
     meta: Record<string, unknown>
     wishId: string | null
   },
   wishTitleMap: Map<string, string>,
+  wishOwnerIdMap: Map<string, string>,
 ) {
   const wishTitle = getThreadWishTitle(thread.wishId, thread.meta, wishTitleMap)
+  const actorLabel = getThreadActorLabel(thread.actorId)
 
   if (thread.eventKind === 'comment') {
-    return wishTitle ? `在「${wishTitle}」这页，刚好又说到你们了` : '刚好又捎来了一句新的近况'
+    if (isCommentDirectToViewer(thread.actorId, thread.wishId, wishOwnerIdMap)) {
+      return wishTitle ? `${actorLabel} 在「${wishTitle}」给你留了一条留言` : `${actorLabel} 给你留了一条留言`
+    }
+
+    return wishTitle ? `在「${wishTitle}」留了一条留言` : '留了一条留言'
   }
 
   if (thread.eventKind === 'wish_completed') {
@@ -571,6 +674,17 @@ function getHomeThreadHeadline(
     const starCoinDelta = Math.abs(getMetaNumber(thread.meta, 'starCoinDelta') ?? 0)
     const starCoinLabel = starCoinDelta > 0 ? `${formatHomeDecimal(starCoinDelta)} 星币` : ''
     const wishTarget = wishTitle || getMetaString(thread.meta, 'wishTitle') || '这条愿望'
+
+    if (claimKind === 'reward_deposit') {
+      const mergedDepositAmount = Math.max(0, Math.abs(getMetaNumber(thread.meta, 'mergedRewardDepositAmount') ?? starCoinDelta))
+      const mergedDepositTimes = Math.max(1, Math.trunc(getMetaNumber(thread.meta, 'mergedRewardDepositTimes') ?? 1))
+      const rewardTarget = rewardTitle || '这条奖励'
+      const amountLabel = `${formatHomeDecimal(mergedDepositAmount)} 星币`
+
+      return mergedDepositTimes > 1
+        ? `给「${rewardTarget}」分 ${mergedDepositTimes} 次存入，累计 ${amountLabel}`
+        : `给「${rewardTarget}」存入了 ${amountLabel}`
+    }
 
     if (claimKind === 'wish_completion_bonus' || claimKind === 'wish_reward') {
       if (starCoinLabel) {
@@ -643,6 +757,16 @@ function getHomeThreadDetail(
     const quantityRaw = getMetaNumber(thread.meta, 'quantity')
     const quantity = quantityRaw === null ? 1 : Math.max(1, Math.trunc(quantityRaw))
     const stepTitle = getMetaString(thread.meta, 'stepTitle') || '这个小步骤'
+
+    if (claimKind === 'reward_deposit') {
+      const mergedDepositAmount = Math.max(0, Math.abs(getMetaNumber(thread.meta, 'mergedRewardDepositAmount') ?? getMetaNumber(thread.meta, 'starCoinDelta') ?? quantityRaw ?? 0))
+      const mergedDepositTimes = Math.max(1, Math.trunc(getMetaNumber(thread.meta, 'mergedRewardDepositTimes') ?? 1))
+      const rewardTarget = rewardTitle || '这条奖励'
+
+      return mergedDepositTimes > 1
+        ? `给「${rewardTarget}」分 ${mergedDepositTimes} 次攒进了 ${formatHomeDecimal(mergedDepositAmount)} 枚星币。`
+        : `这次给「${rewardTarget}」存进了 ${formatHomeDecimal(mergedDepositAmount)} 枚星币。`
+    }
 
     if (claimKind === 'wish_completion_bonus' || claimKind === 'wish_reward') {
       return rewardTitle
@@ -1008,7 +1132,14 @@ function formatRecentThreadTime(timestamp: string) {
 
             <div v-if="card.highlight" class="journal-member-highlight">
               <p class="journal-feature-meta">{{ card.highlight.timeLabel }}</p>
-              <strong>{{ card.highlight.headlineText }}</strong>
+              <RouterLink
+                v-if="card.highlight.commentJumpPath"
+                :to="card.highlight.commentJumpPath"
+                class="journal-thread-link"
+              >
+                <strong>{{ card.highlight.headlineText }}</strong>
+              </RouterLink>
+              <strong v-else>{{ card.highlight.headlineText }}</strong>
             </div>
 
             <div
@@ -1017,19 +1148,26 @@ function formatRecentThreadTime(timestamp: string) {
               class="journal-member-followup"
             >
               <div class="journal-member-followup-copy">
-                <strong>{{ followUp.headlineText }}</strong>
+                <RouterLink
+                  v-if="followUp.commentJumpPath"
+                  :to="followUp.commentJumpPath"
+                  class="journal-thread-link"
+                >
+                  <strong>{{ followUp.headlineText }}</strong>
+                </RouterLink>
+                <strong v-else>{{ followUp.headlineText }}</strong>
                 <span>{{ followUp.timeLabel }}</span>
               </div>
             </div>
 
             <div v-if="!card.highlight && card.followUps.length === 0" class="journal-member-empty">
-              <p class="journal-feature-meta">今天还没有新的近况</p>
-              <h3>等今天再有推进发生，这里会先替你们把这句招呼留住。</h3>
+              <p class="journal-feature-meta">今天还没有新的留言或奖励记录</p>
+              <h3>有新动态时，会先显示在这里。</h3>
             </div>
           </article>
 
           <article v-if="sharedTodayMoment" class="journal-shared-strip">
-            <p class="journal-shared-kicker">一起捎来</p>
+            <p class="journal-shared-kicker">共同更新</p>
             <strong>{{ sharedTodayMoment.headlineText }}</strong>
             <span>{{ sharedTodayMoment.timeLabel }}</span>
           </article>
@@ -1056,7 +1194,14 @@ function formatRecentThreadTime(timestamp: string) {
 
                 <div v-if="card.highlight" class="journal-member-highlight">
                   <p class="journal-feature-meta">{{ card.highlight.timeLabel }}</p>
-                  <strong>{{ card.highlight.headlineText }}</strong>
+                  <RouterLink
+                    v-if="card.highlight.commentJumpPath"
+                    :to="card.highlight.commentJumpPath"
+                    class="journal-thread-link"
+                  >
+                    <strong>{{ card.highlight.headlineText }}</strong>
+                  </RouterLink>
+                  <strong v-else>{{ card.highlight.headlineText }}</strong>
                 </div>
 
                 <div
@@ -1065,19 +1210,26 @@ function formatRecentThreadTime(timestamp: string) {
                   class="journal-member-followup"
                 >
                   <div class="journal-member-followup-copy">
-                    <strong>{{ followUp.headlineText }}</strong>
+                    <RouterLink
+                      v-if="followUp.commentJumpPath"
+                      :to="followUp.commentJumpPath"
+                      class="journal-thread-link"
+                    >
+                      <strong>{{ followUp.headlineText }}</strong>
+                    </RouterLink>
+                    <strong v-else>{{ followUp.headlineText }}</strong>
                     <span>{{ followUp.timeLabel }}</span>
                   </div>
                 </div>
 
                 <div v-if="!card.highlight && card.followUps.length === 0" class="journal-member-empty">
-                  <p class="journal-feature-meta">昨天还没有新的近况</p>
-                  <h3>昨天没有新增推进，今天有动静时这里会先响一声。</h3>
+                  <p class="journal-feature-meta">昨天还没有新的留言或奖励记录</p>
+                  <h3>昨天暂无新增动态。</h3>
                 </div>
               </article>
 
               <article v-if="sharedYesterdayMoment" class="journal-shared-strip">
-                <p class="journal-shared-kicker">一起捎来</p>
+                <p class="journal-shared-kicker">共同更新</p>
                 <strong>{{ sharedYesterdayMoment.headlineText }}</strong>
                 <span>{{ sharedYesterdayMoment.timeLabel }}</span>
               </article>
@@ -1746,6 +1898,35 @@ function formatRecentThreadTime(timestamp: string) {
 
 .journal-member-followup-copy strong {
   max-width: 24ch;
+}
+
+.journal-thread-link {
+  position: relative;
+  display: block;
+  padding: 0.44rem 0.56rem;
+  border-radius: 0.76rem;
+  border: 1px solid color-mix(in srgb, var(--warm-border) 58%, transparent);
+  background:
+    linear-gradient(140deg, color-mix(in srgb, var(--warm-panel) 82%, #ffffff 18%), color-mix(in srgb, var(--surface-card) 88%, #fff8ef 12%)),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0 9px, rgba(236, 222, 202, 0.15) 9px 18px);
+  text-decoration: none;
+  box-shadow: 0 4px 10px rgba(60, 36, 18, 0.05);
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.journal-thread-link:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--warm-border) 85%, transparent);
+  box-shadow: 0 8px 18px rgba(60, 36, 18, 0.1);
+}
+
+.journal-thread-link:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--brand) 55%, #ffffff 45%);
+  outline-offset: 2px;
+}
+
+.journal-thread-link strong {
+  margin: 0;
 }
 
 .journal-member-followup-copy span,
