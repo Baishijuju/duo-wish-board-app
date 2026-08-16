@@ -245,6 +245,43 @@ export function useListWishBoardState() {
     return `已获得 ${formatStarCoinAmount(getWishEarnedStarCoins(wish))} 星星币`
   }
 
+  function getWishProgressStarCoinGainLabel(wish: WishRecord) {
+    if (wish.status === 'done') {
+      return null
+    }
+
+    if (wish.progressMode === 'count') {
+      const perUnit = Math.max(0, wish.progressStarCoinValue)
+      if (perUnit <= 0) {
+        return null
+      }
+
+      const unit = wish.progressUnit.trim() || '次'
+      return `每${unit} +${formatStarCoinAmount(perUnit)} 星星币`
+    }
+
+    if (wish.progressMode === 'steps') {
+      const positiveStepValues = wish.steps
+        .map((step) => Math.max(0, step.starCoinValue))
+        .filter((value) => value > 0)
+
+      if (!positiveStepValues.length) {
+        return null
+      }
+
+      const minValue = Math.min(...positiveStepValues)
+      const maxValue = Math.max(...positiveStepValues)
+
+      if (minValue === maxValue) {
+        return `每步 +${formatStarCoinAmount(minValue)} 星星币`
+      }
+
+      return `每步 +${formatStarCoinAmount(minValue)}~${formatStarCoinAmount(maxValue)} 星星币`
+    }
+
+    return null
+  }
+
   function getWishStarCoinRing(wish: WishRecord) {
     const earned = getWishEarnedStarCoins(wish)
     const remaining = getWishRemainingStarCoins(wish)
@@ -425,6 +462,7 @@ export function useListWishBoardState() {
     getWishMood,
     getWishAgeLabel,
     getWishEarnedStarCoinLabel,
+    getWishProgressStarCoinGainLabel,
     getWishProgress,
     getWishCompactMeta,
     getWishListOwnerLabel,

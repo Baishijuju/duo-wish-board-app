@@ -13,6 +13,7 @@ const {
   filterStore,
   filteredWishes,
   getWishListPrimaryValue,
+  getWishProgressStarCoinGainLabel,
   getWishListSecondaryValue,
   getWishListSideStatus,
   listWorkbenchStats,
@@ -77,6 +78,18 @@ const boardHeading = computed(() => {
 
   return '慢慢来，我们还在把日子往喜欢的方向推。'
 })
+
+function getWishListInlinePrimaryValue(wish: WishRecord) {
+  const primary = getWishListPrimaryValue(wish)
+  const progressGain = getWishProgressStarCoinGainLabel(wish)
+
+  if (filterStore.sortMode !== 'starCoins' || !progressGain) {
+    return primary
+  }
+
+  return `${primary}（${progressGain}）`
+}
+
 const heroSummary = computed(() => {
   const stats = listWorkbenchStats.value
 
@@ -392,7 +405,7 @@ onBeforeUnmount(() => {
 
             <div class="list-board-card-data">
               <RouterLink class="list-board-data-block list-board-progress-link list-board-sort-context" :to="{ name: 'wish-detail', params: { id: wish.id }, hash: '#progress' }" aria-label="打开详情页进度区域">
-                <strong>{{ getWishListPrimaryValue(wish) }}</strong>
+                <strong>{{ getWishListInlinePrimaryValue(wish) }}</strong>
                 <em>{{ getWishListSecondaryValue(wish) }}</em>
               </RouterLink>
             </div>

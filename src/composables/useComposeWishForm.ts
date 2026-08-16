@@ -20,6 +20,22 @@ function createEmptyInitialStepDraft(): InitialStepDraft {
   }
 }
 
+export function createEmptyWishDraft(ownerId: string): WishDraft {
+  return {
+    title: '',
+    category: '',
+    note: '',
+    ownerId,
+    scope: 'shared',
+    progressMode: 'count',
+    progressCurrent: 0,
+    progressTarget: 0,
+    progressUnit: '',
+    progressStarCoinValue: 0,
+    completionStarCoinBonus: 0,
+  }
+}
+
 export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
   const route = useRoute()
   const router = useRouter()
@@ -31,22 +47,10 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
   const feedbackTone = ref<'success' | 'danger'>('success')
   const lastSavedWishId = ref<string | null>(null)
   const initialStepDrafts = ref<InitialStepDraft[]>([createEmptyInitialStepDraft(), createEmptyInitialStepDraft()])
-  const categorySuggestions = ['旅行', '生活', '成长', '健康', '家', '纪念']
+  const categorySuggestions = ['生活', '成长', '健康']
 
   function createEmptyDraft(): WishDraft {
-    return {
-      title: '',
-      category: '',
-      note: '',
-      ownerId: authStore.currentMember?.id ?? authStore.members[0]?.id ?? '',
-      scope: 'shared',
-      progressMode: 'steps',
-      progressCurrent: 0,
-      progressTarget: 0,
-      progressUnit: '',
-      progressStarCoinValue: 0,
-      completionStarCoinBonus: 0,
-    }
+    return createEmptyWishDraft(authStore.currentMember?.id ?? authStore.members[0]?.id ?? '')
   }
 
   const draft = ref<WishDraft>(createEmptyDraft())

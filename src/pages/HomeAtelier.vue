@@ -151,9 +151,31 @@ type HomeThreadSummary = {
   commentJumpPath: string | null
   detailText: string
   displayMemberId: string | null
+  headlinePrimaryText: string
+  headlineSecondaryText: string | null
   headlineText: string
   id: string
   timeLabel: string
+}
+
+function splitHomeHeadlineForDisplay(headlineText: string) {
+  const normalizedText = headlineText.trim()
+  const quotedTitleMatch = normalizedText.match(/^(「[^」]+」)(.+)$/)
+
+  if (!quotedTitleMatch) {
+    return {
+      headlinePrimaryText: normalizedText,
+      headlineSecondaryText: null,
+    }
+  }
+
+  const headlinePrimaryText = quotedTitleMatch[1].trim()
+  const headlineSecondaryText = quotedTitleMatch[2].trim()
+
+  return {
+    headlinePrimaryText,
+    headlineSecondaryText: headlineSecondaryText.length > 0 ? headlineSecondaryText : null,
+  }
 }
 
 const viewerName = computed(() => authStore.currentMember?.displayName ?? '我们')
@@ -218,16 +240,23 @@ function buildHomeThreadSummariesByDateKey(dateKey: string | null): HomeThreadSu
   const compactedThreads = mergeDailyRewardDepositThreadsForHome(mergedThreads)
 
   return compactedThreads
-    .map((thread) => ({
-      actorId: thread.actorId,
-      actorLabel: getThreadActorLabel(thread.actorId),
-      commentJumpPath: getHomeThreadCommentJumpPath(thread),
-      detailText: getHomeThreadDetail(thread, wishTitleMap),
-      displayMemberId: resolveHomeThreadDisplayMemberId(thread, wishOwnerIdMap),
-      headlineText: getHomeThreadHeadline(thread, wishTitleMap, wishOwnerIdMap),
-      id: thread.id,
-      timeLabel: formatRecentThreadTime(thread.createdAt),
-    }))
+    .map((thread) => {
+      const headlineText = getHomeThreadHeadline(thread, wishTitleMap, wishOwnerIdMap)
+      const splitHeadline = splitHomeHeadlineForDisplay(headlineText)
+
+      return {
+        actorId: thread.actorId,
+        actorLabel: getThreadActorLabel(thread.actorId),
+        commentJumpPath: getHomeThreadCommentJumpPath(thread),
+        detailText: getHomeThreadDetail(thread, wishTitleMap),
+        displayMemberId: resolveHomeThreadDisplayMemberId(thread, wishOwnerIdMap),
+        headlinePrimaryText: splitHeadline.headlinePrimaryText,
+        headlineSecondaryText: splitHeadline.headlineSecondaryText,
+        headlineText,
+        id: thread.id,
+        timeLabel: formatRecentThreadTime(thread.createdAt),
+      }
+    })
 }
 
 function getHomeThreadCommentJumpPath(thread: Pick<WishThreadEntry, 'eventKind' | 'wishId'>) {
@@ -843,11 +872,15 @@ function formatRecentThreadTime(timestamp: string) {
     return `今天 ${target.hour}:${target.minute}`
   }
 
-  if (target.year === now.year) {
-    return `${target.month}月${target.day}日 ${target.hour}:${target.minute}`
+  const nowDate = new Date()
+  const targetDate = new Date(timestamp)
+  const dayDiff = Math.floor((nowDate.getTime() - targetDate.getTime()) / 86400000)
+
+  if (dayDiff === 1) {
+    return `昨天 ${target.hour}:${target.minute}`
   }
 
-  return `${target.year}年${target.month}月${target.day}日 ${target.hour}:${target.minute}`
+  return `${target.hour}:${target.minute}`
 }
 </script>
 
@@ -1116,8 +1149,6 @@ function formatRecentThreadTime(timestamp: string) {
 
     <section class="atelier-grid">
       <article class="atelier-journal panel">
-        <p class="atelier-kicker">今日发生</p>
-
         <div class="atelier-journal-layout" :class="{ 'is-single': todayMemberCards.length === 1 }">
           <article
             v-for="card in todayMemberCards"
@@ -1137,9 +1168,17 @@ function formatRecentThreadTime(timestamp: string) {
                 :to="card.highlight.commentJumpPath"
                 class="journal-thread-link"
               >
-                <strong>{{ card.highlight.headlineText }}</strong>
+                <strong>{{ card.highlight.headlinePrimaryText }}</strong>
+                <p v-if="card.highlight.headlineSecondaryText" class="journal-progress-meta">
+                  {{ card.highlight.headlineSecondaryText }}
+                </p>
               </RouterLink>
-              <strong v-else>{{ card.highlight.headlineText }}</strong>
+              <template v-else>
+                <strong>{{ card.highlight.headlinePrimaryText }}</strong>
+                <p v-if="card.highlight.headlineSecondaryText" class="journal-progress-meta">
+                  {{ card.highlight.headlineSecondaryText }}
+                </p>
+              </template>
             </div>
 
             <div
@@ -1147,17 +1186,23 @@ function formatRecentThreadTime(timestamp: string) {
               :key="followUp.id"
               class="journal-member-followup"
             >
-              <div class="journal-member-followup-copy">
-                <RouterLink
-                  v-if="followUp.commentJumpPath"
-                  :to="followUp.commentJumpPath"
-                  class="journal-thread-link"
-                >
-                  <strong>{{ followUp.headlineText }}</strong>
-                </RouterLink>
-                <strong v-else>{{ followUp.headlineText }}</strong>
-                <span>{{ followUp.timeLabel }}</span>
-              </div>
+              <p class="journal-feature-meta">{{ followUp.timeLabel }}</p>
+              <RouterLink
+                v-if="followUp.commentJumpPath"
+                :to="followUp.commentJumpPath"
+                class="journal-thread-link"
+              >
+                <strong>{{ followUp.headlinePrimaryText }}</strong>
+                <p v-if="followUp.headlineSecondaryText" class="journal-progress-meta">
+                  {{ followUp.headlineSecondaryText }}
+                </p>
+              </RouterLink>
+              <template v-else>
+                <strong>{{ followUp.headlinePrimaryText }}</strong>
+                <p v-if="followUp.headlineSecondaryText" class="journal-progress-meta">
+                  {{ followUp.headlineSecondaryText }}
+                </p>
+              </template>
             </div>
 
             <div v-if="!card.highlight && card.followUps.length === 0" class="journal-member-empty">
@@ -1176,7 +1221,6 @@ function formatRecentThreadTime(timestamp: string) {
         <details class="atelier-journal-yesterday">
           <summary class="atelier-journal-yesterday-summary">
             <strong>昨日回看</strong>
-            <span>{{ yesterdayHomeThreads.length ? `共 ${yesterdayHomeThreads.length} 笔` : '没有新增' }}</span>
           </summary>
 
           <div class="atelier-journal-yesterday-body">
@@ -1199,9 +1243,17 @@ function formatRecentThreadTime(timestamp: string) {
                     :to="card.highlight.commentJumpPath"
                     class="journal-thread-link"
                   >
-                    <strong>{{ card.highlight.headlineText }}</strong>
+                    <strong>{{ card.highlight.headlinePrimaryText }}</strong>
+                    <p v-if="card.highlight.headlineSecondaryText" class="journal-progress-meta">
+                      {{ card.highlight.headlineSecondaryText }}
+                    </p>
                   </RouterLink>
-                  <strong v-else>{{ card.highlight.headlineText }}</strong>
+                  <template v-else>
+                    <strong>{{ card.highlight.headlinePrimaryText }}</strong>
+                    <p v-if="card.highlight.headlineSecondaryText" class="journal-progress-meta">
+                      {{ card.highlight.headlineSecondaryText }}
+                    </p>
+                  </template>
                 </div>
 
                 <div
@@ -1209,17 +1261,23 @@ function formatRecentThreadTime(timestamp: string) {
                   :key="followUp.id"
                   class="journal-member-followup"
                 >
-                  <div class="journal-member-followup-copy">
-                    <RouterLink
-                      v-if="followUp.commentJumpPath"
-                      :to="followUp.commentJumpPath"
-                      class="journal-thread-link"
-                    >
-                      <strong>{{ followUp.headlineText }}</strong>
-                    </RouterLink>
-                    <strong v-else>{{ followUp.headlineText }}</strong>
-                    <span>{{ followUp.timeLabel }}</span>
-                  </div>
+                  <p class="journal-feature-meta">{{ followUp.timeLabel }}</p>
+                  <RouterLink
+                    v-if="followUp.commentJumpPath"
+                    :to="followUp.commentJumpPath"
+                    class="journal-thread-link"
+                  >
+                    <strong>{{ followUp.headlinePrimaryText }}</strong>
+                    <p v-if="followUp.headlineSecondaryText" class="journal-progress-meta">
+                      {{ followUp.headlineSecondaryText }}
+                    </p>
+                  </RouterLink>
+                  <template v-else>
+                    <strong>{{ followUp.headlinePrimaryText }}</strong>
+                    <p v-if="followUp.headlineSecondaryText" class="journal-progress-meta">
+                      {{ followUp.headlineSecondaryText }}
+                    </p>
+                  </template>
                 </div>
 
                 <div v-if="!card.highlight && card.followUps.length === 0" class="journal-member-empty">
@@ -1788,16 +1846,17 @@ function formatRecentThreadTime(timestamp: string) {
   display: grid;
   gap: 0.72rem;
   align-content: start;
-  padding: 1rem;
+  padding: 0.82rem 0.82rem 0.8rem;
   border-radius: var(--radius-xl);
-  background: linear-gradient(180deg, var(--danger-panel), var(--warm-panel));
-  border: 1px solid var(--warm-border);
-  box-shadow: var(--shadow-card);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid color-mix(in srgb, var(--warm-border) 75%, transparent);
+  box-shadow: none;
+  position: relative;
 }
 
 .journal-member-card.is-sage {
-  background: linear-gradient(180deg, var(--success-panel), var(--warm-panel));
-  border-color: var(--success-border);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: color-mix(in srgb, var(--success-border) 72%, transparent);
 }
 
 .journal-member-head {
@@ -1805,6 +1864,7 @@ function formatRecentThreadTime(timestamp: string) {
   justify-content: flex-start;
   gap: 0.7rem;
   align-items: flex-start;
+  padding-bottom: 0.06rem;
 }
 
 .journal-member-title {
@@ -1839,30 +1899,85 @@ function formatRecentThreadTime(timestamp: string) {
 }
 
 .journal-member-highlight,
+.journal-member-followup,
 .journal-member-empty {
   display: grid;
-  gap: 0.26rem;
+  gap: 0.3rem;
+}
+
+.journal-member-highlight,
+.journal-member-followup {
+  position: relative;
+  padding: 0.08rem 0 0 0.7rem;
+  border-radius: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.journal-member-highlight::before,
+.journal-member-followup::before {
+  content: '';
+  position: absolute;
+  left: 0.06rem;
+  top: 0.68rem;
+  width: 0.36rem;
+  height: 0.36rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--atelier-rose) 82%, #fff 18%);
+  box-shadow: none;
 }
 
 .journal-member-highlight strong,
 .journal-member-entry strong,
-.journal-member-followup-copy strong,
+.journal-member-followup strong {
+  display: block;
+  margin: 0;
+  color: var(--atelier-ink);
+  font-family: var(--atelier-body-font);
+  font-size: 0.91rem;
+  line-height: var(--type-body-line);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
 .journal-shared-strip strong {
   display: block;
   margin: 0;
   color: var(--atelier-ink);
-  font-family: var(--atelier-heading-font);
-  font-size: var(--type-l5-size);
-  line-height: 1.46;
-  letter-spacing: -0.02em;
+  font-family: var(--atelier-body-font);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+  font-weight: 500;
+  letter-spacing: 0;
 }
 
 .journal-member-highlight p,
+.journal-member-followup p,
 .journal-member-empty p,
 .journal-shared-strip span {
   margin: 0;
-  font-size: var(--type-body-size);
+  font-size: 0.91rem;
   line-height: var(--type-body-line);
+}
+
+.journal-feature-meta {
+  color: var(--atelier-ink-soft);
+  font-size: 0.8rem;
+  line-height: var(--type-supporting-line);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.journal-progress-meta {
+  margin: 0;
+  color: var(--atelier-ink-soft);
+  font-family: var(--atelier-body-font);
+  font-size: 0.84rem;
+  line-height: var(--type-supporting-line);
+  letter-spacing: 0;
+  font-weight: 500;
 }
 
 .journal-member-empty p {
@@ -1870,13 +1985,6 @@ function formatRecentThreadTime(timestamp: string) {
   font-size: var(--type-supporting-size);
   line-height: var(--type-supporting-line);
   letter-spacing: var(--type-supporting-spacing);
-}
-
-.journal-member-followup {
-  display: grid;
-  gap: 0.28rem;
-  padding-top: 0.06rem;
-  border-top: 1px solid var(--warm-border-soft);
 }
 
 .journal-member-followup-label {
@@ -1888,48 +1996,48 @@ function formatRecentThreadTime(timestamp: string) {
   letter-spacing: var(--type-supporting-spacing);
 }
 
-.journal-member-followup-copy {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 0.28rem 0.7rem;
-  align-items: baseline;
-}
-
-.journal-member-followup-copy strong {
-  max-width: 24ch;
-}
-
 .journal-thread-link {
   position: relative;
-  display: block;
-  padding: 0.44rem 0.56rem;
-  border-radius: 0.76rem;
-  border: 1px solid color-mix(in srgb, var(--warm-border) 58%, transparent);
-  background:
-    linear-gradient(140deg, color-mix(in srgb, var(--warm-panel) 82%, #ffffff 18%), color-mix(in srgb, var(--surface-card) 88%, #fff8ef 12%)),
-    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0 9px, rgba(236, 222, 202, 0.15) 9px 18px);
+  display: inline-grid;
+  justify-items: start;
+  max-width: 100%;
+  padding: 0.14rem 0.46rem 0.2rem;
+  border: 0;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--atelier-sage) 16%, transparent);
+  box-shadow: none;
   text-decoration: none;
-  box-shadow: 0 4px 10px rgba(60, 36, 18, 0.05);
-  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  transition: color 160ms ease, background-color 180ms ease;
 }
 
 .journal-thread-link:hover {
-  transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--warm-border) 85%, transparent);
-  box-shadow: 0 8px 18px rgba(60, 36, 18, 0.1);
+  color: color-mix(in srgb, var(--atelier-ink) 88%, var(--atelier-sage) 12%);
+  background: color-mix(in srgb, var(--atelier-sage) 24%, transparent);
 }
 
 .journal-thread-link:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--brand) 55%, #ffffff 45%);
+  outline: 2px solid color-mix(in srgb, var(--atelier-sage) 42%, transparent);
   outline-offset: 2px;
+  border-radius: 10px;
 }
 
 .journal-thread-link strong {
   margin: 0;
+  color: color-mix(in srgb, var(--atelier-ink) 92%, var(--atelier-sage) 8%);
 }
 
-.journal-member-followup-copy span,
+.journal-thread-link .journal-progress-meta {
+  color: color-mix(in srgb, var(--atelier-ink-soft) 90%, var(--atelier-sage) 10%);
+}
+
+.journal-thread-link:hover strong {
+  color: color-mix(in srgb, var(--atelier-ink) 84%, var(--atelier-sage) 16%);
+}
+
+.journal-thread-link:hover .journal-progress-meta {
+  color: color-mix(in srgb, var(--atelier-ink-soft) 84%, var(--atelier-sage) 16%);
+}
+
 .journal-shared-strip span {
   color: var(--atelier-ink-soft);
   font-family: var(--atelier-body-font);
@@ -1973,13 +2081,6 @@ function formatRecentThreadTime(timestamp: string) {
   font-size: var(--type-l6-size);
   line-height: var(--type-l6-line);
   letter-spacing: var(--type-l6-spacing);
-}
-
-.atelier-journal-yesterday-summary span {
-  color: var(--atelier-ink-soft);
-  font-size: var(--type-supporting-size);
-  line-height: var(--type-supporting-line);
-  letter-spacing: var(--type-supporting-spacing);
 }
 
 .atelier-journal-yesterday-summary::after {
