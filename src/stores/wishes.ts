@@ -1,5 +1,6 @@
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
+import { fetchCloudflareWishList, shouldUseCloudflareBackend, writeCloudflareWishProgress } from '../lib/cloudflare'
 import { supabase } from '../lib/supabase'
 import {
   compareIsoAscending as compareIsoAscendingModule,
@@ -1137,7 +1138,7 @@ export const useWishStore = defineStore('wishes', () => {
   const recentLocalCommentDeletes = new Map<string, number>()
   const recentLocalReactionDeletes = new Map<string, number>()
 
-  const isUsingCloudWishes = computed(() => authStore.usesSupabaseSpace && !!authStore.currentSpaceId)
+  const isUsingCloudWishes = computed(() => shouldUseCloudflareBackend() || (authStore.usesSupabaseSpace && !!authStore.currentSpaceId))
   const hasRetryableAction = computed(() => !!lastFailedAction.value)
   const lastFailedActionLabel = computed(() => lastFailedAction.value?.label ?? '')
   const realtimeMessage = computed(() => {
@@ -1881,9 +1882,17 @@ export const useWishStore = defineStore('wishes', () => {
   }
 
   function setupRealtimeSubscription(spaceId: string) {
-    if (!supabase) {
+    const cloudClient = supabase
+
+    if (!cloudClient) {
       return
     }
+
+    // The project's Realtime endpoint currently rejects valid subscription filters.
+    // Keep cloud reads and post-write refreshes stable until that service path is repaired.
+    teardownRealtimeSubscription()
+    realtimeStatus.value = 'idle'
+    return
 
     if (realtimeSyncController.channel && realtimeSyncController.subscribedSpaceId === spaceId) {
       return
@@ -1891,13 +1900,12 @@ export const useWishStore = defineStore('wishes', () => {
 
     teardownRealtimeSubscription()
     buildRealtimeSubscription(realtimeSyncController, {
-      supabase,
+      supabase: cloudClient!,
       spaceId,
       capabilityAccess,
       bindings: [
         {
           table: 'wishes',
-          filter: `space_id=eq.${spaceId}`,
           onEvent: (payload) => {
             if (payload) {
               handleWishRealtimeEvent(payload)
@@ -1906,7 +1914,6 @@ export const useWishStore = defineStore('wishes', () => {
         },
         {
           table: 'wish_threads',
-          filter: `space_id=eq.${spaceId}`,
           capabilityKey: 'hasUnifiedThreads',
           onEvent: () => {
             scheduleRealtimeSync('愿望手账')
@@ -1923,7 +1930,6 @@ export const useWishStore = defineStore('wishes', () => {
         },
         {
           table: 'thread_reactions',
-          filter: `space_id=eq.${spaceId}`,
           capabilityKey: 'hasUnifiedThreads',
           onEvent: (payload) => {
             if (payload) {
@@ -1958,7 +1964,6 @@ export const useWishStore = defineStore('wishes', () => {
         },
         {
           table: 'reward_pool_items',
-          filter: `space_id=eq.${spaceId}`,
           capabilityKey: 'hasRewardPools',
           onEvent: () => {
             scheduleRealtimeSync('奖励池')
@@ -1966,7 +1971,6 @@ export const useWishStore = defineStore('wishes', () => {
         },
         {
           table: 'reward_claims',
-          filter: `space_id=eq.${spaceId}`,
           capabilityKey: 'hasRewardPools',
           onEvent: () => {
             scheduleRealtimeSync('领奖记录')
@@ -1974,7 +1978,6 @@ export const useWishStore = defineStore('wishes', () => {
         },
         {
           table: 'monthly_journal_snapshots',
-          filter: `space_id=eq.${spaceId}`,
           capabilityKey: 'hasMonthlySnapshots',
           onEvent: () => {
             scheduleRealtimeSync('月刊快照')
@@ -1997,7 +2000,39 @@ export const useWishStore = defineStore('wishes', () => {
   }
 
   async function syncFromSupabase(spaceId = authStore.currentSpaceId) {
-    if (!supabase || !spaceId) {
+    if (!spaceId) {
+      return false
+    }
+
+    if (shouldUseCloudflareBackend()) {
+      isLoading.value = true
+
+      try {
+        const fetched = await fetchCloudflareWishList(spaceId)
+
+        if (!fetched.ok) {
+          syncMessage.value = fetched.message ?? '云端清单读取失败。'
+          return false
+        }
+
+        const rows = Array.isArray(fetched.data) ? fetched.data : []
+        const nextWishes = rows as WishRecord[]
+
+        rewardPoolItems.value = []
+        rewardClaims.value = []
+        wishes.value = nextWishes
+        threadReactions.value = []
+        wishThreads.value = buildDerivedWishThreadEntries(nextWishes, [], [])
+        monthlyJournalSnapshots.value = []
+        lastLoadedSpaceId.value = spaceId
+        syncMessage.value = '当前显示的是 Cloudflare 云端愿望数据。'
+        return true
+      } finally {
+        isLoading.value = false
+      }
+    }
+
+    if (!supabase) {
       return false
     }
 
@@ -2703,8 +2738,29 @@ export const useWishStore = defineStore('wishes', () => {
     const normalizedCurrent = wish ? Math.min(normalizeProgressNumber(nextCurrent), Math.max(1, wish.progressTarget)) : 0
     const previousCurrent = wish?.progressCurrent ?? 0
     const gainedUnitsPreview = Math.max(normalizedCurrent - previousCurrent, 0)
-    const isCloudCountProgressWrite = !!(wish && supabase && isUsingCloudWishes.value)
+    const shouldWriteViaCloudflare = shouldUseCloudflareBackend() && !!wish
+    const isCloudCountProgressWrite = !!(wish && ((supabase && isUsingCloudWishes.value) || shouldWriteViaCloudflare))
     let optimisticClaimId = ''
+
+    if (shouldWriteViaCloudflare) {
+      const result = await writeCloudflareWishProgress({
+        memberId: getCurrentMemberId() ?? wish.ownerId,
+        nextCurrent: normalizedCurrent,
+        spaceId: authStore.currentSpaceId,
+        wishId: id,
+      }, import.meta.env)
+
+      if (result.ok) {
+        const updatedWish = { ...wish, progressCurrent: normalizedCurrent, updatedAt: new Date().toISOString() }
+        wishes.value = wishes.value.map((entry) => entry.id === id ? updatedWish : entry)
+        syncMessage.value = result.message ?? '推进已写入 Cloudflare。'
+        clearRetryableAction()
+        return true
+      }
+
+      syncMessage.value = result.message
+      return false
+    }
 
     if (wish && !isCurrentMemberWishOwner(wish)) {
       syncMessage.value = '只有这条愿望的归属人可以推进它。'
@@ -3496,14 +3552,18 @@ export const useWishStore = defineStore('wishes', () => {
   }
 
   watch(
-    [() => authStore.usesSupabaseSpace, () => authStore.currentSpaceId],
-    ([usesCloudSpace, spaceId], [previousUsesCloudSpace]) => {
-      if (usesCloudSpace && spaceId) {
-        if (!previousUsesCloudSpace) {
+    [isUsingCloudWishes, () => authStore.currentSpaceId, () => authStore.usesSupabaseSpace],
+    ([usesCloudData, spaceId, usesSupabaseSpace], [previousUsesCloudData]) => {
+      if (usesCloudData && spaceId) {
+        if (!previousUsesCloudData) {
           localMockStateSnapshot.value = snapshotLocalPersistedState()
         }
 
-        setupRealtimeSubscription(spaceId)
+        if (usesSupabaseSpace) {
+          setupRealtimeSubscription(spaceId)
+        } else {
+          teardownRealtimeSubscription()
+        }
 
         if (lastLoadedSpaceId.value !== spaceId) {
           void syncFromSupabase(spaceId)

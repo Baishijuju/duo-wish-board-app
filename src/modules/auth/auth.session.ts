@@ -54,6 +54,10 @@ export function formatUnknownError(prefix: string, error: unknown) {
       return '已登录，但当前请求仍然无法访问业务表。若你已经执行过 202604260004_grant_authenticated_access.sql，这通常表示本次请求还没有真正带上 authenticated 会话，或还有别的数据库对象权限未放开。'
     }
 
+    if (/failed to fetch|net::err_failed|cors|access-control-allow-origin/i.test(message)) {
+      return '已登录，但当前浏览器/网络环境拦截了 Supabase 云端请求（常见为 CORS 或网络策略导致）。建议先换 Chrome/Edge 无痕窗口测试，或关闭当前浏览器的隐私防跟踪与拦截扩展后重试。'
+    }
+
     return [formatAuthError(prefix, { code, message }), details, hint].filter(Boolean).join(' | ')
   }
 
@@ -75,6 +79,22 @@ export async function ensureSupabaseClientSession(session: Session | null) {
   }
 
   return data.session ?? session
+}
+
+export function shouldFallBackToMockMode(hasValidSession: boolean, synced: boolean) {
+  return !hasValidSession && !synced
+}
+
+export function shouldPreserveCloudContextOnMissingSession(
+  wasUsingSupabaseSpace: boolean,
+  hadAuthenticatedState: boolean,
+  hasKnownSessionEmail: boolean,
+) {
+  return wasUsingSupabaseSpace || (hadAuthenticatedState && hasKnownSessionEmail)
+}
+
+export function shouldIgnoreBoundMembershipsError(message: string) {
+  return /failed to fetch|network|cors/i.test(message)
 }
 
 export function normalizeOtpToken(token: string) {

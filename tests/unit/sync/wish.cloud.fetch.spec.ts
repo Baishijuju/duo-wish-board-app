@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fetchWishCloudRows } from '../../../src/modules/sync/wish.cloud.fetch'
+import { createThreadImageQueryBatches, fetchWishCloudRows } from '../../../src/modules/sync/wish.cloud.fetch'
 
 describe('wish.cloud.fetch', () => {
+  it('batches thread image filters to keep PostgREST URLs bounded', () => {
+    const threadIds = Array.from({ length: 205 }, (_, index) => `thread-${index}`)
+
+    expect(createThreadImageQueryBatches(threadIds).map((batch) => batch.length)).toEqual([100, 100, 5])
+  })
+
   it('returns a clear error when wish fetch fails', async () => {
     const supabase = {
       from() {

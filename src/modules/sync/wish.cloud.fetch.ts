@@ -15,6 +15,7 @@ import type { WishThreadImageRowLike, WishThreadRowLike } from '../journal/journ
 
 const SIGNED_URL_TTL_SECONDS = 60 * 60
 const SIGNED_URL_CACHE_TTL_MS = 55 * 60 * 1000
+const THREAD_IMAGE_QUERY_BATCH_SIZE = 100
 
 interface SignedUrlCacheEntry {
   expiresAt: number
@@ -22,6 +23,16 @@ interface SignedUrlCacheEntry {
 }
 
 const signedUrlCache = new Map<string, SignedUrlCacheEntry>()
+
+export function createThreadImageQueryBatches(threadIds: string[]) {
+  const batches: string[][] = []
+
+  for (let index = 0; index < threadIds.length; index += THREAD_IMAGE_QUERY_BATCH_SIZE) {
+    batches.push(threadIds.slice(index, index + THREAD_IMAGE_QUERY_BATCH_SIZE))
+  }
+
+  return batches
+}
 
 export interface WishCloudFetchResult {
   wishRows: WishRowLike[]
@@ -253,20 +264,34 @@ export async function fetchWishCloudRows(
       threadRows = (threadData ?? []) as WishThreadRowLike[]
       const threadIds = threadRows.map((thread) => thread.id)
 
+      const fetchThreadImages = async () => {
+        const rows: WishThreadImageRowLike[] = []
+
+        for (const threadIdBatch of createThreadImageQueryBatches(threadIds)) {
+          const { data, error } = await supabase
+            .from('wish_thread_images')
+            .select('id, thread_id, created_by, storage_path, file_name, mime_type, size_bytes, sort_order, created_at')
+            .in('thread_id', threadIdBatch)
+            .order('sort_order', { ascending: true })
+            .order('created_at', { ascending: true })
+
+          if (error) {
+            return { data: null, error }
+          }
+
+          rows.push(...((data ?? []) as WishThreadImageRowLike[]))
+        }
+
+        return { data: rows, error: null }
+      }
+
       const [reactionResult, threadImageResult] = await Promise.all([
         supabase
           .from('thread_reactions')
           .select('id, space_id, target_thread_id, actor_id, emoji, created_at')
           .eq('space_id', spaceId)
           .order('created_at', { ascending: true }),
-        threadIds.length
-          ? supabase
-            .from('wish_thread_images')
-            .select('id, thread_id, created_by, storage_path, file_name, mime_type, size_bytes, sort_order, created_at')
-            .in('thread_id', threadIds)
-            .order('sort_order', { ascending: true })
-            .order('created_at', { ascending: true })
-          : Promise.resolve({ data: [], error: null }),
+        fetchThreadImages(),
       ])
 
       if (reactionResult.error) {

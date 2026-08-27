@@ -21,6 +21,9 @@ import {
   formatEmailOtpError as formatEmailOtpErrorModule,
   formatUnknownError as formatUnknownErrorModule,
   normalizeOtpToken as normalizeOtpTokenModule,
+  shouldIgnoreBoundMembershipsError,
+  shouldPreserveCloudContextOnMissingSession,
+  shouldFallBackToMockMode,
 } from '../modules/auth/auth.session'
 import {
   createDefaultAppCapabilities,
@@ -394,6 +397,11 @@ export const useAuthStore = defineStore('auth', () => {
       return
     }
 
+    if (shouldIgnoreBoundMembershipsError(error.message)) {
+      authCallbackMessage.value = '已登录，但云端绑定补全请求被浏览器网络策略拦截；系统将跳过补全并继续加载已有空间。'
+      return
+    }
+
     throw createSupabaseBootstrapError('ensure_bound_space_memberships', error)
   }
 
@@ -475,9 +483,11 @@ export const useAuthStore = defineStore('auth', () => {
 
       const synced = await refreshSpaceContext(undefined, session)
 
-      if (!synced) {
+      if (shouldFallBackToMockMode(Boolean(session), synced)) {
         resetToMockSpace()
         applyMemberFromEmail(nextEmail)
+      } else if (!synced) {
+        authCallbackMessage.value = '已登录，但当前云端空间暂时未能同步；系统保留登录状态，等待下一次自动重试。'
       }
 
       if (!joinedSpaceAt.value) {
@@ -488,6 +498,17 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     resetAppCapabilities('idle')
+
+    const preserveCloudContext = shouldPreserveCloudContextOnMissingSession(
+      dataMode.value === 'supabase',
+      sessionState.value === 'authenticated',
+      Boolean(sessionEmail.value),
+    )
+
+    if (preserveCloudContext) {
+      authCallbackMessage.value = '云端登录会话暂时不可用，系统会自动重试；期间保留当前空间，不回退到本地演示。'
+      return
+    }
 
     if (sessionState.value !== 'magic-link-sent') {
       sessionState.value = 'anonymous'

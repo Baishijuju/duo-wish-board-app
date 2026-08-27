@@ -1,0 +1,7 @@
+name = "duo-wish-board-api"
+main = "workers/space-api.ts"
+compatibility_date = "2026-08-26"
+
+[[kv_namespaces]]
+binding = "STORAGE"
+id = "local-dev"

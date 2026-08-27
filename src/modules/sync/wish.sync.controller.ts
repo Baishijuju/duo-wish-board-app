@@ -86,40 +86,54 @@ export function buildRealtimeSubscription(
   state.subscribedSpaceId = options.spaceId
   options.onStatusChange('connecting')
 
-  let channel = options.supabase.channel(`wish-space-${options.spaceId}`)
+  let hasRetriedWithoutFilter = false
 
-  for (const binding of options.bindings) {
-    if (binding.capabilityKey && !shouldUseAppCapability(options.capabilityAccess, binding.capabilityKey)) {
-      continue
+  const subscribeChannel = (useFilter: boolean) => {
+    let channel = options.supabase.channel(`wish-space-${options.spaceId}${useFilter ? '' : '-nofilter'}`)
+
+    for (const binding of options.bindings) {
+      if (binding.capabilityKey && !shouldUseAppCapability(options.capabilityAccess, binding.capabilityKey)) {
+        continue
+      }
+
+      channel = channel.on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: binding.table,
+          ...(useFilter && binding.filter ? { filter: binding.filter } : {}),
+        },
+        (payload) => {
+          binding.onEvent(payload as { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null })
+        },
+      )
     }
 
-    channel = channel.on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: binding.table,
-        ...(binding.filter ? { filter: binding.filter } : {}),
-      },
-      (payload) => {
-        binding.onEvent(payload as { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null })
-      },
-    )
+    state.channel = channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        options.onStatusChange('subscribed')
+        return
+      }
+
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        if (useFilter && !hasRetriedWithoutFilter) {
+          hasRetriedWithoutFilter = true
+          options.onStatusChange('connecting')
+          void options.supabase.removeChannel(state.channel!)
+          subscribeChannel(false)
+          return
+        }
+
+        options.onStatusChange('error')
+        return
+      }
+
+      if (status === 'CLOSED') {
+        options.onStatusChange('idle')
+      }
+    })
   }
 
-  state.channel = channel.subscribe((status) => {
-    if (status === 'SUBSCRIBED') {
-      options.onStatusChange('subscribed')
-      return
-    }
-
-    if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-      options.onStatusChange('error')
-      return
-    }
-
-    if (status === 'CLOSED') {
-      options.onStatusChange('idle')
-    }
-  })
+  subscribeChannel(true)
 }
