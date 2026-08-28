@@ -1888,12 +1888,6 @@ export const useWishStore = defineStore('wishes', () => {
       return
     }
 
-    // The project's Realtime endpoint currently rejects valid subscription filters.
-    // Keep cloud reads and post-write refreshes stable until that service path is repaired.
-    teardownRealtimeSubscription()
-    realtimeStatus.value = 'idle'
-    return
-
     if (realtimeSyncController.channel && realtimeSyncController.subscribedSpaceId === spaceId) {
       return
     }

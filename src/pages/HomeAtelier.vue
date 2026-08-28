@@ -206,12 +206,22 @@ const todayLitStarCount = computed(() => {
       }
     })
 
-    // 数字进度当前缺少逐次历史，先按“今天有过一次正向推进”记 1 次。
-    if (wish.progressMode === 'count' && wish.progressCurrent > 0 && getBeijingDateKey(wish.updatedAt) === todayKey) {
-      score += 1
-    }
   })
 
+  // 数字型愿望按当天真实推进次数累计（例如当天 +28，就加 28）。
+  wishStore.wishThreads.forEach((thread) => {
+    if (getBeijingDateKey(thread.createdAt) !== todayKey) {
+      return
+    }
+
+    if (!isCountProgressRewardClaimForHome(thread)) {
+      return
+    }
+
+    const quantityRaw = getMetaNumber(thread.meta, 'quantity')
+    const quantity = quantityRaw === null ? 1 : Math.max(1, Math.trunc(quantityRaw))
+    score += quantity
+  })
   return score
 })
 const wishBottleDisplayedStarsPlan = computed(() => {
@@ -2004,38 +2014,38 @@ function formatRecentThreadTime(timestamp: string) {
   padding: 0.14rem 0.46rem 0.2rem;
   border: 0;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--atelier-sage) 16%, transparent);
+  background: color-mix(in srgb, var(--atelier-gold) 30%, transparent);
   box-shadow: none;
   text-decoration: none;
   transition: color 160ms ease, background-color 180ms ease;
 }
 
 .journal-thread-link:hover {
-  color: color-mix(in srgb, var(--atelier-ink) 88%, var(--atelier-sage) 12%);
-  background: color-mix(in srgb, var(--atelier-sage) 24%, transparent);
+  color: color-mix(in srgb, var(--atelier-ink) 84%, var(--atelier-gold) 16%);
+  background: color-mix(in srgb, var(--atelier-gold) 42%, transparent);
 }
 
 .journal-thread-link:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--atelier-sage) 42%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--atelier-gold) 54%, transparent);
   outline-offset: 2px;
   border-radius: 10px;
 }
 
 .journal-thread-link strong {
   margin: 0;
-  color: color-mix(in srgb, var(--atelier-ink) 92%, var(--atelier-sage) 8%);
+  color: color-mix(in srgb, var(--atelier-ink) 90%, var(--atelier-gold) 10%);
 }
 
 .journal-thread-link .journal-progress-meta {
-  color: color-mix(in srgb, var(--atelier-ink-soft) 90%, var(--atelier-sage) 10%);
+  color: color-mix(in srgb, var(--atelier-ink-soft) 88%, var(--atelier-gold) 12%);
 }
 
 .journal-thread-link:hover strong {
-  color: color-mix(in srgb, var(--atelier-ink) 84%, var(--atelier-sage) 16%);
+  color: color-mix(in srgb, var(--atelier-ink) 80%, var(--atelier-gold) 20%);
 }
 
 .journal-thread-link:hover .journal-progress-meta {
-  color: color-mix(in srgb, var(--atelier-ink-soft) 84%, var(--atelier-sage) 16%);
+  color: color-mix(in srgb, var(--atelier-ink-soft) 80%, var(--atelier-gold) 20%);
 }
 
 .journal-shared-strip span {

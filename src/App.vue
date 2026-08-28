@@ -237,6 +237,12 @@ function isActivePath(targetPath: string) {
   gap: 0.46rem;
 }
 
+.shell-status-inline > span {
+  display: inline-block;
+  white-space: nowrap;
+  letter-spacing: 0;
+}
+
 .shell-sync-inline-button {
   border: 1px solid var(--line-strong);
   border-radius: 999px;
