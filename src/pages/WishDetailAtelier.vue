@@ -364,6 +364,13 @@ const monthHeatCells = computed<MonthHeatCell[]>(() => {
 })
 const monthHeatActiveDayCount = computed(() => monthHeatCells.value.filter((cell) => !cell.isBlank && cell.count > 0).length)
 const monthHeatPeakCount = computed(() => monthHeatCells.value.reduce((max, cell) => cell.isBlank ? max : Math.max(max, cell.count), 0))
+const monthHeatTodayProgressCount = computed(() => {
+  const todayKey = monthHeatTodayDateKey.value
+
+  return monthHeatProgressEvents.value
+    .filter((event) => event.dateKey === todayKey)
+    .reduce((total, event) => total + Math.max(0, event.count), 0)
+})
 const hasActiveHeatDateFocus = computed(() => !!selectedHeatDateKey.value)
 const selectedHeatDateRecordCount = computed(() => {
   const dateKey = selectedHeatDateKey.value
@@ -377,14 +384,14 @@ const selectedHeatDateRecordCount = computed(() => {
 const monthHeatSummary = computed(() => {
   if (selectedHeatDateKey.value) {
     const label = formatMonthHeatDayLabel(selectedHeatDateKey.value)
-    return `已高亮 ${label} · 共 ${selectedHeatDateRecordCount.value} 笔记录。`
+    return `已高亮 ${label} · 共 ${selectedHeatDateRecordCount.value} 笔记录 · 今日 ${monthHeatTodayProgressCount.value} 次推进。`
   }
 
   if (!monthHeatActiveDayCount.value) {
-    return `${monthHeatMonthLabel.value}还没有推进记录。`
+    return `${monthHeatMonthLabel.value}还没有推进记录 · 今日 ${monthHeatTodayProgressCount.value} 次推进。`
   }
 
-  return `本月亮起 ${monthHeatActiveDayCount.value} 天，单日最高 ${monthHeatPeakCount.value} 次推进。`
+  return `今日 ${monthHeatTodayProgressCount.value} 次推进 · 本月亮起 ${monthHeatActiveDayCount.value} 天，单日最高 ${monthHeatPeakCount.value} 次。`
 })
 
 function goToPreviousMonthHeat() {
@@ -520,7 +527,7 @@ const stickyCtaPrimaryLabel = computed(() => {
       return '同步中...'
     }
 
-    return `+1${selectedWish.value.progressUnit ? ` ${selectedWish.value.progressUnit}` : ''}`
+    return '确定推进'
   }
 
   if (progressSnapshot.value?.mode === 'steps') {
@@ -547,7 +554,7 @@ const stickyCtaPrimaryDisabled = computed(() => {
   }
 
   if (progressSnapshot.value?.mode === 'count') {
-    return isAdjustingCountProgress.value
+    return isAdjustingCountProgress.value || maxCountProgressBatch.value <= 0
   }
 
   return false
@@ -990,6 +997,8 @@ const wishBottleAnimationStarCount = computed(() => {
 })
 const isCompletionFireworksActive = ref(false)
 const isStepStarDropActive = ref(false)
+const countProgressDraft = ref(1)
+const isCountProgressSuccessPulse = ref(false)
 const isDeleteWishConfirming = ref(false)
 const isDeletingWish = ref(false)
 const deleteWishFeedback = ref('')
@@ -1000,6 +1009,43 @@ const detailPageMode = computed({
     isDetailManagePanelOpen.value = mode === 'manage'
   },
 })
+const maxCountProgressBatch = computed(() => {
+  if (!selectedWish.value || selectedWish.value.progressMode !== 'count') {
+    return 1
+  }
+
+  return Math.max(0, selectedWish.value.progressTarget - selectedWish.value.progressCurrent)
+})
+
+watch(
+  () => `${selectedWish.value?.id ?? ''}|${selectedWish.value?.progressCurrent ?? 0}|${selectedWish.value?.progressTarget ?? 0}`,
+  () => {
+    countProgressDraft.value = 1
+    isCountProgressSuccessPulse.value = false
+  },
+)
+
+function normalizeCountProgressDraft() {
+  const max = Math.max(1, maxCountProgressBatch.value)
+  const parsed = Math.trunc(Number(countProgressDraft.value) || 1)
+  countProgressDraft.value = Math.min(Math.max(parsed, 1), max)
+}
+
+function adjustCountProgressDraft(delta: number) {
+  countProgressDraft.value += delta
+  normalizeCountProgressDraft()
+}
+
+function triggerCountProgressSuccessPulse() {
+  isCountProgressSuccessPulse.value = false
+  requestAnimationFrame(() => {
+    isCountProgressSuccessPulse.value = true
+  })
+
+  window.setTimeout(() => {
+    isCountProgressSuccessPulse.value = false
+  }, 900)
+}
 
 function getPreviewImageCaption(image: WishImage) {
   if (wishImageIds.value.has(image.id)) {
@@ -1113,6 +1159,22 @@ async function runCountProgressAdjustment(delta: number) {
     await nextTick()
     isCompletionFireworksActive.value = true
   }
+
+  return result
+}
+
+async function confirmCountProgress() {
+  if (isAdjustingCountProgress.value || maxCountProgressBatch.value <= 0) {
+    return
+  }
+
+  normalizeCountProgressDraft()
+  const result = await runCountProgressAdjustment(countProgressDraft.value)
+
+  if (result?.gainedProgress) {
+    triggerCountProgressSuccessPulse()
+    countProgressDraft.value = Math.min(1, Math.max(1, maxCountProgressBatch.value))
+  }
 }
 
 async function triggerStepStarDrop() {
@@ -1138,29 +1200,6 @@ async function openManageToolsSection() {
   detailPageMode.value = 'manage'
   await nextTick()
   scrollToSection('detail-tools')
-}
-
-async function runStickyCtaPrimaryAction() {
-  if (!selectedWish.value || selectedWish.value.status === 'done' || !canProgressSelectedWish.value) {
-    return
-  }
-
-  if (progressSnapshot.value?.mode === 'count') {
-    await runCountProgressAdjustment(1)
-    return
-  }
-
-  if (progressSnapshot.value?.mode === 'steps') {
-    if (mobilePrimaryStep.value && !mobilePrimaryStep.value.isDone) {
-      await runWishStepToggle(mobilePrimaryStep.value.id)
-      return
-    }
-
-    await openManageToolsSection()
-    return
-  }
-
-  await runWishCompletionAction()
 }
 
 async function runStickyCtaSecondaryAction() {
@@ -1294,9 +1333,55 @@ async function runStickyCtaSecondaryAction() {
             <div class="detail-atelier-progress-track" :class="[{ 'is-complete': isProgressVisualComplete }, `tier-${progressBarColorTier}`]" :aria-label="`当前进度 ${progressSnapshot?.label || '未设置'}`">
               <div class="detail-atelier-progress-fill" :class="{ 'is-complete': isProgressVisualComplete }" :style="{ width: `${progressSnapshot?.percent ?? 0}%` }"></div>
             </div>
+            <div v-if="progressSnapshot?.mode === 'count' && canProgressSelectedWish" class="detail-atelier-count-action-row">
+              <div class="detail-atelier-count-inline-control" aria-label="选择本次推进数量">
+                <button
+                  class="detail-atelier-count-inline-stepper"
+                  type="button"
+                  aria-label="减少推进数量"
+                  :disabled="isAdjustingCountProgress || countProgressDraft <= 1"
+                  @click="adjustCountProgressDraft(-1)"
+                >
+                  −
+                </button>
+                <input
+                  v-model.number="countProgressDraft"
+                  class="detail-atelier-count-inline-input"
+                  type="number"
+                  inputmode="numeric"
+                  min="1"
+                  :max="maxCountProgressBatch"
+                  aria-label="本次推进数量"
+                  :disabled="isAdjustingCountProgress || maxCountProgressBatch <= 0"
+                  @change="normalizeCountProgressDraft"
+                />
+                <button
+                  class="detail-atelier-count-inline-stepper"
+                  type="button"
+                  aria-label="增加推进数量"
+                  :disabled="isAdjustingCountProgress || countProgressDraft >= maxCountProgressBatch"
+                  @click="adjustCountProgressDraft(1)"
+                >
+                  +
+                </button>
+              </div>
+              <button
+                :class="[
+                  'detail-atelier-primary',
+                  'detail-atelier-inline-confirm-button',
+                  `theme-${activeDetailDailyPalette}`,
+                  { 'is-count-success': isCountProgressSuccessPulse },
+                ]"
+                type="button"
+                :disabled="stickyCtaPrimaryDisabled"
+                @click="void confirmCountProgress()"
+              >
+                <span v-if="isAdjustingCountProgress" class="detail-atelier-cta-spinner" aria-hidden="true"></span>
+                <span v-else-if="isCountProgressSuccessPulse" class="detail-atelier-cta-success" aria-hidden="true">✓</span>
+                <span>{{ stickyCtaPrimaryLabel }}</span>
+              </button>
+            </div>
           </div>
-
-          <div v-if="progressSnapshot?.mode === 'count'" class="detail-atelier-progress-stack"></div>
 
           <p
             v-if="progressSnapshot?.mode === 'count' && rewardFeedback && isCountProgressFeedback && rewardFeedbackTone === 'danger'"
@@ -1356,8 +1441,6 @@ async function runStickyCtaSecondaryAction() {
               </div>
             </details>
           </div>
-
-          <div v-else class="detail-atelier-progress-stack"></div>
 
           <div v-if="canShowProgressCompletionAction && canProgressSelectedWish && !isProgressAutoCompleted" class="detail-atelier-inline-buttons detail-atelier-progress-completion-row">
             <button class="detail-atelier-secondary detail-atelier-secondary-action detail-atelier-progress-completion" type="button" @click="void runWishCompletionAction()">完成并获得 {{ getCompletionStarCoinLabel() }}</button>
@@ -2022,21 +2105,16 @@ async function runStickyCtaSecondaryAction() {
       </ManagePanel>
 
       <div v-if="shouldShowStickyCtaDock && detailPageMode === 'action'" class="detail-atelier-cta-dock detail-atelier-mobile-only" aria-live="polite">
-        <div class="detail-atelier-cta-dock-inner">
+        <div
+          class="detail-atelier-cta-dock-inner"
+          :class="`theme-${activeDetailDailyPalette}`"
+        >
           <p
             v-if="stickyCtaFeedbackState.message"
             :class="['detail-atelier-cta-dock-note', `is-${stickyCtaFeedbackState.tone}`]"
           >
             {{ stickyCtaFeedbackState.message }}
           </p>
-          <button
-            :class="['detail-atelier-primary', 'detail-atelier-cta-dock-primary', `theme-${activeDetailDailyPalette}`]"
-            type="button"
-            :disabled="stickyCtaPrimaryDisabled"
-            @click="void runStickyCtaPrimaryAction()"
-          >
-            {{ stickyCtaPrimaryLabel }}
-          </button>
           <button
             v-if="stickyCtaSecondaryLabel && stickyCtaPrimaryDisabled"
             class="detail-atelier-secondary detail-atelier-cta-dock-secondary"
@@ -3665,9 +3743,12 @@ async function runStickyCtaSecondaryAction() {
 }
 
 .detail-atelier-meter-card {
-  background:
-    linear-gradient(180deg, var(--warm-panel-strong), var(--surface-soft));
-  border-color: color-mix(in srgb, var(--accent-border) 34%, var(--warm-border-soft));
+  padding: 0;
+  gap: 0.46rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .detail-atelier-progress-quick-action {
@@ -3763,6 +3844,147 @@ async function runStickyCtaSecondaryAction() {
   pointer-events: auto;
 }
 
+.detail-atelier-count-inline-control {
+  --cta-dock-accent: var(--accent);
+  --cta-dock-accent-soft: color-mix(in srgb, var(--accent) 24%, white);
+  --cta-dock-accent-pale: color-mix(in srgb, var(--accent) 12%, white);
+  --cta-dock-accent-deep: color-mix(in srgb, var(--text-main) 88%, black);
+  --cta-dock-accent-shadow: var(--accent-shadow);
+  --cta-dock-border: color-mix(in srgb, var(--cta-dock-accent) 18%, white);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  gap: 0;
+  min-height: 27px;
+  align-self: center;
+  margin-top: 0.5rem;
+  padding: 0.12rem 0.28rem;
+  border: 1px solid var(--cta-dock-border);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 16% -32%, color-mix(in srgb, white 78%, transparent), transparent 56%),
+    radial-gradient(circle at 84% 116%, color-mix(in srgb, var(--cta-dock-accent) 12%, transparent), transparent 46%),
+    linear-gradient(160deg, color-mix(in srgb, white 24%, transparent), color-mix(in srgb, var(--cta-dock-accent-pale) 16%, transparent));
+  color: var(--cta-dock-accent-deep);
+  box-shadow:
+    0 4px 10px color-mix(in srgb, var(--cta-dock-accent-shadow) 16%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 84%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--cta-dock-accent) 8%, transparent);
+  -webkit-backdrop-filter: blur(12px) saturate(132%);
+  backdrop-filter: blur(12px) saturate(132%);
+}
+
+.detail-atelier-count-inline-control .detail-atelier-count-inline-stepper:first-child {
+  position: absolute;
+  left: 0.28rem;
+}
+
+.detail-atelier-count-inline-control .detail-atelier-count-inline-stepper:last-child {
+  position: absolute;
+  right: 0.28rem;
+}
+
+.detail-atelier-count-action-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(8rem, 0.92fr);
+  align-items: center;
+  gap: 0.34rem;
+  margin-top: 0.28rem;
+}
+
+.detail-atelier-count-action-row .detail-atelier-count-inline-control {
+  width: 100%;
+  margin-top: 0;
+}
+
+.detail-atelier-count-inline-stepper {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 14%, white);
+  color: var(--accent-dark);
+  font-size: 0.94rem;
+  line-height: 1;
+  transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.detail-atelier-count-inline-stepper:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--accent) 24%, white);
+}
+
+.detail-atelier-count-inline-stepper:disabled {
+  cursor: not-allowed;
+  opacity: 0.34;
+}
+
+.detail-atelier-count-inline-input {
+  width: 2.5rem;
+  padding: 0.12rem 0.04rem;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-main);
+  font-family: var(--font-heading);
+  font-size: 0.96rem;
+  font-weight: 600;
+  line-height: 1;
+  text-align: center;
+}
+
+.detail-atelier-count-inline-input::-webkit-inner-spin-button,
+.detail-atelier-count-inline-input::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.detail-atelier-inline-confirm-button {
+  --cta-dock-accent: var(--accent);
+  --cta-dock-accent-soft: color-mix(in srgb, var(--accent) 24%, white);
+  --cta-dock-accent-pale: color-mix(in srgb, var(--accent) 12%, white);
+  --cta-dock-accent-deep: color-mix(in srgb, var(--text-main) 88%, black);
+  --cta-dock-accent-shadow: var(--accent-shadow);
+  --cta-dock-border: color-mix(in srgb, var(--cta-dock-accent) 18%, white);
+  display: flex;
+  width: 100%;
+  min-height: 28px;
+  justify-self: stretch;
+  margin-top: 0;
+  padding: 0.18rem 0.58rem;
+  border: 1px solid var(--cta-dock-border);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 16% -32%, color-mix(in srgb, white 78%, transparent), transparent 56%),
+    radial-gradient(circle at 84% 116%, color-mix(in srgb, var(--cta-dock-accent) 12%, transparent), transparent 46%),
+    linear-gradient(160deg, color-mix(in srgb, white 24%, transparent), color-mix(in srgb, var(--cta-dock-accent-pale) 16%, transparent));
+  color: var(--cta-dock-accent-deep);
+  box-shadow:
+    0 6px 14px color-mix(in srgb, var(--cta-dock-accent-shadow) 18%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 84%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--cta-dock-accent) 8%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(132%);
+  backdrop-filter: blur(14px) saturate(132%);
+}
+
+.detail-atelier-inline-confirm-button:hover:not(:disabled),
+.detail-atelier-inline-confirm-button:active:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, white 62%, var(--cta-dock-accent));
+}
+
+.detail-atelier-inline-confirm-button:disabled {
+  border: 1px solid color-mix(in srgb, var(--warm-border) 70%, white);
+  background: linear-gradient(160deg, color-mix(in srgb, white 20%, transparent), color-mix(in srgb, var(--surface-soft) 28%, transparent));
+  color: var(--text-muted);
+  box-shadow: none;
+}
+
 .detail-atelier-cta-dock-primary {
   --cta-dock-accent: var(--accent);
   --cta-dock-accent-soft: color-mix(in srgb, var(--accent) 24%, white);
@@ -3786,7 +4008,10 @@ async function runStickyCtaSecondaryAction() {
   backdrop-filter: blur(16px) saturate(132%);
 }
 
-.detail-atelier-cta-dock-primary.theme-ocean {
+.detail-atelier-cta-dock-primary.theme-ocean,
+.detail-atelier-cta-dock-inner.theme-ocean,
+.detail-atelier-count-inline-control.theme-ocean,
+.detail-atelier-inline-confirm-button.theme-ocean {
   --cta-dock-accent: #447cae;
   --cta-dock-accent-soft: #6ba8d4;
   --cta-dock-accent-pale: #a8cee8;
@@ -3795,7 +4020,10 @@ async function runStickyCtaSecondaryAction() {
   --cta-dock-border: rgba(68, 124, 174, 0.28);
 }
 
-.detail-atelier-cta-dock-primary.theme-candy {
+.detail-atelier-cta-dock-primary.theme-candy,
+.detail-atelier-cta-dock-inner.theme-candy,
+.detail-atelier-count-inline-control.theme-candy,
+.detail-atelier-inline-confirm-button.theme-candy {
   --cta-dock-accent: #ff4f87;
   --cta-dock-accent-soft: #6b79ff;
   --cta-dock-accent-pale: #35c7c0;
@@ -3804,7 +4032,10 @@ async function runStickyCtaSecondaryAction() {
   --cta-dock-border: rgba(255, 79, 135, 0.28);
 }
 
-.detail-atelier-cta-dock-primary.theme-sunset {
+.detail-atelier-cta-dock-primary.theme-sunset,
+.detail-atelier-cta-dock-inner.theme-sunset,
+.detail-atelier-count-inline-control.theme-sunset,
+.detail-atelier-inline-confirm-button.theme-sunset {
   --cta-dock-accent: #ff6d3a;
   --cta-dock-accent-soft: #ff9f43;
   --cta-dock-accent-pale: #ffd166;
@@ -3813,7 +4044,10 @@ async function runStickyCtaSecondaryAction() {
   --cta-dock-border: rgba(255, 109, 58, 0.28);
 }
 
-.detail-atelier-cta-dock-primary.theme-aurora {
+.detail-atelier-cta-dock-primary.theme-aurora,
+.detail-atelier-cta-dock-inner.theme-aurora,
+.detail-atelier-count-inline-control.theme-aurora,
+.detail-atelier-inline-confirm-button.theme-aurora {
   --cta-dock-accent: #1ca8a1;
   --cta-dock-accent-soft: #49cc7e;
   --cta-dock-accent-pale: #9ee467;
@@ -3822,7 +4056,10 @@ async function runStickyCtaSecondaryAction() {
   --cta-dock-border: rgba(28, 168, 161, 0.28);
 }
 
-.detail-atelier-cta-dock-primary.theme-neon {
+.detail-atelier-cta-dock-primary.theme-neon,
+.detail-atelier-cta-dock-inner.theme-neon,
+.detail-atelier-count-inline-control.theme-neon,
+.detail-atelier-inline-confirm-button.theme-neon {
   --cta-dock-accent: #7a3cff;
   --cta-dock-accent-soft: #00c2ff;
   --cta-dock-accent-pale: #00e0b8;
@@ -3831,7 +4068,10 @@ async function runStickyCtaSecondaryAction() {
   --cta-dock-border: rgba(122, 60, 255, 0.28);
 }
 
-.detail-atelier-cta-dock-primary.theme-tropical {
+.detail-atelier-cta-dock-primary.theme-tropical,
+.detail-atelier-cta-dock-inner.theme-tropical,
+.detail-atelier-count-inline-control.theme-tropical,
+.detail-atelier-inline-confirm-button.theme-tropical {
   --cta-dock-accent: #1f9f7a;
   --cta-dock-accent-soft: #00b7c7;
   --cta-dock-accent-pale: #ffd15a;
@@ -3840,7 +4080,10 @@ async function runStickyCtaSecondaryAction() {
   --cta-dock-border: rgba(31, 159, 122, 0.28);
 }
 
-.detail-atelier-cta-dock-primary.theme-macaron {
+.detail-atelier-cta-dock-primary.theme-macaron,
+.detail-atelier-cta-dock-inner.theme-macaron,
+.detail-atelier-count-inline-control.theme-macaron,
+.detail-atelier-inline-confirm-button.theme-macaron {
   --cta-dock-accent: #8b8fd8;
   --cta-dock-accent-soft: #93bfd4;
   --cta-dock-accent-pale: #c8deaf;
@@ -3868,9 +4111,42 @@ async function runStickyCtaSecondaryAction() {
     inset 0 1px 0 color-mix(in srgb, white 82%, transparent);
 }
 
+.detail-atelier-cta-spinner {
+  width: 0.88rem;
+  height: 0.88rem;
+  margin-right: 0.38rem;
+  border: 2px solid color-mix(in srgb, currentColor 24%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: detail-atelier-cta-spin 720ms linear infinite;
+}
+
+.detail-atelier-cta-success {
+  display: inline-grid;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+  margin-right: 0.34rem;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--success) 16%, white);
+  color: var(--success);
+  font-size: 0.78rem;
+  line-height: 1;
+  animation: detail-atelier-cta-success-pop 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.detail-atelier-cta-dock-primary.is-count-success {
+  animation: detail-atelier-cta-success-glow 900ms ease-out;
+}
+
 .detail-atelier-cta-dock-primary,
 .detail-atelier-cta-dock-secondary {
   width: 100%;
+}
+
+.detail-atelier-cta-dock-primary {
+  width: min(14rem, 72%);
+  justify-self: center;
 }
 
 .detail-atelier-cta-dock-secondary {
@@ -3910,6 +4186,45 @@ async function runStickyCtaSecondaryAction() {
 
 .detail-atelier-cta-dock-note.is-danger {
   color: var(--danger);
+}
+
+@keyframes detail-atelier-cta-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes detail-atelier-cta-success-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+
+  72% {
+    transform: scale(1.12);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes detail-atelier-cta-success-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 8px 18px color-mix(in srgb, var(--cta-dock-accent-shadow) 18%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 82%, transparent),
+      inset 0 0 0 1px color-mix(in srgb, var(--cta-dock-accent) 8%, transparent);
+  }
+
+  42% {
+    box-shadow:
+      0 10px 24px color-mix(in srgb, var(--success) 24%, transparent),
+      0 0 0 4px color-mix(in srgb, var(--success) 12%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 82%, transparent);
+  }
 }
 
 .detail-atelier-cta-dock-primary:disabled {
@@ -5257,7 +5572,14 @@ async function runStickyCtaSecondaryAction() {
     scroll-margin-top: 2rem;
   }
 
-  .detail-atelier-progress-anchor .detail-atelier-meter-card,
+  .detail-atelier-progress-anchor .detail-atelier-meter-card {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    padding: 0;
+    border-radius: 0;
+  }
+
   .detail-atelier-progress-anchor .detail-atelier-mobile-step-focus {
     border-color: color-mix(in srgb, var(--accent-border) 62%, var(--warm-border-soft));
     background:
