@@ -112,7 +112,7 @@ describe('reward.write', () => {
 
     expect('localClaim' in result).toBe(true)
     if ('localClaim' in result) {
-      expect(result.localClaim.starCoinDelta).toBe(-8)
+      expect(result.localClaim.starCoinDelta).toBe(0)
       expect(result.result.ok).toBe(true)
     }
   })

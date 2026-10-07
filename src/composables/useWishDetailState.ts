@@ -1,6 +1,6 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, toValue, watch, type MaybeRefOrGetter } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { buildCurrentStarCoinBalance, buildWishStarCoinSummary, formatStarCoinAmountLabel, getPendingRewardSettledCopy } from '../shared/starCoinLedger'
+import { buildWishStarCoinSummary, formatStarCoinAmountLabel, getPendingRewardSettledCopy } from '../shared/starCoinLedger'
 import { useAuthStore } from '../stores/auth'
 import { type WishImage, type WishThreadEntry, useWishStore } from '../stores/wishes'
 
@@ -79,14 +79,10 @@ export function useWishDetailState(options: UseWishDetailStateOptions = {}) {
   const currentMemberPremiumRewards = computed(() => {
     return currentMemberId.value ? wishStore.getRewardPoolItems(currentMemberId.value, 'premium') : []
   })
-  const currentMemberStarCoins = computed(() => buildCurrentStarCoinBalance({
-    claims: wishStore.rewardClaims,
-    memberId: currentMemberId.value,
-    wishes: wishStore.wishes,
-  }))
+  const currentMemberStarCoins = computed(() => wishStore.getMemberStarCoinBalance(currentMemberId.value))
   const currentWishStarCoinSummary = computed(() => {
     const summary = buildWishStarCoinSummary({
-      claims: wishStore.rewardClaims,
+      claims: wishStore.rewardClaimAccountingRows,
       pendingCountRewardSummaries: wishStore.pendingCountRewardSummaries,
       pendingStepRewards: wishStore.pendingStepRewards,
       wish: selectedWish.value,

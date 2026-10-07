@@ -1,5 +1,6 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { createId } from '../shared/ids'
 import { useAuthStore } from '../stores/auth'
 import type { WishDraft, WishRecord } from '../stores/wishes'
 import { useWishStore } from '../stores/wishes'
@@ -46,6 +47,8 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
   const feedbackMessage = ref('')
   const feedbackTone = ref<'success' | 'danger'>('success')
   const lastSavedWishId = ref<string | null>(null)
+  const isSubmitting = ref(false)
+  const activeCreateRequest = ref<{ fingerprint: string; id: string } | null>(null)
   const initialStepDrafts = ref<InitialStepDraft[]>([createEmptyInitialStepDraft(), createEmptyInitialStepDraft()])
   const categorySuggestions = ['生活', '成长', '健康']
 
@@ -205,7 +208,14 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
   }
 
   async function submitWish() {
+    if (isSubmitting.value) {
+      return
+    }
+
+    isSubmitting.value = true
     lastSavedWishId.value = null
+
+    try {
 
     if (!draft.value.title.trim()) {
       feedbackMessage.value = '请写清楚这条愿望是什么。'
@@ -289,7 +299,11 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
 
     draft.value.ownerId = authStore.currentMemberId || authStore.currentMember?.id || draft.value.ownerId
     const initialSteps = draft.value.progressMode === 'steps' ? getNormalizedInitialSteps() : []
-    const createdWishId = await wishStore.addWish(draft.value, initialSteps)
+    const fingerprint = JSON.stringify({ draft: draft.value, initialSteps })
+    if (!activeCreateRequest.value || activeCreateRequest.value.fingerprint !== fingerprint) {
+      activeCreateRequest.value = { fingerprint, id: createId() }
+    }
+    const createdWishId = await wishStore.addWish(draft.value, initialSteps, activeCreateRequest.value.id)
 
     if (!createdWishId) {
       feedbackMessage.value = wishStore.syncMessage || '这个愿望暂时还没写进去。'
@@ -302,7 +316,16 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
       : '这条愿望已经放进清单了。'
     feedbackTone.value = 'success'
     lastSavedWishId.value = createdWishId
+    activeCreateRequest.value = null
     resetDraft()
+    } catch (error) {
+      feedbackMessage.value = error instanceof Error && error.message
+        ? `创建结果暂时未确认，重试会沿用同一个请求：${error.message}`
+        : '创建结果暂时未确认，重试会沿用同一个请求。'
+      feedbackTone.value = 'danger'
+    } finally {
+      isSubmitting.value = false
+    }
   }
 
   function cancelEditing() {
@@ -323,6 +346,7 @@ export function useComposeWishForm(options: UseComposeWishFormOptions = {}) {
     feedbackMessage,
     feedbackTone,
     initialStepDrafts,
+    isSubmitting,
     isCloningWish,
     lastSavedWishId,
     cloningWish,

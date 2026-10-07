@@ -47,6 +47,8 @@
 - 202608040004_add_select_policy_wish_count_progress_daily.sql
 - 202608040005_sync_daily_from_reward_claims_trigger.sql
 - 202608040006_backfill_missing_reward_claim_threads.sql
+- 202610070001_reward_claim_sync_summary.sql
+- 202610070002_idempotent_wish_creation.sql
 
 ## historical-patch（按需执行）
 

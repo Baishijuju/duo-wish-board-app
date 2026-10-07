@@ -94,12 +94,12 @@ describe('journal.projection.local', () => {
 
     const countThread = threads.find((thread) => thread.id.startsWith('thread-count-star-coin-'))
     expect(countThread?.eventKind).toBe('reward_claimed')
-    expect(countThread?.messageText).toBe('往前推进了 3 步，并获得了 0.3 颗星星。')
+    expect(countThread?.messageText).toBe('推进 +3 步，+0.3 星。')
     expect(countThread?.meta).toMatchObject({
       claimKind: 'count_star_coin',
       quantity: 3,
       sourceWishId: 'wish-1',
-      starCoinDelta: 0.30000000000000004,
+      starCoinDelta: expect.closeTo(0.3),
       wishTitle: '读完一本小说',
     })
   })

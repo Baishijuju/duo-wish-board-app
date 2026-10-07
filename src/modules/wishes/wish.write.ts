@@ -49,6 +49,7 @@ export async function addWishCloud(
   options: {
     supabase: SupabaseClient
     currentSpaceId: string
+    wishId: string
     ownerId: string
     includeProgressFields: boolean
     draft: WishDraft
@@ -80,9 +81,35 @@ export async function addWishCloud(
         : {}),
     }
 
+    if (typeof options.supabase.rpc === 'function') {
+      const { data: createdWishId, error: createError } = await options.supabase.rpc('create_wish_with_initial_steps', {
+        target_wish_id: options.wishId,
+        target_space_id: options.currentSpaceId,
+        request_payload: insertPayload,
+        initial_steps: options.initialSteps.map((step) => ({
+          title: step.title,
+          star_coin_value: step.starCoinValue,
+        })),
+      })
+
+      if (!createError) {
+        const successMessage = options.initialSteps.length
+          ? `愿望和 ${options.initialSteps.length} 个初始步骤已写入 Supabase。`
+          : '愿望已写入 Supabase。'
+        options.onSyncMessage(successMessage)
+        return typeof createdWishId === 'string' ? createdWishId : options.wishId
+      }
+
+      const functionMissing = createError.code === '42883' || /create_wish_with_initial_steps/i.test(createError.message)
+      if (!functionMissing) {
+        options.onSyncMessage(`云端写入失败：${createError.message}`)
+        return null
+      }
+    }
+
     const { data, error } = await options.supabase
       .from('wishes')
-      .insert(insertPayload)
+      .insert({ ...insertPayload, id: options.wishId })
       .select('id')
       .single()
 

@@ -28,6 +28,8 @@ import type { WishCloudFetchResult } from './wish.cloud.fetch'
 export interface WishCloudComposedState {
   rewardPoolItems: RewardPoolItem[]
   rewardClaims: RewardClaimRecord[]
+  rewardClaimSummaryRows: RewardClaimRecord[]
+  latestRewardClaimRows: RewardClaimRecord[]
   wishes: ReturnType<typeof createWishRecordFromRow>[]
   threadReactions: ThreadReactionRecord[]
   wishThreads: WishThreadEntry[]
@@ -37,8 +39,10 @@ export interface WishCloudComposedState {
 export function composeWishCloudState(fetchResult: WishCloudFetchResult) {
   const nextRewardPoolItems = fetchResult.rewardPoolItemRows.map((row) => createRewardPoolItemFromRow(row as RewardPoolItemRowLike))
   const nextRewardClaims = fetchResult.rewardClaimRows.map((row) => createRewardClaimFromRow(row as RewardClaimRowLike))
+  const nextRewardClaimSummaryRows = fetchResult.rewardClaimSummaryRows.map((row) => createRewardClaimFromRow(row as RewardClaimRowLike))
+  const nextLatestRewardClaimRows = fetchResult.latestRewardClaimRows.map((row) => createRewardClaimFromRow(row as RewardClaimRowLike))
 
-  const commentRows = fetchResult.hasUnifiedThreadData
+  const threadCommentRows = fetchResult.hasUnifiedThreadData
     ? buildCommentRowsFromThreadEntries(
       fetchResult.threadRows.map((thread) => ({
         actorId: thread.actor_id,
@@ -54,11 +58,17 @@ export function composeWishCloudState(fetchResult: WishCloudFetchResult) {
         reactions: [],
       })),
     )
-    : fetchResult.commentRows
+    : []
+  const commentRowsById = new Map(threadCommentRows.map((comment) => [comment.id, comment]))
+  fetchResult.commentRows.forEach((comment) => commentRowsById.set(comment.id, comment))
+  const commentRows = [...commentRowsById.values()]
 
-  const commentImageRows = fetchResult.hasUnifiedThreadData
+  const threadCommentImageRows = fetchResult.hasUnifiedThreadData
     ? mapCommentImageRowsFromThreadImages(fetchResult.threadImageRows)
-    : fetchResult.commentImageRows
+    : []
+  const commentImageRowsById = new Map(threadCommentImageRows.map((image) => [image.id, image]))
+  fetchResult.commentImageRows.forEach((image) => commentImageRowsById.set(image.id, image))
+  const commentImageRows = [...commentImageRowsById.values()]
 
   const commentRowsByWishId = groupRowsByKey(commentRows, (comment) => comment.wish_id)
   const commentImageRowsByCommentId = groupRowsByKey(commentImageRows, (image) => image.comment_id)
@@ -125,6 +135,8 @@ export function composeWishCloudState(fetchResult: WishCloudFetchResult) {
   return {
     rewardPoolItems: nextRewardPoolItems,
     rewardClaims: nextRewardClaims,
+    rewardClaimSummaryRows: nextRewardClaimSummaryRows,
+    latestRewardClaimRows: nextLatestRewardClaimRows,
     wishes: nextWishes,
     threadReactions: fetchResult.threadReactionRows,
     wishThreads: nextWishThreads,

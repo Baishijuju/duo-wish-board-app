@@ -215,7 +215,7 @@ const periodEvents = computed(() => reviewEvents.value.filter((event) => activeP
 const metricPeriodEvents = computed(() => {
   return periodEvents.value.filter((event) => getEventScore(event, activeMetric.value) > 0)
 })
-const currentPeriodRewardClaims = computed(() => wishStore.rewardClaims.filter((claim) => {
+const currentPeriodRewardClaims = computed(() => wishStore.reviewRewardClaims.filter((claim) => {
   return activePeriodDateSet.value.has(getBeijingDateKey(claim.createdAt)) && activeLedgerMemberIdSet.value.has(claim.ownerId)
 }))
 const countProgressStarCoinValueByWishId = computed(() => {
@@ -263,10 +263,11 @@ const currentPeriodComments = computed<MessageEntry[]>(() => {
     .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
 })
 const starCoinLedger = computed(() => buildVisibleStarCoinLedger({
-  claims: wishStore.rewardClaims,
+  claims: wishStore.reviewRewardClaims,
   endDateKey: periodEndDateKey.value,
   getDateKey: getBeijingDateKey,
   memberIds: activeLedgerMemberIds.value,
+  openingBalancesByMember: wishStore.reviewRewardClaimOpeningBalances,
   sourceKinds: starCoinWaterfallKinds.map((source) => source.kind),
   startDateKey: periodStartDateKey.value,
   wishCountStarCoinValueByWishId: countProgressStarCoinValueByWishId.value,
@@ -354,7 +355,7 @@ const reviewEvents = computed<ReviewEvent[]>(() => {
     })
   })
 
-  wishStore.rewardClaims.forEach((claim) => {
+  wishStore.reviewRewardClaims.forEach((claim) => {
     const resolvedCoinDelta = resolveClaimStarCoinDelta(claim)
     const amount = Math.abs(resolvedCoinDelta)
     const isRewardClaimEvent = rewardClaimHeatKinds.has(claim.claimKind)
@@ -604,7 +605,7 @@ const coinUsageEvents = computed<ProgressUsageEvent[]>(() => {
 const previousCoinIncomeEvents = computed<ProgressUsageEvent[]>(() => {
   const events: ProgressUsageEvent[] = []
 
-  wishStore.rewardClaims.forEach((claim) => {
+  wishStore.reviewRewardClaims.forEach((claim) => {
     const resolvedCoinDelta = resolveClaimStarCoinDelta(claim)
     if (!claim.sourceWishId || resolvedCoinDelta <= 0) return
     if (!previousProgressDateSet.value.has(getBeijingDateKey(claim.createdAt))) return
@@ -632,7 +633,7 @@ const coinUsageDailyAverage = computed(() => coinUsageTotalUnits.value / Math.ma
 const previousCoinUsageDailyAverage = computed(() => {
   const previousDateSet = new Set(previousComparableProgressDateKeys.value)
   const previousComparableCount = Math.max(1, previousComparableProgressDateKeys.value.length)
-  const total = wishStore.rewardClaims.reduce((sum, claim) => {
+  const total = wishStore.reviewRewardClaims.reduce((sum, claim) => {
     const resolvedCoinDelta = resolveClaimStarCoinDelta(claim)
     if (!claim.sourceWishId || resolvedCoinDelta <= 0) return sum
     if (!previousDateSet.has(getBeijingDateKey(claim.createdAt))) return sum
@@ -744,7 +745,7 @@ const showCoinUsageCopy = computed(() => activeMetric.value === 'coins' && activ
 const progressUsageEvents = computed<ProgressUsageEvent[]>(() => {
   const events: ProgressUsageEvent[] = []
 
-  wishStore.rewardClaims.forEach((claim) => {
+  wishStore.reviewRewardClaims.forEach((claim) => {
     if (claim.claimKind !== 'count_star_coin' || !claim.sourceWishId) return
     if (!activePeriodDateSet.value.has(getBeijingDateKey(claim.createdAt))) return
     if (!activeLedgerMemberIdSet.value.has(claim.ownerId)) return
@@ -811,10 +812,27 @@ const previousComparableProgressDateKeys = computed(() => {
   return previousProgressDateKeys.value.slice(0, comparableCount)
 })
 const previousProgressDateSet = computed(() => new Set(previousProgressDateKeys.value.filter((dateKey) => dateKey <= todayDateKey.value)))
+const reviewRewardClaimQueryDateKeys = computed(() => [
+  ...activePeriodDateKeys.value,
+  ...previousProgressDateKeys.value.filter((dateKey) => dateKey <= todayDateKey.value),
+])
+const reviewRewardClaimQueryStart = computed(() => [...reviewRewardClaimQueryDateKeys.value].sort()[0] ?? todayDateKey.value)
+const reviewRewardClaimQueryEnd = computed(() => [...activePeriodDateKeys.value].sort().at(-1) ?? todayDateKey.value)
+
+watch(
+  () => [reviewRewardClaimQueryStart.value, reviewRewardClaimQueryEnd.value, wishStore.isLoading] as const,
+  ([rangeStart, rangeEnd, isSyncing]) => {
+    if (!isSyncing) {
+      void wishStore.loadRewardClaimsForReview(rangeStart, rangeEnd)
+    }
+  },
+  { immediate: true },
+)
+
 const previousProgressUnits = computed(() => {
   let total = 0
 
-  wishStore.rewardClaims.forEach((claim) => {
+  wishStore.reviewRewardClaims.forEach((claim) => {
     if (claim.claimKind !== 'count_star_coin' || !claim.sourceWishId) return
     if (!previousProgressDateSet.value.has(getBeijingDateKey(claim.createdAt))) return
     if (!activeLedgerMemberIdSet.value.has(claim.ownerId)) return
@@ -836,7 +854,7 @@ const previousProgressDailyAverage = computed(() => {
   const previousComparableCount = Math.max(1, previousComparableProgressDateKeys.value.length)
   let total = 0
 
-  wishStore.rewardClaims.forEach((claim) => {
+  wishStore.reviewRewardClaims.forEach((claim) => {
     if (claim.claimKind !== 'count_star_coin' || !claim.sourceWishId) return
     if (!previousDateSet.has(getBeijingDateKey(claim.createdAt))) return
     if (!activeLedgerMemberIdSet.value.has(claim.ownerId)) return

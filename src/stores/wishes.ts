@@ -15,6 +15,8 @@ import {
 } from '../modules/journal/journal.projection.local'
 import { toggleThreadReactionWrite } from '../modules/journal/journal.reaction.write'
 import {
+  isCountProgressRewardClaimEcho,
+  isCountProgressWishThreadEcho,
   shouldSyncForCommentImageRealtimeEvent,
   shouldSyncForThreadImageRealtimeEvent,
   shouldSyncForWishRealtimeEvent,
@@ -31,7 +33,8 @@ import {
   teardownRealtimeSubscription as teardownRealtimeSubscriptionModule,
 } from '../modules/sync/wish.sync.controller'
 import { composeWishCloudState } from '../modules/sync/wish.cloud.compose'
-import { fetchWishCloudRows } from '../modules/sync/wish.cloud.fetch'
+import { buildWishThreadEntriesFromRows } from '../modules/journal/journal.mapping.cloud'
+import { fetchRewardClaimsForReview, fetchWishCloudRows, fetchWishThreadRowsForWish } from '../modules/sync/wish.cloud.fetch'
 import { createRewardClaimRecord as createRewardClaimRecordModule, createRewardPoolItem as createRewardPoolItemModule } from '../modules/rewards/reward.factories'
 import {
   addRewardPoolItemWrite,
@@ -1118,6 +1121,15 @@ export const useWishStore = defineStore('wishes', () => {
   const monthlyJournalSnapshots = ref<MonthlyJournalSnapshotRecord[]>(hydratedState.monthlyJournalSnapshots)
   const rewardPoolItems = ref<RewardPoolItem[]>(hydratedState.rewardPoolItems)
   const rewardClaims = ref<RewardClaimRecord[]>(hydratedState.rewardClaims)
+  const rewardClaimSummaryRows = ref<RewardClaimRecord[]>([])
+  const latestRewardClaimRows = ref<RewardClaimRecord[]>([])
+  const rewardClaimAccountingRows = computed(() => [...rewardClaimSummaryRows.value, ...rewardClaims.value])
+  const reviewRewardClaims = ref<RewardClaimRecord[]>([])
+  const reviewRewardClaimOpeningBalances = ref(new Map<string, number>())
+  const reviewRewardClaimRange = ref('')
+  const rewardClaimReviewCache = new Map<string, { claims: RewardClaimRecord[]; openingBalances: Map<string, number> }>()
+  let rewardClaimReviewRequestId = 0
+  const loadedWishThreadWishIds = new Set<string>()
   const missingSeedRewardPoolItems = seedRewardPoolItems.filter((seedItem) => !rewardPoolItems.value.some((item) => item.id === seedItem.id))
 
   if (missingSeedRewardPoolItems.length) {
@@ -1135,6 +1147,13 @@ export const useWishStore = defineStore('wishes', () => {
   const realtimeStatus = ref<'idle' | 'connecting' | 'subscribed' | 'error'>('idle')
   const recentLocalWishDeletes = new Map<string, number>()
   const recentLocalWishUpdates = new Map<string, number>()
+  const recentLocalWishCreations = new Map<string, {
+    wish: boolean
+    remainingSteps: number
+    thread: boolean
+    expiresAt: number
+  }>()
+  const recentLocalCountProgressEchoes = new Map<string, { claim: boolean; thread: boolean; expiresAt: number }>()
   const recentLocalCommentDeletes = new Map<string, number>()
   const recentLocalReactionDeletes = new Map<string, number>()
 
@@ -1164,23 +1183,23 @@ export const useWishStore = defineStore('wishes', () => {
   const realtimeSyncController = createRealtimeSyncControllerState()
 
   const rewardClaimCountsByItem = computed(() => {
-    return buildRewardClaimCountsByItem(rewardClaims.value)
+    return buildRewardClaimCountsByItem(rewardClaimAccountingRows.value)
   })
 
   const rewardDepositTotalsByItem = computed(() => {
-    return buildRewardDepositTotalsByItem(rewardClaims.value)
+    return buildRewardDepositTotalsByItem(rewardClaimAccountingRows.value)
   })
 
   const rewardClaimByWishId = computed(() => {
-    return buildRewardClaimByWishId(rewardClaims.value)
+    return buildRewardClaimByWishId(rewardClaimAccountingRows.value)
   })
 
   const rewardClaimByStepId = computed(() => {
-    return buildRewardClaimByStepId(rewardClaims.value)
+    return buildRewardClaimByStepId(rewardClaimAccountingRows.value)
   })
 
   const starCoinBalanceByMember = computed(() => {
-    return buildStarCoinBalanceByMember(rewardClaims.value)
+    return buildStarCoinBalanceByMember(rewardClaimAccountingRows.value)
   })
 
   const currentMemberStarCoinBalance = computed(() => {
@@ -1194,7 +1213,7 @@ export const useWishStore = defineStore('wishes', () => {
   })
 
   const countRewardClaimedUnitsByWish = computed(() => {
-    return buildCountRewardClaimedUnitsByWish(rewardClaims.value)
+    return buildCountRewardClaimedUnitsByWish(rewardClaimAccountingRows.value)
   })
 
   const pendingStepRewards = computed<PendingStepRewardEntry[]>(() => {
@@ -1241,7 +1260,10 @@ export const useWishStore = defineStore('wishes', () => {
   })
 
   const latestRewardClaims = computed(() => {
-    return [...rewardClaims.value]
+    const latestClaims = new Map<string, RewardClaimRecord>()
+    ;[...latestRewardClaimRows.value, ...rewardClaims.value].forEach((claim) => latestClaims.set(claim.id, claim))
+
+    return [...latestClaims.values()]
       .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
       .slice(0, 8)
   })
@@ -1569,6 +1591,126 @@ export const useWishStore = defineStore('wishes', () => {
     ensureLocalMonthlySnapshots(nextThreads)
   }
 
+  async function loadWishThreadEntries(wishId: string, spaceId = authStore.currentSpaceId) {
+    if (!spaceId || !supabase || shouldUseCloudflareBackend() || !isUsingCloudWishes.value) {
+      return false
+    }
+
+    if (authStore.hasKnownCapabilities && !authStore.appCapabilities.hasUnifiedThreads) {
+      return false
+    }
+
+    const fetched = await fetchWishThreadRowsForWish(
+      supabase,
+      spaceId,
+      wishId,
+      (message) => {
+        syncMessage.value = message
+      },
+    )
+
+    if (!fetched.ok) {
+      return false
+    }
+
+    const countProgressStarCoinValueByWishId = new Map(
+      wishes.value.map((wish) => [wish.id, Math.max(0, wish.progressStarCoinValue)]),
+    )
+    const loadedEntries = buildWishThreadEntriesFromRows(
+      fetched.data.threadRows,
+      fetched.data.threadImageRows,
+      fetched.data.threadReactionRows,
+      (image) => ({ ...image, note: image.note ?? '' }),
+      fetched.data.imageUrlMap,
+      [],
+      countProgressStarCoinValueByWishId,
+    )
+
+    wishThreads.value = [
+      ...wishThreads.value.filter((thread) => thread.wishId !== wishId),
+      ...loadedEntries,
+    ]
+    loadedWishThreadWishIds.add(wishId)
+    return true
+  }
+
+  async function loadRewardClaimsForReview(rangeStart: string, rangeEnd: string, spaceId = authStore.currentSpaceId) {
+    if (!spaceId || !/^\d{4}-\d{2}-\d{2}$/.test(rangeStart) || !/^\d{4}-\d{2}-\d{2}$/.test(rangeEnd) || rangeEnd < rangeStart) {
+      return false
+    }
+
+    if (isUsingCloudWishes.value && !shouldUseCloudflareBackend() && lastLoadedSpaceId.value !== spaceId) {
+      return false
+    }
+
+    const requestId = ++rewardClaimReviewRequestId
+    const rangeKey = `${spaceId}:${rangeStart}:${rangeEnd}`
+    let cached = rewardClaimReviewCache.get(rangeKey)
+
+    if (!cached && supabase && !shouldUseCloudflareBackend() && isUsingCloudWishes.value
+      && authStore.hasKnownCapabilities && authStore.appCapabilities.hasRewardClaimSummary) {
+      const fetched = await fetchRewardClaimsForReview(supabase, spaceId, rangeStart, rangeEnd)
+
+      if (!fetched.ok) {
+        syncMessage.value = fetched.message
+        return false
+      }
+
+      if (requestId !== rewardClaimReviewRequestId || authStore.currentSpaceId !== spaceId) {
+        return false
+      }
+
+      const claims = fetched.data.claims.map((claim) => createRewardClaimRecordModule({
+        id: claim.id,
+        ownerId: claim.owner_id,
+        rewardItemId: claim.reward_item_id,
+        sourceWishId: claim.source_wish_id,
+        sourceStepId: claim.source_step_id,
+        claimKind: claim.claim_kind,
+        quantity: claim.quantity ?? 1,
+        titleSnapshot: claim.title_snapshot,
+        noteSnapshot: claim.note_snapshot,
+        starCoinDelta: claim.star_coin_delta,
+        createdAt: claim.created_at,
+      }))
+      const openingBalances = new Map(fetched.data.openingBalances.map((entry) => [entry.owner_id, Math.max(0, Number(entry.balance) || 0)]))
+      cached = { claims, openingBalances }
+      rewardClaimReviewCache.set(rangeKey, cached)
+    }
+
+    if (!cached) {
+      const dateKeyForTimestamp = (timestamp: string) => {
+        const shifted = new Date(new Date(timestamp).getTime() + 8 * 60 * 60 * 1000)
+        return `${shifted.getUTCFullYear()}-${`${shifted.getUTCMonth() + 1}`.padStart(2, '0')}-${`${shifted.getUTCDate()}`.padStart(2, '0')}`
+      }
+      const sortedClaims = [...rewardClaimAccountingRows.value].sort((left, right) => {
+        const timeDiff = new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
+        return timeDiff || left.id.localeCompare(right.id)
+      })
+      const openingBalances = new Map<string, number>()
+      const claims = sortedClaims.filter((claim) => {
+        const dateKey = dateKeyForTimestamp(claim.createdAt)
+
+        if (dateKey < rangeStart) {
+          openingBalances.set(claim.ownerId, Math.max(0, (openingBalances.get(claim.ownerId) ?? 0) + claim.starCoinDelta))
+          return false
+        }
+
+        return dateKey <= rangeEnd
+      })
+      cached = { claims, openingBalances }
+    }
+
+    if (requestId !== rewardClaimReviewRequestId || authStore.currentSpaceId !== spaceId) {
+      return false
+    }
+
+    reviewRewardClaims.value = cached.claims
+    reviewRewardClaimOpeningBalances.value = new Map(cached.openingBalances)
+    reviewRewardClaimRange.value = rangeKey
+    return true
+  }
+
   function getWishThreadEntries(wishId: string) {
     return wishThreads.value
       .filter((thread) => thread.wishId === wishId)
@@ -1675,6 +1817,91 @@ export const useWishStore = defineStore('wishes', () => {
     recentLocalWishUpdates.set(wishId, Date.now() + LOCAL_REALTIME_ECHO_TTL_MS)
   }
 
+  function markLocalWishCreation(wishId: string, initialStepCount: number) {
+    recentLocalWishCreations.set(wishId, {
+      wish: true,
+      remainingSteps: initialStepCount,
+      thread: !authStore.hasKnownCapabilities || authStore.appCapabilities.hasUnifiedThreads,
+      expiresAt: Date.now() + LOCAL_REALTIME_ECHO_TTL_MS,
+    })
+  }
+
+  function consumeLocalWishCreationEcho(wishId: string, kind: 'wish' | 'step' | 'thread') {
+    const creation = recentLocalWishCreations.get(wishId)
+
+    if (!creation) {
+      return false
+    }
+
+    if (creation.expiresAt <= Date.now()) {
+      recentLocalWishCreations.delete(wishId)
+      return false
+    }
+
+    if (kind === 'wish' && creation.wish) {
+      creation.wish = false
+    } else if (kind === 'thread' && creation.thread) {
+      creation.thread = false
+    } else if (kind === 'step' && creation.remainingSteps > 0) {
+      creation.remainingSteps -= 1
+    } else {
+      return false
+    }
+
+    if (!creation.wish && !creation.thread && creation.remainingSteps === 0) {
+      recentLocalWishCreations.delete(wishId)
+    }
+
+    return true
+  }
+
+  function getCountProgressEchoKey(wishId: string, ownerId: string) {
+    return `${wishId}:${ownerId}`
+  }
+
+  function markLocalCountProgressWrite(wishId: string, ownerId: string, expectsRewardThread: boolean) {
+    markLocalWishUpdate(wishId)
+
+    if (expectsRewardThread) {
+      recentLocalCountProgressEchoes.set(getCountProgressEchoKey(wishId, ownerId), {
+        claim: true,
+        thread: true,
+        expiresAt: Date.now() + LOCAL_REALTIME_ECHO_TTL_MS,
+      })
+    }
+  }
+
+  function consumeLocalCountProgressEcho(wishId: string, ownerId: string, kind: 'claim' | 'thread') {
+    const key = getCountProgressEchoKey(wishId, ownerId)
+    const echo = recentLocalCountProgressEchoes.get(key)
+
+    if (!echo) {
+      return false
+    }
+
+    if (echo.expiresAt <= Date.now()) {
+      recentLocalCountProgressEchoes.delete(key)
+      return false
+    }
+
+    if (!echo[kind]) {
+      return false
+    }
+
+    echo[kind] = false
+
+    if (!echo.claim && !echo.thread) {
+      recentLocalCountProgressEchoes.delete(key)
+    }
+
+    return true
+  }
+
+  function clearLocalCountProgressWrite(wishId: string, ownerId: string) {
+    recentLocalWishUpdates.delete(wishId)
+    recentLocalCountProgressEchoes.delete(getCountProgressEchoKey(wishId, ownerId))
+  }
+
   function markLocalWishDelete(wishId: string) {
     recentLocalWishDeletes.set(wishId, Date.now() + LOCAL_REALTIME_ECHO_TTL_MS)
   }
@@ -1685,7 +1912,13 @@ export const useWishStore = defineStore('wishes', () => {
     }
 
     pruneLocalWishEchoTombstones()
-    return recentLocalWishUpdates.has(wishId)
+    const isLocalEcho = recentLocalWishUpdates.has(wishId)
+
+    if (isLocalEcho) {
+      recentLocalWishUpdates.delete(wishId)
+    }
+
+    return isLocalEcho
   }
 
   function wasLocalWishDelete(wishId: string | null) {
@@ -1807,6 +2040,10 @@ export const useWishStore = defineStore('wishes', () => {
     const nextWishId = typeof payload.new?.id === 'string' ? payload.new.id : null
     const previousWishId = typeof payload.old?.id === 'string' ? payload.old.id : null
 
+    if (eventType === 'INSERT' && nextWishId && consumeLocalWishCreationEcho(nextWishId, 'wish')) {
+      return
+    }
+
     if ((eventType === 'UPDATE' && wasLocalWishUpdate(nextWishId)) || (eventType === 'DELETE' && wasLocalWishDelete(previousWishId))) {
       return
     }
@@ -1814,7 +2051,13 @@ export const useWishStore = defineStore('wishes', () => {
     scheduleRealtimeSync('愿望')
   }
 
-  function handleWishStepRealtimeEvent(payload: { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null }) {
+  function handleWishStepRealtimeEvent(payload: { eventType?: unknown; new?: Record<string, unknown> | null; old?: Record<string, unknown> | null }) {
+    const wishId = typeof payload.new?.wish_id === 'string' ? payload.new.wish_id : null
+
+    if (getRealtimeEventType(payload) === 'INSERT' && wishId && consumeLocalWishCreationEcho(wishId, 'step')) {
+      return
+    }
+
     const visibleWishIds = new Set(wishes.value.map((wish) => wish.id))
 
     if (shouldSyncForWishRealtimeEvent(payload, visibleWishIds)) {
@@ -1872,6 +2115,49 @@ export const useWishStore = defineStore('wishes', () => {
     scheduleRealtimeSync('表情回应')
   }
 
+  function handleWishThreadRealtimeEvent(payload: { eventType?: unknown; new?: Record<string, unknown> | null; old?: Record<string, unknown> | null }) {
+    const event = payload.new
+    const wishId = typeof event?.wish_id === 'string' ? event.wish_id : null
+    const actorId = typeof event?.actor_id === 'string' ? event.actor_id : null
+
+    if (
+      wishId
+      && event?.event_kind === 'wish_published'
+      && getRealtimeEventType(payload) === 'INSERT'
+      && consumeLocalWishCreationEcho(wishId, 'thread')
+    ) {
+      return
+    }
+
+    if (
+      wishId
+      && actorId
+      && isCountProgressWishThreadEcho(payload, wishId, actorId)
+      && consumeLocalCountProgressEcho(wishId, actorId, 'thread')
+    ) {
+      return
+    }
+
+    scheduleRealtimeSync('愿望手账')
+  }
+
+  function handleRewardClaimRealtimeEvent(payload: { eventType?: unknown; new?: Record<string, unknown> | null; old?: Record<string, unknown> | null }) {
+    const claim = payload.new
+    const wishId = typeof claim?.source_wish_id === 'string' ? claim.source_wish_id : null
+    const ownerId = typeof claim?.owner_id === 'string' ? claim.owner_id : null
+
+    if (
+      wishId
+      && ownerId
+      && isCountProgressRewardClaimEcho(payload, wishId, ownerId)
+      && consumeLocalCountProgressEcho(wishId, ownerId, 'claim')
+    ) {
+      return
+    }
+
+    scheduleRealtimeSync('领奖记录')
+  }
+
   function teardownRealtimeSubscription() {
     void teardownRealtimeSubscriptionModule(realtimeSyncController, {
       supabase,
@@ -1909,8 +2195,10 @@ export const useWishStore = defineStore('wishes', () => {
         {
           table: 'wish_threads',
           capabilityKey: 'hasUnifiedThreads',
-          onEvent: () => {
-            scheduleRealtimeSync('愿望手账')
+          onEvent: (payload) => {
+            if (payload) {
+              handleWishThreadRealtimeEvent(payload)
+            }
           },
         },
         {
@@ -1966,8 +2254,10 @@ export const useWishStore = defineStore('wishes', () => {
         {
           table: 'reward_claims',
           capabilityKey: 'hasRewardPools',
-          onEvent: () => {
-            scheduleRealtimeSync('领奖记录')
+          onEvent: (payload) => {
+            if (payload) {
+              handleRewardClaimRealtimeEvent(payload)
+            }
           },
         },
         {
@@ -1998,6 +2288,13 @@ export const useWishStore = defineStore('wishes', () => {
       return false
     }
 
+    if (lastLoadedSpaceId.value && lastLoadedSpaceId.value !== spaceId) {
+      loadedWishThreadWishIds.clear()
+      rewardClaimReviewCache.clear()
+      reviewRewardClaims.value = []
+      reviewRewardClaimOpeningBalances.value = new Map()
+    }
+
     if (shouldUseCloudflareBackend()) {
       isLoading.value = true
 
@@ -2014,6 +2311,11 @@ export const useWishStore = defineStore('wishes', () => {
 
         rewardPoolItems.value = []
         rewardClaims.value = []
+        rewardClaimSummaryRows.value = []
+        latestRewardClaimRows.value = []
+        rewardClaimReviewCache.clear()
+        reviewRewardClaims.value = []
+        reviewRewardClaimOpeningBalances.value = new Map()
         wishes.value = nextWishes
         threadReactions.value = []
         wishThreads.value = buildDerivedWishThreadEntries(nextWishes, [], [])
@@ -2051,14 +2353,19 @@ export const useWishStore = defineStore('wishes', () => {
       }
 
       const composed = composeWishCloudState(fetched.data)
+      const loadedWishIdsToRefresh = [...loadedWishThreadWishIds]
 
       rewardPoolItems.value = composed.rewardPoolItems
       rewardClaims.value = composed.rewardClaims
+      rewardClaimSummaryRows.value = composed.rewardClaimSummaryRows
+      latestRewardClaimRows.value = composed.latestRewardClaimRows
+      rewardClaimReviewCache.clear()
       wishes.value = composed.wishes
       threadReactions.value = composed.threadReactions
       wishThreads.value = composed.wishThreads
       monthlyJournalSnapshots.value = composed.monthlyJournalSnapshots
       lastLoadedSpaceId.value = spaceId
+      await Promise.all(loadedWishIdsToRefresh.map((wishId) => loadWishThreadEntries(wishId, spaceId)))
       syncMessage.value = '当前显示的是 Supabase 云端愿望数据。'
       return true
     } finally {
@@ -2190,7 +2497,11 @@ export const useWishStore = defineStore('wishes', () => {
     })
   }
 
-  async function addWish(draft: WishDraft, initialSteps: Array<{ title: string; starCoinValue: number }> = []) {
+  async function addWish(
+    draft: WishDraft,
+    initialSteps: Array<{ title: string; starCoinValue: number }> = [],
+    clientWishId: string = createId(),
+  ) {
     const normalizedSteps = draft.progressMode === 'steps'
       ? initialSteps
           .map((step) => ({
@@ -2209,9 +2520,11 @@ export const useWishStore = defineStore('wishes', () => {
 
     if (supabase && isUsingCloudWishes.value && authStore.currentSpaceId) {
       const ownerId = authStore.currentMemberId || authStore.currentMember?.id || draft.ownerId
-      return addWishCloud({
+      markLocalWishCreation(clientWishId, normalizedSteps.length)
+      const createdWishId = await addWishCloud({
         supabase,
         currentSpaceId: authStore.currentSpaceId,
+        wishId: clientWishId,
         ownerId,
         includeProgressFields: !isCapabilityKnownMissing('hasWishProgress'),
         draft,
@@ -2224,6 +2537,36 @@ export const useWishStore = defineStore('wishes', () => {
         },
         syncFromSupabase,
       })
+
+      if (!createdWishId) {
+        return null
+      }
+
+      const createdWish = createWishRecordModule({
+        ...draft,
+        id: createdWishId,
+        ownerId,
+        steps: normalizedSteps.map((step) => createWishStepModule(step)),
+      })
+      wishes.value = [createdWish, ...wishes.value.filter((wish) => wish.id !== createdWishId)]
+      wishThreads.value = [
+        ...wishThreads.value.filter((thread) => thread.id !== `optimistic-wish-published-${createdWishId}`),
+        createWishThreadEntryModule({
+          id: `optimistic-wish-published-${createdWishId}`,
+          spaceId: authStore.currentSpaceId,
+          wishId: createdWishId,
+          actorId: ownerId,
+          eventKind: 'wish_published',
+          messageText: `认真写下了「${createdWish.title}」。`,
+          meta: { scope: createdWish.scope, status: createdWish.status },
+          createdAt: createdWish.createdAt,
+          updatedAt: createdWish.updatedAt,
+        }),
+      ]
+      syncMessage.value = normalizedSteps.length
+        ? `愿望和 ${normalizedSteps.length} 个初始步骤已写入 Supabase。`
+        : '愿望已写入 Supabase。'
+      return createdWishId
     }
 
     const created = addWishLocal(draft, normalizedSteps)
@@ -2734,6 +3077,9 @@ export const useWishStore = defineStore('wishes', () => {
     const gainedUnitsPreview = Math.max(normalizedCurrent - previousCurrent, 0)
     const shouldWriteViaCloudflare = shouldUseCloudflareBackend() && !!wish
     const isCloudCountProgressWrite = !!(wish && ((supabase && isUsingCloudWishes.value) || shouldWriteViaCloudflare))
+    const claimedUnits = wish ? countRewardClaimedUnitsByWish.value.get(wish.id) ?? 0 : 0
+    const pendingUnitsPreview = Math.min(gainedUnitsPreview, Math.max(normalizedCurrent - claimedUnits, 0))
+    const shouldCreateRewardClaimPreview = pendingUnitsPreview > 0 && Math.max(0, wish?.progressStarCoinValue ?? 0) > 0
     let optimisticClaimId = ''
 
     if (shouldWriteViaCloudflare) {
@@ -2762,6 +3108,8 @@ export const useWishStore = defineStore('wishes', () => {
     }
 
     if (wish && isCloudCountProgressWrite) {
+      markLocalCountProgressWrite(wish.id, wish.ownerId, shouldCreateRewardClaimPreview)
+
       const optimisticWish = {
         ...wish,
         progressCurrent: normalizedCurrent,
@@ -2770,13 +3118,13 @@ export const useWishStore = defineStore('wishes', () => {
 
       wishes.value = wishes.value.map((entry) => entry.id === id ? optimisticWish : entry)
 
-      if (gainedUnitsPreview > 0) {
-        const optimisticStarCoinDelta = gainedUnitsPreview * Math.max(0, wish.progressStarCoinValue)
+      if (shouldCreateRewardClaimPreview) {
+        const optimisticStarCoinDelta = pendingUnitsPreview * Math.max(0, wish.progressStarCoinValue)
         const optimisticClaim = createAutomaticStarCoinClaim({
           claimKind: 'count_star_coin',
           noteSnapshot: `「${wish.title}」数字进度新增 ${gainedUnitsPreview} ${wish.progressUnit || '点'}，自动获得星星币。`,
           ownerId: wish.ownerId,
-          quantity: gainedUnitsPreview,
+          quantity: pendingUnitsPreview,
           sourceWishId: id,
           starCoinDelta: optimisticStarCoinDelta,
           titleSnapshot: `${formatStarCoinAmount(optimisticStarCoinDelta)} 星星币`,
@@ -2815,12 +3163,48 @@ export const useWishStore = defineStore('wishes', () => {
           titleSnapshot: `${formatStarCoinAmount(starCoinDelta)} 星星币`,
         }))
       }
+
+      if (isCloudCountProgressWrite && optimisticClaimId) {
+        const optimisticClaim = rewardClaims.value.find((claim) => claim.id === optimisticClaimId)
+
+        if (optimisticClaim) {
+          const createdAt = optimisticClaim.createdAt
+          wishThreads.value = [
+            ...wishThreads.value,
+            createWishThreadEntryModule({
+              id: `optimistic-count-progress-${optimisticClaim.id}`,
+              spaceId: authStore.currentSpaceId,
+              wishId: optimisticClaim.sourceWishId,
+              actorId: optimisticClaim.ownerId,
+              eventKind: 'reward_claimed',
+              messageText: `把「${wish.title}」的数字进度往前推进了 ${optimisticClaim.quantity} 点，收下了 ${formatStarCoinAmount(optimisticClaim.starCoinDelta)} 枚星星币。`,
+              meta: {
+                claimIds: [optimisticClaim.id],
+                claimKind: optimisticClaim.claimKind,
+                quantity: optimisticClaim.quantity,
+                sourceWishId: optimisticClaim.sourceWishId,
+                sourceStepId: null,
+                starCoinDelta: optimisticClaim.starCoinDelta,
+                wishTitle: wish.title,
+              },
+              createdAt,
+              updatedAt: createdAt,
+            }),
+          ]
+        }
+      }
+
+      if (isCloudCountProgressWrite) {
+        rewardClaimReviewCache.clear()
+      }
+
       syncMessage.value = result.message
       clearRetryableAction()
       return true
     }
 
     if (wish && isCloudCountProgressWrite) {
+      clearLocalCountProgressWrite(wish.id, wish.ownerId)
       wishes.value = wishes.value.map((entry) => entry.id === id ? wish : entry)
 
       if (optimisticClaimId) {
@@ -3478,6 +3862,11 @@ export const useWishStore = defineStore('wishes', () => {
     monthlyJournalSnapshots.value = seedState.monthlyJournalSnapshots
     rewardPoolItems.value = seedState.rewardPoolItems
     rewardClaims.value = seedState.rewardClaims
+    rewardClaimSummaryRows.value = []
+    latestRewardClaimRows.value = []
+    rewardClaimReviewCache.clear()
+    reviewRewardClaims.value = []
+    reviewRewardClaimOpeningBalances.value = new Map()
     refreshLocalActivityState()
     syncMessage.value = '已恢复本地示例数据。'
   }
@@ -3612,6 +4001,7 @@ export const useWishStore = defineStore('wishes', () => {
     getSharedRewardPoolItems,
     getStepRewardClaim,
     getWishThreadEntries,
+    loadWishThreadEntries,
     getWishProgressSnapshot,
     getWishRewardClaim,
     hasStepRewardClaim,
@@ -3625,6 +4015,10 @@ export const useWishStore = defineStore('wishes', () => {
     lastFailedActionLabel,
     latestComments,
     latestRewardClaims,
+    loadRewardClaimsForReview,
+    reviewRewardClaims,
+    reviewRewardClaimOpeningBalances,
+    reviewRewardClaimRange,
     monthlyJournalSnapshots,
     pendingCountRewardSummaries,
     pendingSmallRewardCount,
@@ -3636,6 +4030,8 @@ export const useWishStore = defineStore('wishes', () => {
     resetToSeed,
     redeemPremiumReward,
     rewardClaims,
+    rewardClaimAccountingRows,
+    rewardClaimSummaryRows,
     rewardPoolItems,
     retryLastFailedAction,
     setWishCoverImage,

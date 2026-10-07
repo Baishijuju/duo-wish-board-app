@@ -2,10 +2,18 @@ import { describe, expect, it } from 'vitest'
 import {
   buildCommentRowsFromThreadEntries,
   buildWishThreadEntriesFromRows,
+  getCountProgressThreadUnits,
   mapCommentImageRowsFromThreadImages,
 } from '../../../src/modules/journal/journal.mapping.cloud'
 
 describe('journal.mapping.cloud', () => {
+  it('uses pushed units before falling back to legacy claim ids', () => {
+    expect(getCountProgressThreadUnits({ quantity: 42, claimIds: ['claim-1'] })).toBe(42)
+    expect(getCountProgressThreadUnits({ quantity: '7' })).toBe(7)
+    expect(getCountProgressThreadUnits({ claimIds: ['claim-1', 'claim-2'] })).toBe(2)
+    expect(getCountProgressThreadUnits({})).toBe(1)
+  })
+
   it('maps cloud thread rows into unified thread entries', () => {
     const entries = buildWishThreadEntriesFromRows(
       [

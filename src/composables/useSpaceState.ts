@@ -1,7 +1,7 @@
 import { computed, ref, watch } from 'vue'
 import { supabaseAuthMode, supabaseReadinessMessage } from '../lib/supabase'
 import { REWARD_CLAIM_LABELS, getSyncStatusLabel } from '../shared/statusSemantics'
-import { buildClaimableEntries, buildCurrentStarCoinBalance, buildPendingRewardOverview, formatStarCoinAmountLabel } from '../shared/starCoinLedger'
+import { buildClaimableEntries, buildPendingRewardOverview, formatStarCoinAmountLabel } from '../shared/starCoinLedger'
 import { useAuthStore } from '../stores/auth'
 import { useWishStore, type RewardPoolItem } from '../stores/wishes'
 import { formatBeijingDateTime } from '../utils/datetime'
@@ -59,11 +59,7 @@ export function useSpaceState() {
   const canBindFixedEmail = computed(() => authStore.usesSupabaseSpace && authStore.currentMember?.role === 'owner')
   const storageSummary = computed(() => wishStore.imageStorageSummary)
   const currentMemberId = computed(() => authStore.currentMemberId || authStore.currentMember?.id || '')
-  const currentMemberStarCoins = computed(() => buildCurrentStarCoinBalance({
-    claims: wishStore.rewardClaims,
-    memberId: currentMemberId.value,
-    wishes: wishStore.wishes,
-  }))
+  const currentMemberStarCoins = computed(() => wishStore.getMemberStarCoinBalance(currentMemberId.value))
   const currentMemberDailyRewards = computed(() => {
     return currentMemberId.value ? wishStore.getRewardPoolItems(currentMemberId.value, 'daily') : []
   })

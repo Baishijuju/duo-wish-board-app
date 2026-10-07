@@ -16,6 +16,8 @@ import type { WishThreadImageRowLike, WishThreadRowLike } from '../journal/journ
 const SIGNED_URL_TTL_SECONDS = 60 * 60
 const SIGNED_URL_CACHE_TTL_MS = 55 * 60 * 1000
 const THREAD_IMAGE_QUERY_BATCH_SIZE = 100
+const DETAIL_THREAD_PAGE_SIZE = 100
+const BEIJING_TIME_OFFSET_MS = 8 * 60 * 60 * 1000
 
 interface SignedUrlCacheEntry {
   expiresAt: number
@@ -34,10 +36,148 @@ export function createThreadImageQueryBatches(threadIds: string[]) {
   return batches
 }
 
+export function getCurrentMonthThreadStartIso(now = new Date()) {
+  const beijingNow = new Date(now.getTime() + BEIJING_TIME_OFFSET_MS)
+  const beijingTodayStartUtc = Date.UTC(
+    beijingNow.getUTCFullYear(),
+    beijingNow.getUTCMonth(),
+    1,
+  ) - BEIJING_TIME_OFFSET_MS
+
+  return new Date(beijingTodayStartUtc).toISOString()
+}
+
+export async function fetchRewardClaimsForReview(
+  supabase: SupabaseClient,
+  spaceId: string,
+  rangeStart: string,
+  rangeEnd: string,
+) {
+  const { data, error } = await supabase.rpc('get_reward_claim_review_data', {
+    range_end: rangeEnd,
+    range_start: rangeStart,
+    target_space_id: spaceId,
+  })
+
+  if (error) {
+    return { ok: false as const, message: `回顾流水读取失败：${error.message}` }
+  }
+
+  const payload = data && typeof data === 'object' && !Array.isArray(data)
+    ? data as { claims?: unknown; opening_balances?: unknown }
+    : {}
+  const openingBalances = Array.isArray(payload.opening_balances)
+    ? payload.opening_balances as Array<{ owner_id: string; balance: number }>
+    : []
+
+  return {
+    ok: true as const,
+    data: {
+      claims: Array.isArray(payload.claims) ? payload.claims as RewardClaimRowLike[] : [],
+      openingBalances,
+    },
+  }
+}
+
+export async function fetchWishThreadRowsForWish(
+  supabase: SupabaseClient,
+  spaceId: string,
+  wishId: string,
+  onWarningMessage: (message: string) => void,
+) {
+  const threadRows: WishThreadRowLike[] = []
+
+  for (let offset = 0; ; offset += DETAIL_THREAD_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('wish_threads')
+      .select('id, space_id, wish_id, actor_id, event_kind, message_text, meta, created_at, updated_at')
+      .eq('space_id', spaceId)
+      .eq('wish_id', wishId)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(offset, offset + DETAIL_THREAD_PAGE_SIZE - 1)
+
+    if (error) {
+      return { ok: false as const, message: `愿望手账读取失败：${error.message}` }
+    }
+
+    const pageRows = (data ?? []) as WishThreadRowLike[]
+    threadRows.push(...pageRows)
+
+    if (pageRows.length < DETAIL_THREAD_PAGE_SIZE) {
+      break
+    }
+  }
+
+  const threadImageRows: WishThreadImageRowLike[] = []
+  const threadReactionRows: ThreadReactionRecord[] = []
+  const threadIds = threadRows.map((thread) => thread.id)
+
+  for (const threadIdBatch of createThreadImageQueryBatches(threadIds)) {
+    const [imageResult, reactionResult] = await Promise.all([
+      supabase
+        .from('wish_thread_images')
+        .select('id, thread_id, created_by, storage_path, file_name, mime_type, size_bytes, sort_order, created_at')
+        .in('thread_id', threadIdBatch)
+        .order('sort_order', { ascending: true })
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('thread_reactions')
+        .select('id, space_id, target_thread_id, actor_id, emoji, created_at')
+        .eq('space_id', spaceId)
+        .in('target_thread_id', threadIdBatch)
+        .order('created_at', { ascending: true }),
+    ])
+
+    if (imageResult.error) {
+      return { ok: false as const, message: `愿望手账图片读取失败：${imageResult.error.message}` }
+    }
+
+    if (reactionResult.error) {
+      return { ok: false as const, message: `愿望手账回应读取失败：${reactionResult.error.message}` }
+    }
+
+    threadImageRows.push(...((imageResult.data ?? []) as WishThreadImageRowLike[]))
+    threadReactionRows.push(...((reactionResult.data ?? []) as Array<{
+      id: string
+      space_id: string
+      target_thread_id: string
+      actor_id: string
+      emoji: string
+      created_at: string
+    }>).map((reaction) => createThreadReactionRecord({
+      actorId: reaction.actor_id,
+      createdAt: reaction.created_at,
+      emoji: reaction.emoji,
+      id: reaction.id,
+      spaceId: reaction.space_id,
+      targetThreadId: reaction.target_thread_id,
+    })))
+  }
+
+  const imageUrlMap = threadImageRows.length
+    ? await createCachedSignedUrlMap(
+      supabase,
+      'wish-comment-images',
+      threadImageRows.map((image) => image.storage_path),
+      onWarningMessage,
+      '云端手账图片链接生成失败',
+    )
+    : new Map<string, string>()
+
+  return {
+    ok: true as const,
+    data: { imageUrlMap, threadImageRows, threadReactionRows, threadRows },
+  }
+}
+
 export interface WishCloudFetchResult {
   wishRows: WishRowLike[]
   rewardPoolItemRows: RewardPoolItemRowLike[]
   rewardClaimRows: RewardClaimRowLike[]
+  rewardClaimSummaryRows: RewardClaimRowLike[]
+  latestRewardClaimRows: RewardClaimRowLike[]
+  hasRewardClaimSummary: boolean
   commentRows: WishCommentRowLike[]
   commentImageRows: WishCommentImageRowLike[]
   threadRows: WishThreadRowLike[]
@@ -177,6 +317,9 @@ export async function fetchWishCloudRows(
   const wishIds = wishRows.map((wish) => wish.id)
   let rewardPoolItemRows: RewardPoolItemRowLike[] = []
   let rewardClaimRows: RewardClaimRowLike[] = []
+  let rewardClaimSummaryRows: RewardClaimRowLike[] = []
+  let latestRewardClaimRows: RewardClaimRowLike[] = []
+  let hasRewardClaimSummary = false
   let commentRows: WishCommentRowLike[] = []
   let commentImageRows: WishCommentImageRowLike[] = []
   let threadRows: WishThreadRowLike[] = []
@@ -222,18 +365,47 @@ export async function fetchWishCloudRows(
   }
 
   if (!options.capabilities || options.capabilities.hasRewardPools) {
-    const { data: rewardClaimData, error: rewardClaimError } = await supabase
-      .from('reward_claims')
-      .select('id, space_id, owner_id, reward_item_id, source_wish_id, source_step_id, claim_kind, quantity, title_snapshot, note_snapshot, star_coin_delta, created_at')
-      .eq('space_id', spaceId)
-      .order('created_at', { ascending: false })
+    let shouldFetchLegacyRewardClaims = !options.capabilities?.hasRewardClaimSummary
 
-    if (rewardClaimError) {
-      if (!allowsLegacyCapabilityFallback || (rewardClaimError.code !== '42P01' && !/reward_claims/i.test(rewardClaimError.message))) {
-        return { ok: false, message: `云端领奖记录同步失败：${rewardClaimError.message}` }
+    if (options.capabilities?.hasRewardClaimSummary) {
+      const { data, error } = await supabase.rpc('get_reward_claim_sync_payload', {
+        target_space_id: spaceId,
+      })
+
+      if (error) {
+        const summaryRpcMissing = error.code === '42883' || /get_reward_claim_sync_payload/i.test(error.message)
+
+        if (!summaryRpcMissing) {
+          return { ok: false, message: `云端奖励流水汇总同步失败：${error.message}` }
+        }
+
+        shouldFetchLegacyRewardClaims = true
+      } else {
+        const payload = data && typeof data === 'object' && !Array.isArray(data)
+          ? data as { summary_claims?: unknown; recent_claims?: unknown; latest_claims?: unknown }
+          : {}
+        rewardClaimSummaryRows = Array.isArray(payload.summary_claims) ? payload.summary_claims as RewardClaimRowLike[] : []
+        rewardClaimRows = Array.isArray(payload.recent_claims) ? payload.recent_claims as RewardClaimRowLike[] : []
+        latestRewardClaimRows = Array.isArray(payload.latest_claims) ? payload.latest_claims as RewardClaimRowLike[] : []
+        hasRewardClaimSummary = true
       }
-    } else {
-      rewardClaimRows = (rewardClaimData ?? []) as RewardClaimRowLike[]
+    }
+
+    if (shouldFetchLegacyRewardClaims) {
+      const { data: rewardClaimData, error: rewardClaimError } = await supabase
+        .from('reward_claims')
+        .select('id, owner_id, reward_item_id, source_wish_id, source_step_id, claim_kind, quantity, title_snapshot, note_snapshot, star_coin_delta, created_at')
+        .eq('space_id', spaceId)
+        .order('created_at', { ascending: false })
+
+      if (rewardClaimError) {
+        if (!allowsLegacyCapabilityFallback || (rewardClaimError.code !== '42P01' && !/reward_claims/i.test(rewardClaimError.message))) {
+          return { ok: false, message: `云端领奖记录同步失败：${rewardClaimError.message}` }
+        }
+      } else {
+        rewardClaimRows = (rewardClaimData ?? []) as RewardClaimRowLike[]
+        latestRewardClaimRows = rewardClaimRows.slice(0, 8)
+      }
     }
   }
 
@@ -249,11 +421,21 @@ export async function fetchWishCloudRows(
   }
 
   if (!options.capabilities || options.capabilities.hasUnifiedThreads) {
-    const { data: threadData, error: threadError } = await supabase
-      .from('wish_threads')
-      .select('id, space_id, wish_id, actor_id, event_kind, message_text, meta, created_at, updated_at')
-      .eq('space_id', spaceId)
-      .order('created_at', { ascending: true })
+    const [threadResult, latestThreadResult] = await Promise.all([
+      supabase
+        .from('wish_threads')
+        .select('id, space_id, wish_id, actor_id, event_kind, message_text, meta, created_at, updated_at')
+        .eq('space_id', spaceId)
+        .gte('created_at', getCurrentMonthThreadStartIso())
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('wish_threads')
+        .select('id, space_id, wish_id, actor_id, event_kind, message_text, meta, created_at, updated_at')
+        .eq('space_id', spaceId)
+        .order('created_at', { ascending: false })
+        .limit(1),
+    ])
+    const threadError = threadResult.error ?? latestThreadResult.error
 
     if (threadError) {
       if (!allowsLegacyCapabilityFallback || (threadError.code !== '42P01' && !/wish_threads/i.test(threadError.message))) {
@@ -261,7 +443,12 @@ export async function fetchWishCloudRows(
       }
     } else {
       hasUnifiedThreadData = true
-      threadRows = (threadData ?? []) as WishThreadRowLike[]
+      const rowsById = new Map<string, WishThreadRowLike>()
+      ;[...(threadResult.data ?? []), ...(latestThreadResult.data ?? [])].forEach((thread) => {
+        const row = thread as WishThreadRowLike
+        rowsById.set(row.id, row)
+      })
+      threadRows = [...rowsById.values()]
       const threadIds = threadRows.map((thread) => thread.id)
 
       const fetchThreadImages = async () => {
@@ -354,44 +541,52 @@ export async function fetchWishCloudRows(
   }
 
   if (wishIds.length) {
-    if (!hasUnifiedThreadData) {
-      const { data, error: commentError } = await supabase
-        .from('wish_comments')
-        .select('id, wish_id, author_id, body, created_at')
-        .in('wish_id', wishIds)
-        .order('created_at', { ascending: false })
+    const { data, error: commentError } = await supabase
+      .from('wish_comments')
+      .select('id, wish_id, author_id, body, created_at')
+      .in('wish_id', wishIds)
+      .order('created_at', { ascending: false })
 
-      if (commentError) {
+    if (commentError) {
+      const allowsMissingLegacyComments = hasUnifiedThreadData
+        && (commentError.code === '42P01' || /wish_comments/i.test(commentError.message))
+
+      if (!allowsMissingLegacyComments) {
         return { ok: false, message: `云端留言同步失败：${commentError.message}` }
       }
-
+    } else {
       commentRows = (data ?? []) as WishCommentRowLike[]
+    }
 
-      const commentIds = commentRows.map((comment) => comment.id)
+    const commentIds = commentRows.map((comment) => comment.id)
 
-      if (commentIds.length && (!options.capabilities || options.capabilities.hasWishCommentImages)) {
-        const { data: commentImageData, error: commentImageError } = await supabase
-          .from('wish_comment_images')
-          .select('id, comment_id, created_by, storage_path, file_name, mime_type, size_bytes, sort_order, created_at')
-          .in('comment_id', commentIds)
-          .order('sort_order', { ascending: true })
-          .order('created_at', { ascending: true })
+    if (commentIds.length && (!options.capabilities || options.capabilities.hasWishCommentImages)) {
+      const { data: commentImageData, error: commentImageError } = await supabase
+        .from('wish_comment_images')
+        .select('id, comment_id, created_by, storage_path, file_name, mime_type, size_bytes, sort_order, created_at')
+        .in('comment_id', commentIds)
+        .order('sort_order', { ascending: true })
+        .order('created_at', { ascending: true })
 
-        if (commentImageError) {
+      if (commentImageError) {
+        const allowsMissingLegacyCommentImages = hasUnifiedThreadData
+          && (commentImageError.code === '42P01' || /wish_comment_images/i.test(commentImageError.message))
+
+        if (!allowsMissingLegacyCommentImages) {
           return { ok: false, message: `云端留言图片同步失败：${commentImageError.message}` }
         }
-
+      } else {
         commentImageRows = (commentImageData ?? []) as WishCommentImageRowLike[]
+      }
 
-        if (commentImageRows.length) {
-          commentImageUrlMap = await createCachedSignedUrlMap(
-            supabase,
-            'wish-comment-images',
-            commentImageRows.map((image) => image.storage_path),
-            options.onWarningMessage,
-            '云端留言图片链接生成失败',
-          )
-        }
+      if (commentImageRows.length) {
+        commentImageUrlMap = await createCachedSignedUrlMap(
+          supabase,
+          'wish-comment-images',
+          commentImageRows.map((image) => image.storage_path),
+          options.onWarningMessage,
+          '云端留言图片链接生成失败',
+        )
       }
     }
 
@@ -455,6 +650,9 @@ export async function fetchWishCloudRows(
       wishRows,
       rewardPoolItemRows,
       rewardClaimRows,
+      rewardClaimSummaryRows,
+      latestRewardClaimRows,
+      hasRewardClaimSummary,
       commentRows,
       commentImageRows,
       threadRows,

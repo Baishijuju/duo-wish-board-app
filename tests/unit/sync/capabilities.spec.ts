@@ -21,12 +21,14 @@ describe('sync.capabilities', () => {
     const result = normalizeAppCapabilities({
       has_bound_space_memberships: true,
       has_reward_pools: true,
+      has_reward_claim_summary: true,
       has_unified_threads: false,
       has_wish_progress: true,
     })
 
     expect(result.hasBoundSpaceMemberships).toBe(true)
     expect(result.hasRewardPools).toBe(true)
+    expect(result.hasRewardClaimSummary).toBe(true)
     expect(result.hasUnifiedThreads).toBe(false)
     expect(result.hasWishProgress).toBe(true)
   })

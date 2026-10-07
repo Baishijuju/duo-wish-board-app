@@ -73,12 +73,25 @@ const claims = [
     starCoinDelta: -1,
     createdAt: '2026-01-01T00:00:00.000Z',
   },
+  {
+    id: '6',
+    ownerId: 'member-a',
+    rewardItemId: 'reward-2',
+    sourceWishId: null,
+    sourceStepId: null,
+    claimKind: 'premium_redeem' as const,
+    quantity: 1,
+    titleSnapshot: '第二次兑换',
+    noteSnapshot: '',
+    starCoinDelta: 0,
+    createdAt: '2026-01-02T00:00:00.000Z',
+  },
 ]
 
 describe('reward.rules', () => {
   it('builds reward claim counts by item', () => {
     const map = buildRewardClaimCountsByItem(claims)
-    expect(map.get('reward-1')).toBe(2)
+    expect(map.get('reward-1')).toBe(1)
     expect(map.get('reward-2')).toBe(1)
   })
 

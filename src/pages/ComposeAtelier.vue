@@ -31,6 +31,7 @@ const {
   initialStepCount,
   initialStepDrafts,
   cloningWish,
+  isSubmitting,
   progressOptions,
   progressSummary,
   removeInitialStepField,
@@ -52,6 +53,10 @@ const stepPreview = computed(() => {
 })
 
 const submitButtonLabel = computed(() => {
+  if (isSubmitting.value) {
+    return '正在创建…'
+  }
+
   return editingWish.value ? '保存这次整理' : '保存这条完整愿望'
 })
 
@@ -241,7 +246,7 @@ const previewStageTitle = computed(() => {
                   <button v-if="editingWish" type="button" class="compose-secondary-button" @click="cancelEditing()">
                     回详情页
                   </button>
-                  <button type="submit" class="compose-primary-button compose-mobile-submit">
+                  <button type="submit" class="compose-primary-button compose-mobile-submit" :disabled="isSubmitting">
                     {{ submitButtonLabel }}
                   </button>
                   <div v-if="feedbackMessage && feedbackTone === 'success' && lastSavedWishId" class="compose-preview-feedback compose-preview-feedback-mobile" :class="feedbackToneClass" role="status" aria-live="polite">
@@ -300,7 +305,7 @@ const previewStageTitle = computed(() => {
             </ol>
           </section>
 
-          <button type="submit" form="compose-atelier-form" class="compose-primary-button compose-preview-submit">
+          <button type="submit" form="compose-atelier-form" class="compose-primary-button compose-preview-submit" :disabled="isSubmitting">
             {{ submitButtonLabel }}
           </button>
           <div v-if="feedbackMessage && feedbackTone === 'success' && lastSavedWishId" class="compose-preview-feedback compose-preview-feedback-desktop" :class="feedbackToneClass" role="status" aria-live="polite">

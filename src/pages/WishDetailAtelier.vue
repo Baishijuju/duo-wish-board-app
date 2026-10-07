@@ -10,6 +10,7 @@ import { getWishStatusSemantic } from '../shared/statusSemantics'
 import WishCompletionFireworks from '../components/WishCompletionFireworks.vue'
 import WishBottleStarDrop from '../components/WishBottleStarDrop.vue'
 import { getWishBottleColorTier as getWishBottleColorTierModule } from '../modules/wishes/wish.progress'
+import { getCountProgressThreadUnits } from '../modules/journal/journal.mapping.cloud'
 import { type WishImage, type WishThreadEntry } from '../stores/wishes'
 import { formatBeijingDateTime } from '../utils/datetime'
 import { useWishDetailPageState } from '../composables/useWishDetailPageState'
@@ -126,6 +127,16 @@ const {
   wishJournalEntries,
   wishStore,
 } = useWishDetailPageState()
+
+watch(
+  () => selectedWish.value?.id,
+  (wishId) => {
+    if (wishId) {
+      void wishStore.loadWishThreadEntries(wishId)
+    }
+  },
+  { immediate: true },
+)
 
 const detailTags = computed(() => {
   if (!selectedWish.value) {
@@ -251,18 +262,8 @@ const monthHeatProgressEvents = computed<MonthHeatProgressEvent[]>(() => {
       continue
     }
 
-    let count = 1
-
-    if (Array.isArray(thread.meta.claimIds)) {
-      const claimIds = thread.meta.claimIds.filter((claimId): claimId is string => typeof claimId === 'string' && claimId.trim().length > 0)
-
-      if (claimIds.length) {
-        count = claimIds.length
-      }
-    }
-
     events.push({
-      count,
+      count: getCountProgressThreadUnits(thread.meta),
       dateKey: getBeijingDateKey(thread.createdAt),
     })
   }

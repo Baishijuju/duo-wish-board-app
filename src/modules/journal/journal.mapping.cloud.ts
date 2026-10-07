@@ -13,6 +13,29 @@ export interface WishThreadRowLike {
   updated_at: string
 }
 
+export function getCountProgressThreadUnits(meta: Record<string, unknown>) {
+  const rawQuantity = meta.quantity
+  const parsedQuantity = typeof rawQuantity === 'number'
+    ? rawQuantity
+    : typeof rawQuantity === 'string'
+      ? Number(rawQuantity)
+      : Number.NaN
+
+  if (Number.isFinite(parsedQuantity) && parsedQuantity > 0) {
+    return Math.trunc(parsedQuantity)
+  }
+
+  if (Array.isArray(meta.claimIds)) {
+    const claimIds = meta.claimIds.filter((claimId): claimId is string => typeof claimId === 'string' && claimId.trim().length > 0)
+
+    if (claimIds.length) {
+      return claimIds.length
+    }
+  }
+
+  return 1
+}
+
 export interface WishThreadImageRowLike {
   id: string
   thread_id: string

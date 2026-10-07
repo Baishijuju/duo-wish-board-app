@@ -129,10 +129,14 @@ export function buildVisibleStarCoinLedger(params: {
   getDateKey: (createdAt: string) => string
   sourceKinds: StarCoinWaterfallKind[]
   wishCountStarCoinValueByWishId?: Map<string, number>
+  openingBalancesByMember?: ReadonlyMap<string, number>
 }): StarCoinVisibleLedger {
   const memberIdSet = new Set(params.memberIds)
   const sourceTotals = new Map<StarCoinWaterfallKind, number>(params.sourceKinds.map((kind) => [kind, 0]))
-  const balances = new Map(params.memberIds.map((memberId) => [memberId, 0]))
+  const balances = new Map(params.memberIds.map((memberId) => [
+    memberId,
+    Math.max(0, params.openingBalancesByMember?.get(memberId) ?? 0),
+  ]))
 
   const claims = params.claims
     .filter((claim) => memberIdSet.has(claim.ownerId) && params.getDateKey(claim.createdAt) <= params.endDateKey)

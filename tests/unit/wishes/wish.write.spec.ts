@@ -2,6 +2,46 @@ import { describe, expect, it, vi } from 'vitest'
 import { addWishCloud, addWishLocal, deleteWishLocal, runCloudMutation, updateWishLocal } from '../../../src/modules/wishes/wish.write'
 
 describe('wish.write', () => {
+  it('creates wishes idempotently and returns before a full refresh', async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: 'wish-request-1', error: null })
+    const syncFromSupabase = vi.fn().mockResolvedValue(true)
+    const onLoadingChange = vi.fn()
+    const onSyncMessage = vi.fn()
+
+    const wishId = await addWishCloud({
+      supabase: { rpc } as never,
+      currentSpaceId: 'space-1',
+      wishId: 'wish-request-1',
+      ownerId: 'member-a',
+      includeProgressFields: true,
+      draft: {
+        title: '旅行',
+        category: '生活',
+        note: '一起去海边',
+        ownerId: 'member-a',
+        scope: 'shared',
+        progressMode: 'steps',
+        progressCurrent: 0,
+        progressTarget: 0,
+        progressUnit: '',
+      },
+      initialSteps: [{ title: '订车票', starCoinValue: 1 }],
+      onLoadingChange,
+      onSyncMessage,
+      syncFromSupabase,
+    })
+
+    expect(wishId).toBe('wish-request-1')
+    expect(rpc).toHaveBeenCalledWith('create_wish_with_initial_steps', expect.objectContaining({
+      target_wish_id: 'wish-request-1',
+      target_space_id: 'space-1',
+      initial_steps: [{ title: '订车票', star_coin_value: 1 }],
+    }))
+    expect(syncFromSupabase).not.toHaveBeenCalled()
+    expect(onLoadingChange).toHaveBeenNthCalledWith(1, true)
+    expect(onLoadingChange).toHaveBeenLastCalledWith(false)
+  })
+
   it('adds a local wish with normalized initial steps', () => {
     const result = addWishLocal(
       {

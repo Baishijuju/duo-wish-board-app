@@ -1,6 +1,39 @@
 export interface RealtimeChangePayload {
+  eventType?: unknown
   new?: Record<string, unknown> | null
   old?: Record<string, unknown> | null
+}
+
+export function isCountProgressRewardClaimEcho(
+  payload: RealtimeChangePayload,
+  wishId: string,
+  ownerId: string,
+) {
+  const claim = payload.new
+
+  return payload.eventType === 'INSERT'
+    && claim?.owner_id === ownerId
+    && claim?.source_wish_id === wishId
+    && claim?.claim_kind === 'count_star_coin'
+    && claim?.source_step_id == null
+}
+
+export function isCountProgressWishThreadEcho(
+  payload: RealtimeChangePayload,
+  wishId: string,
+  ownerId: string,
+) {
+  const thread = payload.new
+  const meta = thread?.meta
+
+  return payload.eventType === 'INSERT'
+    && thread?.actor_id === ownerId
+    && thread?.wish_id === wishId
+    && thread?.event_kind === 'reward_claimed'
+    && !!meta
+    && typeof meta === 'object'
+    && 'claimKind' in meta
+    && meta.claimKind === 'count_star_coin'
 }
 
 export function shouldSyncForWishRealtimeEvent(

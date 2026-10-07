@@ -76,7 +76,7 @@ export function useListWishBoardState() {
   }
 
   function getWishEarnedStarCoins(wish: WishRecord) {
-    return wishStore.rewardClaims
+    return wishStore.rewardClaimAccountingRows
       .filter((claim) => claim.sourceWishId === wish.id && wishStarCoinClaimKinds.has(claim.claimKind))
       .reduce((total, claim) => total + Math.max(0, claim.starCoinDelta), 0)
   }

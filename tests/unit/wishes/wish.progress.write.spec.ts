@@ -112,8 +112,15 @@ describe('wish.progress.write', () => {
       onSyncMessage: vi.fn(),
     })
 
-    expect(result).toBe(true)
-  expect(runCloudMutation).toHaveBeenCalledWith(expect.any(Function), '进度和星星币已同步到 Supabase。')
+    expect(result).toMatchObject({
+      localWish: { id: 'wish-1', progressCurrent: 3 },
+      skipLocalClaim: true,
+    })
+    expect(runCloudMutation).toHaveBeenCalledWith(
+      expect.any(Function),
+      '进度已同步到 Supabase。',
+      { syncAfterWrite: false },
+    )
   })
 
   it('adds, toggles and deletes local steps', async () => {

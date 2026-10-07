@@ -5,6 +5,7 @@ export interface AppCapabilities {
   hasWishProgress: boolean
   hasWishCommentImages: boolean
   hasRewardPools: boolean
+  hasRewardClaimSummary: boolean
   hasUnifiedThreads: boolean
   hasMonthlySnapshots: boolean
   hasWishImageNote: boolean
@@ -27,6 +28,7 @@ const DEFAULT_APP_CAPABILITIES: AppCapabilities = {
   hasWishProgress: false,
   hasWishCommentImages: false,
   hasRewardPools: false,
+  hasRewardClaimSummary: false,
   hasUnifiedThreads: false,
   hasMonthlySnapshots: false,
   hasWishImageNote: false,
@@ -40,6 +42,7 @@ const APP_CAPABILITY_MISSING_MESSAGES: Record<AppCapabilityKey, string> = {
   hasWishProgress: '当前 Supabase 环境还没有愿望进度能力，请先执行新的进度 migration。',
   hasWishCommentImages: '当前 Supabase 环境还没有留言图片能力，请先执行新的留言图片 migration。',
   hasRewardPools: '当前 Supabase 环境还没有奖励池能力，请先执行新的奖励 migration。',
+  hasRewardClaimSummary: '当前 Supabase 环境还没有奖励流水汇总能力，请先执行新的奖励流水优化 migration。',
   hasUnifiedThreads: '当前 Supabase 环境还没有手账主链能力，请先执行新的手账 migration。',
   hasMonthlySnapshots: '当前 Supabase 环境还没有月刊快照能力，请先执行新的手账 migration。',
   hasWishImageNote: '当前 Supabase 环境还没有图片备注能力，请先执行新的图片备注 migration。',
@@ -68,6 +71,7 @@ export function normalizeAppCapabilities(value: unknown): AppCapabilities {
     hasWishProgress: readBoolean(source, 'has_wish_progress', 'hasWishProgress'),
     hasWishCommentImages: readBoolean(source, 'has_wish_comment_images', 'hasWishCommentImages'),
     hasRewardPools: readBoolean(source, 'has_reward_pools', 'hasRewardPools'),
+    hasRewardClaimSummary: readBoolean(source, 'has_reward_claim_summary', 'hasRewardClaimSummary'),
     hasUnifiedThreads: readBoolean(source, 'has_unified_threads', 'hasUnifiedThreads'),
     hasMonthlySnapshots: readBoolean(source, 'has_monthly_snapshots', 'hasMonthlySnapshots'),
     hasWishImageNote: readBoolean(source, 'has_wish_image_note', 'hasWishImageNote'),

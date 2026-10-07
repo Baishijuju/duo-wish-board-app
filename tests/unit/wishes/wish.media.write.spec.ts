@@ -130,16 +130,32 @@ describe('wish.media.write', () => {
   })
 
   it('returns upload summary for comment images', async () => {
+    const single = vi.fn().mockResolvedValue({
+      data: {
+        id: 'image-1',
+        created_by: 'member-a',
+        storage_path: 'comment-1/member-a/a.png',
+        file_name: 'a.png',
+        mime_type: 'image/png',
+        size_bytes: 1,
+        created_at: '2026-01-01T00:00:00.000Z',
+      },
+      error: null,
+    })
+    const select = vi.fn().mockReturnValue({ single })
+    const insert = vi.fn().mockReturnValue({ select })
     const supabase = {
       storage: {
         from: () => ({
           upload: vi.fn().mockResolvedValue({ error: null }),
           remove: vi.fn().mockResolvedValue(undefined),
+          createSignedUrls: vi.fn().mockResolvedValue({
+            data: [{ path: 'comment-1/member-a/a.png', signedUrl: 'https://example.test/signed-image' }],
+            error: null,
+          }),
         }),
       },
-      from: () => ({
-        insert: vi.fn().mockResolvedValue({ error: null }),
-      }),
+      from: () => ({ insert }),
     }
 
     const result = await uploadCommentImagesWrite({
