@@ -129,6 +129,7 @@ function isActivePath(targetPath: string) {
         <div class="shell-brand">
           <div class="shell-brand-row">
             <h1>人生愿望清单</h1>
+            <RouterLink class="board-entry-link" :to="{ name: 'board' }">展板</RouterLink>
           </div>
           <p class="shell-status shell-status-inline">
             <span>{{ spaceSummaryLabel }}</span>
@@ -218,6 +219,27 @@ function isActivePath(targetPath: string) {
   line-height: var(--type-card-title-line);
   letter-spacing: var(--type-card-title-tracking);
   color: color-mix(in srgb, var(--text-main) 84%, var(--text-soft));
+}
+
+.board-entry-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-soft);
+  background: color-mix(in srgb, var(--surface-card) 72%, transparent);
+  font-size: var(--type-l7-size);
+  line-height: 1;
+  text-decoration: none;
+}
+
+.board-entry-link:hover,
+.board-entry-link.router-link-active {
+  border-color: var(--accent-border);
+  color: var(--accent-dark);
+  background: var(--accent-panel);
 }
 
 .shell-status {

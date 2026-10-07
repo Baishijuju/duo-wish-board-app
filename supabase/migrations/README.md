@@ -49,6 +49,9 @@
 - 202608040006_backfill_missing_reward_claim_threads.sql
 - 202610070001_reward_claim_sync_summary.sql
 - 202610070002_idempotent_wish_creation.sql
+- 202610070003_shared_board.sql
+- 202610070004_shared_board_todos.sql
+- 202610070003_shared_board.sql
 
 ## historical-patch（按需执行）
 

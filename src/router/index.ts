@@ -5,6 +5,7 @@ import ComposePage from '../pages/ComposeAtelier.vue'
 import ReviewPage from '../pages/MonthlyReviewPreview.vue'
 import WishDetailPage from '../pages/WishDetailAtelier.vue'
 import SettingsPage from '../pages/Settings.vue'
+import BoardPage from '../pages/BoardAtelier.vue'
 
 const isGitHubPagesHost = typeof window !== 'undefined' && window.location.hostname.endsWith('github.io')
 
@@ -40,6 +41,11 @@ const routes: RouteRecordRaw[] = [
     alias: '/settings',
     name: 'space',
     component: SettingsPage,
+  },
+  {
+    path: '/board',
+    name: 'board',
+    component: BoardPage,
   },
 ]
 

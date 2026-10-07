@@ -24,6 +24,8 @@
 - `public.wish_thread_images`
 - `public.thread_reactions`
 - `public.monthly_journal_snapshots`
+- `public.shared_boards`
+- `public.shared_board_todos`
 
 ## 当前前端必需 Storage bucket
 
