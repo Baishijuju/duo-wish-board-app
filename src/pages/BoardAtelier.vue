@@ -4,7 +4,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createId } from '../shared/ids'
 import { useAuthStore } from '../stores/auth'
 import { supabase } from '../lib/supabase'
-import { useWishStore, type WishThreadEntry } from '../stores/wishes'
+import BoardWeeklyCharts from '../components/BoardWeeklyCharts.vue'
 
 type BoardTextBlock = {
   id: string
@@ -35,7 +35,6 @@ type SharedBoardTodo = {
   space_id: string
   due_date: string
   assignee_id: string | null
-  project: string
   title: string
   is_done: boolean
   subtasks: BoardTodoSubtask[]
@@ -47,7 +46,6 @@ type SharedBoardTodo = {
 }
 
 const authStore = useAuthStore()
-const wishStore = useWishStore()
 const isLoading = ref(false)
 const isSaving = ref(false)
 const isEditing = ref(false)
@@ -68,11 +66,9 @@ const boardMainLayout = ref<HTMLElement | null>(null)
 const boardTodoPanel = ref<HTMLElement | null>(null)
 const leftPaneRatio = ref(42)
 const upperPaneRatio = ref(66)
-const selectedTodoDate = ref(getBeijingDateKey())
 const isTodoComposerOpen = ref(false)
 const isCreatingTodo = ref(false)
 const todoDraftTitle = ref('')
-const todoDraftProject = ref('')
 const todoDraftDate = ref(getBeijingDateKey())
 const todoDraftAssignee = ref('')
 const todoDraftSubtasks = ref<BoardTodoSubtask[]>([])
@@ -83,17 +79,13 @@ const todoEditSubtaskTitle = ref('')
 const isAuthenticatedSpace = computed(() => authStore.usesSupabaseSpace && !!authStore.currentSpaceId)
 const lastEditorName = computed(() => authStore.members.find((member) => member.id === updatedBy.value)?.displayName ?? '')
 const feedbackClass = computed(() => `board-feedback-${feedbackTone.value}`)
-const yesterdayDate = computed(() => shiftDateKey(selectedTodoDate.value, -1))
-const selectedDayTodos = computed(() => boardTodos.value
-  .filter((todo) => todo.due_date === selectedTodoDate.value)
-  .sort((left, right) => left.sort_order - right.sort_order || left.created_at.localeCompare(right.created_at)))
-const selectedDayTodoProgress = computed(() => {
-  const total = selectedDayTodos.value.length
-  const done = selectedDayTodos.value.filter((todo) => todo.is_done).length
+const sortedTodos = computed(() => [...boardTodos.value]
+  .sort((left, right) => left.due_date.localeCompare(right.due_date) || left.sort_order - right.sort_order || left.created_at.localeCompare(right.created_at)))
+const todoProgress = computed(() => {
+  const total = sortedTodos.value.length
+  const done = sortedTodos.value.filter((todo) => todo.is_done).length
   return { done, total }
 })
-const todayWishProgress = computed(() => getWishProgressEntries(getBeijingDateKey()))
-const yesterdayWishProgress = computed(() => getWishProgressEntries(shiftDateKey(getBeijingDateKey(), -1)))
 
 let boardChannel: RealtimeChannel | null = null
 let loadSequence = 0
@@ -230,36 +222,7 @@ function getBeijingDateKey(date = new Date()) {
   return `${shifted.getUTCFullYear()}-${`${shifted.getUTCMonth() + 1}`.padStart(2, '0')}-${`${shifted.getUTCDate()}`.padStart(2, '0')}`
 }
 
-function shiftDateKey(dateKey: string, days: number) {
-  const [year, month, day] = dateKey.split('-').map(Number)
-  const shifted = new Date(Date.UTC(year!, month! - 1, day! + days))
-  return `${shifted.getUTCFullYear()}-${`${shifted.getUTCMonth() + 1}`.padStart(2, '0')}-${`${shifted.getUTCDate()}`.padStart(2, '0')}`
-}
 
-function getWishProgressEntries(dateKey: string) {
-  return wishStore.wishThreads
-    .filter((thread) => thread.wishId && getBeijingDateKey(new Date(new Date(thread.createdAt).getTime())) === dateKey && isWishProgressThread(thread))
-    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-    .map((thread) => ({
-      id: thread.id,
-      member: thread.actorId ? authStore.members.find((member) => member.id === thread.actorId)?.displayName ?? '成员' : '我们',
-      wish: wishStore.findById(thread.wishId!)?.title ?? '一条愿望',
-      text: thread.messageText,
-      time: formatBoardTime(thread.createdAt),
-    }))
-}
-
-function isWishProgressThread(thread: WishThreadEntry) {
-  if (thread.eventKind === 'wish_step_completed' || thread.eventKind === 'wish_completed') {
-    return true
-  }
-
-  if (thread.eventKind !== 'reward_claimed') {
-    return false
-  }
-
-  return ['count_star_coin', 'count_reward', 'step_reward', 'step_star_coin'].includes(String(thread.meta.claimKind ?? ''))
-}
 
 function normalizeTodoSubtasks(value: unknown): BoardTodoSubtask[] {
   if (!Array.isArray(value)) {
@@ -299,9 +262,9 @@ async function loadTodos(boardIdValue = boardId.value) {
 
   const { data, error } = await supabase
     .from('shared_board_todos')
-    .select('id, board_id, space_id, due_date, assignee_id, project, title, is_done, subtasks, sort_order, created_by, updated_by, created_at, updated_at')
+    .select('id, board_id, space_id, due_date, assignee_id, title, is_done, subtasks, sort_order, created_by, updated_by, created_at, updated_at')
     .eq('board_id', boardIdValue)
-    .eq('due_date', selectedTodoDate.value)
+    .order('due_date', { ascending: true })
     .order('sort_order', { ascending: true })
     .order('created_at', { ascending: true })
 
@@ -326,7 +289,7 @@ async function updateTodo(todoId: string, updates: Partial<Pick<SharedBoardTodo,
     .update({ ...updates, updated_by: authStore.currentMemberId })
     .eq('id', todoId)
     .eq('space_id', authStore.currentSpaceId)
-    .select('id, board_id, space_id, due_date, assignee_id, project, title, is_done, subtasks, sort_order, created_by, updated_by, created_at, updated_at')
+    .select('id, board_id, space_id, due_date, assignee_id, title, is_done, subtasks, sort_order, created_by, updated_by, created_at, updated_at')
     .single()
 
   if (error || !data) {
@@ -372,14 +335,13 @@ async function saveTodoDetails() {
     .update({
       due_date: draft.due_date,
       assignee_id: draft.assignee_id,
-      project: draft.project.trim(),
       title: draft.title.trim(),
       subtasks: draft.subtasks.map((subtask) => ({ ...subtask, title: subtask.title.trim() })).filter((subtask) => subtask.title),
       updated_by: authStore.currentMemberId,
     })
     .eq('id', draft.id)
     .eq('space_id', authStore.currentSpaceId)
-    .select('id, board_id, space_id, due_date, assignee_id, project, title, is_done, subtasks, sort_order, created_by, updated_by, created_at, updated_at')
+    .select('id, board_id, space_id, due_date, assignee_id, title, is_done, subtasks, sort_order, created_by, updated_by, created_at, updated_at')
     .single()
 
   if (error || !data) {
@@ -431,7 +393,6 @@ async function createTodo() {
     space_id: authStore.currentSpaceId,
     due_date: todoDraftDate.value,
     assignee_id: todoDraftAssignee.value || null,
-    project: todoDraftProject.value.trim(),
     title,
     is_done: false,
     subtasks: todoDraftSubtasks.value.filter((subtask) => subtask.title.trim()).map((subtask) => ({ ...subtask, title: subtask.title.trim() })),
@@ -443,7 +404,7 @@ async function createTodo() {
   const { data, error } = await supabase
     .from('shared_board_todos')
     .insert(payload)
-    .select('id, board_id, space_id, due_date, assignee_id, project, title, is_done, subtasks, sort_order, created_by, updated_by, created_at, updated_at')
+    .select('id, board_id, space_id, due_date, assignee_id, title, is_done, subtasks, sort_order, created_by, updated_by, created_at, updated_at')
     .single()
 
   isCreatingTodo.value = false
@@ -455,10 +416,9 @@ async function createTodo() {
 
   boardTodos.value = [...boardTodos.value, { ...(data as SharedBoardTodo), subtasks: normalizeTodoSubtasks((data as SharedBoardTodo).subtasks) }]
   todoDraftTitle.value = ''
-  todoDraftProject.value = ''
   todoDraftAssignee.value = ''
   todoDraftSubtasks.value = []
-  todoDraftDate.value = selectedTodoDate.value
+  todoDraftDate.value = getBeijingDateKey()
   isTodoComposerOpen.value = false
 }
 
@@ -713,11 +673,6 @@ watch(
   { immediate: true },
 )
 
-watch(selectedTodoDate, () => {
-  if (boardId.value) {
-    void loadTodos()
-  }
-})
 
 onBeforeUnmount(() => {
   if (isFullscreen.value) {
@@ -742,7 +697,6 @@ onBeforeUnmount(() => {
   <section ref="boardRoot" class="shared-board-page" :class="{ 'is-editing': isEditing, 'is-fullscreen': isFullscreen }" :style="splitterStyle">
     <header class="shared-board-header">
       <div class="shared-board-heading">
-        <p class="shared-board-kicker">共享 · 便签墙</p>
         <h2 v-if="!isEditing">{{ boardTitle }}</h2>
         <p v-if="updatedAt && lastEditorName" class="shared-board-meta">最近由{{ lastEditorName }}整理 · {{ formatBoardTime(updatedAt) }}</p>
       </div>
@@ -780,32 +734,7 @@ onBeforeUnmount(() => {
 
       <div ref="boardMainLayout" class="board-main-layout">
         <section class="board-progress-panel" aria-label="愿望进度回看">
-          <header class="board-section-heading">
-            <div><p>一起在往前</p><h3>愿望进度</h3></div>
-            <span class="board-period-caption">昨天 · 今天</span>
-          </header>
-          <div class="board-progress-days">
-            <section class="board-progress-day">
-              <header><strong>昨天</strong><span>{{ yesterdayWishProgress.length }} 条</span></header>
-              <ul v-if="yesterdayWishProgress.length">
-                <li v-for="entry in yesterdayWishProgress" :key="entry.id">
-                  <span class="board-progress-dot" aria-hidden="true"></span>
-                  <div><strong>{{ entry.wish }}</strong><p>{{ entry.text }}</p><small>{{ entry.member }} · {{ entry.time }}</small></div>
-                </li>
-              </ul>
-              <p v-else class="board-progress-empty">昨天暂时没有新的推进。</p>
-            </section>
-            <section class="board-progress-day is-today">
-              <header><strong>今天</strong><span>{{ todayWishProgress.length }} 条</span></header>
-              <ul v-if="todayWishProgress.length">
-                <li v-for="entry in todayWishProgress" :key="entry.id">
-                  <span class="board-progress-dot" aria-hidden="true"></span>
-                  <div><strong>{{ entry.wish }}</strong><p>{{ entry.text }}</p><small>{{ entry.member }} · {{ entry.time }}</small></div>
-                </li>
-              </ul>
-              <p v-else class="board-progress-empty">今天的第一步还在等你们。</p>
-            </section>
-          </div>
+          <BoardWeeklyCharts />
         </section>
 
         <div
@@ -827,7 +756,7 @@ onBeforeUnmount(() => {
 
         <section class="board-notes-panel" aria-label="共享便签">
           <header class="board-section-heading board-notes-heading">
-            <div><p>想到的事，先放在这里</p><h3>{{ isEditing ? '整理便签' : '便签' }}</h3></div>
+            <h3>{{ isEditing ? '整理便签' : '便签' }}</h3>
             <span class="board-note-count">{{ isEditing ? draftBlocks.length : boardBlocks.length }}</span>
           </header>
           <div v-if="isEditing ? draftBlocks.length : boardBlocks.length" class="shared-board-wall">
@@ -850,16 +779,14 @@ onBeforeUnmount(() => {
                 <textarea v-model="block.text" rows="5" maxlength="12000" :aria-label="`便签 ${index + 1} 内容`" placeholder="写下你们想记住的事…" />
               </template>
               <template v-else>
-                <div class="board-note-topline"><span>便签 {{ `${index + 1}`.padStart(2, '0') }}</span><span v-if="block.title" class="board-note-pin" aria-hidden="true"></span></div>
                 <h3 v-if="block.title">{{ block.title }}</h3>
                 <p>{{ block.text }}</p>
               </template>
             </article>
           </div>
           <div v-else class="board-notes-empty">
-            <p>还没有便签</p>
+            <p>暂无便签</p>
             <button v-if="isEditing" type="button" @click="addTextBlock">＋ 写第一张便签</button>
-            <span v-else>点“编辑便签”开始写下你们想记住的事。</span>
           </div>
           <button v-if="isEditing" class="shared-board-add-button" type="button" @click="addTextBlock">＋ 添加便签</button>
         </section>
@@ -885,27 +812,20 @@ onBeforeUnmount(() => {
       <section ref="boardTodoPanel" class="board-todo-panel" aria-label="待办清单">
         <header class="board-todo-header">
           <div class="board-section-heading">
-            <div><p>把想做的事，一项项完成</p><h3>待办</h3></div>
-            <span class="board-todo-completion">{{ selectedDayTodoProgress.done }} / {{ selectedDayTodoProgress.total }}</span>
-          </div>
-          <div class="board-todo-date-tabs" aria-label="选择待办日期">
-            <button type="button" :class="{ 'is-active': selectedTodoDate === yesterdayDate }" @click="selectedTodoDate = yesterdayDate">昨天</button>
-            <button type="button" :class="{ 'is-active': selectedTodoDate === getBeijingDateKey() }" @click="selectedTodoDate = getBeijingDateKey()">今天</button>
-            <button type="button" :class="{ 'is-active': selectedTodoDate === shiftDateKey(getBeijingDateKey(), 1) }" @click="selectedTodoDate = shiftDateKey(getBeijingDateKey(), 1)">明天</button>
-            <input v-model="selectedTodoDate" type="date" aria-label="选择其他待办日期" />
+            <h3>待办</h3>
+            <span class="board-todo-completion">{{ todoProgress.done }} / {{ todoProgress.total }}</span>
           </div>
         </header>
 
-        <div class="board-todo-columns" aria-hidden="true"><span>完成</span><span>事项 / 项目</span><span>负责人</span><span></span></div>
+        <div class="board-todo-columns" aria-hidden="true"><span>完成</span><span>事项 / 到期日</span><span>负责人</span><span></span></div>
         <div class="board-todo-list">
-          <article v-for="todo in selectedDayTodos" :key="todo.id" class="board-todo-row" :class="{ 'is-done': todo.is_done }">
+          <article v-for="todo in sortedTodos" :key="todo.id" class="board-todo-row" :class="{ 'is-done': todo.is_done }">
             <label class="board-todo-check"><input :checked="todo.is_done" type="checkbox" :aria-label="`完成：${todo.title}`" @change="void updateTodo(todo.id, { is_done: !todo.is_done })" /></label>
             <div class="board-todo-main">
               <template v-if="editingTodoId === todo.id && todoEditDraft">
                 <input v-model="todoEditDraft.title" class="board-todo-edit-title" aria-label="待办标题" maxlength="240" />
                 <div class="board-todo-edit-fields">
-                  <input v-model="todoEditDraft.project" aria-label="项目" placeholder="项目" maxlength="120" />
-                  <input v-model="todoEditDraft.due_date" aria-label="日期" type="date" />
+                  <input v-model="todoEditDraft.due_date" aria-label="到期日" type="date" />
                   <select v-model="todoEditDraft.assignee_id" aria-label="负责人">
                     <option value="">所有人</option>
                     <option v-for="member in authStore.members" :key="member.id" :value="member.id">{{ member.displayName }}</option>
@@ -920,7 +840,7 @@ onBeforeUnmount(() => {
               </template>
               <template v-else>
                 <strong>{{ todo.title }}</strong>
-                <span v-if="todo.project" class="board-todo-project">{{ todo.project }}</span>
+                <time class="board-todo-due-date" :datetime="todo.due_date">{{ todo.due_date }} 到期</time>
                 <ul v-if="todo.subtasks.length" class="board-todo-subtasks">
                   <li v-for="subtask in todo.subtasks" :key="subtask.id">
                     <label><input :checked="subtask.is_done" type="checkbox" :aria-label="`完成小项：${subtask.title}`" @change="toggleTodoSubtask(todo, subtask.id)" /><span :class="{ 'is-done': subtask.is_done }">{{ subtask.title }}</span></label>
@@ -935,27 +855,30 @@ onBeforeUnmount(() => {
                 <button type="button" aria-label="取消编辑" @click="cancelEditingTodo()">×</button>
               </template>
               <template v-else>
-                <button type="button" :aria-label="`编辑待办：${todo.title}`" @click="startEditingTodo(todo)">编辑</button>
-                <button type="button" :aria-label="`删除待办：${todo.title}`" @click="void deleteTodo(todo.id)">×</button>
+                <details class="board-todo-more">
+                  <summary :aria-label="`更多操作：${todo.title}`" title="更多操作">···</summary>
+                  <div class="board-todo-menu">
+                    <button type="button" :aria-label="`编辑待办：${todo.title}`" @click="startEditingTodo(todo)">编辑</button>
+                    <button type="button" :aria-label="`删除待办：${todo.title}`" @click="void deleteTodo(todo.id)">删除</button>
+                  </div>
+                </details>
               </template>
             </div>
           </article>
-          <p v-if="!selectedDayTodos.length" class="board-todo-empty">这一天还没有待办。</p>
+          <p v-if="!sortedTodos.length" class="board-todo-empty">还没有待办。</p>
         </div>
 
         <div v-if="isTodoComposerOpen" class="board-todo-composer">
           <input v-model="todoDraftTitle" aria-label="待办标题" placeholder="写一项要做的事" maxlength="240" @keydown.enter.prevent="void createTodo()" />
-          <input v-model="todoDraftProject" aria-label="项目" placeholder="项目（可选）" maxlength="120" />
-          <input v-model="todoDraftDate" aria-label="日期" type="date" />
+          <input v-model="todoDraftDate" aria-label="到期日" type="date" />
           <select v-model="todoDraftAssignee" aria-label="负责人"><option value="">所有人</option><option v-for="member in authStore.members" :key="member.id" :value="member.id">{{ member.displayName }}</option></select>
           <div v-if="todoDraftSubtasks.length" class="board-todo-draft-subtasks"><label v-for="subtask in todoDraftSubtasks" :key="subtask.id"><input v-model="subtask.is_done" type="checkbox" /><span>{{ subtask.title }}</span></label></div>
           <div class="board-todo-subtask-add"><input v-model="todoSubtaskTitle" aria-label="添加小项" placeholder="小项（可选）" @keydown.enter.prevent="addTodoDraftSubtask" /><button type="button" @click="addTodoDraftSubtask">添加小项</button></div>
           <div class="board-todo-composer-actions"><button type="button" @click="isTodoComposerOpen = false">取消</button><button type="button" :disabled="isCreatingTodo || !todoDraftTitle.trim()" @click="void createTodo()">{{ isCreatingTodo ? '添加中…' : '添加待办' }}</button></div>
         </div>
-        <button v-else class="board-todo-add-button" type="button" @click="todoDraftDate = selectedTodoDate; isTodoComposerOpen = true">＋ 添加待办</button>
+        <button v-else class="board-todo-add-button" type="button" @click="todoDraftDate = getBeijingDateKey(); isTodoComposerOpen = true">＋ 添加待办</button>
       </section>
 
-      <p v-if="isEditing" class="shared-board-edit-hint">便签与待办分别保存，另一台设备会自动更新。</p>
     </template>
   </section>
 </template>
@@ -975,6 +898,15 @@ export function formatBoardTime(value: string) {
 
 <style scoped>
 .shared-board-page {
+  --bg: #f5f6f4;
+  --surface-card: #fdfdfa;
+  --surface-soft: #eff1ee;
+  --input-bg: #fdfdfa;
+  --text-main: #2b3430;
+  --text-soft: #69736e;
+  --line: rgba(54, 69, 60, 0.12);
+  --line-strong: rgba(54, 69, 60, 0.24);
+  --card-border: rgba(54, 69, 60, 0.14);
   width: min(100%, 960px);
   min-height: calc(100dvh - 210px);
   margin: 0 auto;
@@ -1094,9 +1026,9 @@ export function formatBoardTime(value: string) {
 .board-notes-panel,
 .board-todo-panel {
   min-width: 0;
-  border: 1px solid var(--card-border);
-  border-radius: 12px;
-  background: var(--surface-card);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .board-progress-panel,
@@ -1123,8 +1055,9 @@ export function formatBoardTime(value: string) {
 .board-section-heading h3 {
   margin: 0.08rem 0 0;
   color: var(--text-main);
-  font-family: var(--font-heading);
-  font-size: 1.08rem;
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -1224,13 +1157,14 @@ export function formatBoardTime(value: string) {
 
 .board-notes-panel .board-note {
   min-height: 100px;
-  padding: 0.65rem 0.72rem;
-  border-radius: 9px;
+  padding: 0.8rem;
+  border-radius: 8px;
   box-shadow: none;
 }
 
 .board-notes-panel .board-note h3 {
-  margin: 0.38rem 0 0.25rem;
+  margin: 0 0 0.45rem;
+  font-family: var(--font-body);
   font-size: 0.96rem;
 }
 
@@ -1293,6 +1227,7 @@ export function formatBoardTime(value: string) {
   flex-direction: column;
   overflow: hidden;
   padding: 0.6rem 0.72rem;
+  border-top: 1px solid var(--line-strong);
 }
 
 .board-todo-header {
@@ -1344,7 +1279,7 @@ export function formatBoardTime(value: string) {
 .board-todo-columns,
 .board-todo-row {
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) minmax(70px, 0.22fr) 78px;
+  grid-template-columns: 32px minmax(0, 1fr) minmax(60px, 0.16fr) 48px;
   gap: 0.45rem;
   align-items: center;
 }
@@ -1352,7 +1287,7 @@ export function formatBoardTime(value: string) {
 .board-todo-columns {
   flex: 0 0 auto;
   padding: 0.3rem 0.4rem;
-  border-top: 1px solid var(--line);
+  border-top: 0;
   border-bottom: 1px solid var(--line);
   color: var(--text-soft);
   font-size: 0.67rem;
@@ -1370,8 +1305,9 @@ export function formatBoardTime(value: string) {
 }
 
 .board-todo-row {
-  min-height: 40px;
-  padding: 0.22rem 0.4rem;
+  min-height: 44px;
+  padding: 0.5rem 0.4rem;
+  align-items: start;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
 }
 
@@ -1405,11 +1341,11 @@ export function formatBoardTime(value: string) {
 
 .board-todo-main > strong {
   color: var(--text-main);
-  font-size: 0.82rem;
-  font-weight: 550;
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
-.board-todo-project,
+.board-todo-due-date,
 .board-todo-assignee {
   overflow: hidden;
   color: var(--text-soft);
@@ -1419,19 +1355,18 @@ export function formatBoardTime(value: string) {
 }
 
 .board-todo-assignee {
-  padding: 0.16rem 0.4rem;
-  border-radius: 999px;
-  background: var(--surface-soft);
-  text-align: center;
+  padding: 0.35rem 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: right;
 }
 
 .board-todo-subtasks {
   width: 100%;
   grid-column: 2 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.15rem 0.75rem;
-  margin: 0.05rem 0 0;
+  display: grid;
+  gap: 0.15rem;
+  margin: 0.3rem 0 0;
   padding-left: 0.1rem;
 }
 
@@ -1441,7 +1376,19 @@ export function formatBoardTime(value: string) {
   align-items: center;
   gap: 0.28rem;
   color: var(--text-soft);
-  font-size: 0.7rem;
+  font-size: 0.8rem;
+  min-height: 32px;
+}
+
+.board-todo-subtasks li,
+.board-todo-subtasks label,
+.board-todo-subtasks label > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.board-todo-subtasks input[type='checkbox'] {
+  flex: 0 0 16px;
 }
 
 .board-todo-subtasks input,
@@ -1459,6 +1406,36 @@ export function formatBoardTime(value: string) {
   display: flex;
   justify-content: flex-end;
   gap: 0.15rem;
+}
+
+.board-todo-more summary {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  list-style: none;
+  cursor: pointer;
+  color: var(--text-soft);
+  border-radius: 6px;
+  font-size: 1.15rem;
+}
+
+.board-todo-more summary::-webkit-details-marker {
+  display: none;
+}
+
+.board-todo-more summary:hover,
+.board-todo-more[open] summary {
+  background: var(--surface-soft);
+}
+
+.board-todo-menu {
+  display: grid;
+  gap: 2px;
+}
+
+.board-todo-menu button {
+  min-height: 44px;
 }
 
 .board-todo-row-actions button {
@@ -1488,8 +1465,9 @@ export function formatBoardTime(value: string) {
   min-height: 38px;
   flex: 0 0 auto;
   margin-top: 0.4rem;
-  border: 1px dashed var(--line-strong);
-  border-radius: 8px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
   color: var(--text-soft);
   background: transparent;
   font: inherit;
@@ -1498,7 +1476,7 @@ export function formatBoardTime(value: string) {
 
 .board-todo-composer {
   display: grid;
-  grid-template-columns: minmax(160px, 1.5fr) minmax(100px, 0.7fr) 140px 130px;
+  grid-template-columns: minmax(160px, 1fr) 140px 130px;
   gap: 0.4rem;
   flex: 0 0 auto;
   overflow-y: auto;
@@ -1565,9 +1543,14 @@ export function formatBoardTime(value: string) {
 
 .shared-board-page.is-fullscreen > .board-main-layout {
   flex: var(--board-upper-fr) 1 0;
-  grid-template-columns: minmax(0, var(--board-left-pane)) 14px minmax(0, 1fr);
+  grid-template-columns: minmax(0, var(--board-left-pane)) 6px minmax(0, 1fr);
+  gap: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+.shared-board-page.is-fullscreen {
+  gap: 2px;
 }
 
 .board-splitter {
@@ -1596,27 +1579,46 @@ export function formatBoardTime(value: string) {
 
 .board-splitter-vertical {
   display: flex;
-  width: 14px;
-  margin: 0 -0.25rem;
+  width: 6px;
+  margin: 0;
   cursor: col-resize;
 }
 
+.board-splitter::before {
+  content: '';
+  position: absolute;
+}
+
+.board-splitter-vertical::before {
+  top: 0;
+  bottom: 0;
+  left: -11px;
+  right: -11px;
+}
+
 .board-splitter-vertical span {
-  width: 4px;
+  width: 2px;
   height: 38px;
 }
 
 .board-splitter-horizontal {
   display: flex;
-  flex: 0 0 16px;
+  flex: 0 0 6px;
   width: 100%;
-  margin: -0.2rem 0;
+  margin: 0;
   cursor: row-resize;
+}
+
+.board-splitter-horizontal::before {
+  top: -11px;
+  bottom: -11px;
+  left: 0;
+  right: 0;
 }
 
 .board-splitter-horizontal span {
   width: 52px;
-  height: 4px;
+  height: 2px;
 }
 
 .shared-board-page.is-fullscreen .board-progress-panel,
@@ -1655,12 +1657,13 @@ export function formatBoardTime(value: string) {
 
 .shared-board-primary-button,
 .shared-board-quiet-button,
+.shared-board-edit-button,
 .shared-board-add-button,
 .board-note-order-actions button {
   min-height: 44px;
   padding: 0.5rem 0.8rem;
   border: 1px solid var(--line-strong);
-  border-radius: 10px;
+  border-radius: 6px;
   color: var(--text-main);
   background: var(--surface-card);
   font: inherit;
@@ -1736,11 +1739,11 @@ export function formatBoardTime(value: string) {
 }
 
 .board-note-tone-1 {
-  background: #f7f5ec;
+  background: #f0f5f1;
 }
 
 .board-note-tone-2 {
-  background: #f7eee8;
+  background: #f8f1ee;
 }
 
 .board-note.is-long-note {
@@ -1999,7 +2002,7 @@ export function formatBoardTime(value: string) {
   }
 
   .shared-board-page.is-fullscreen > .board-main-layout {
-    grid-template-columns: minmax(0, var(--board-left-pane)) 14px minmax(0, 1fr);
+    grid-template-columns: minmax(0, var(--board-left-pane)) 6px minmax(0, 1fr);
   }
 }
 
