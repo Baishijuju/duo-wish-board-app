@@ -29,4 +29,5 @@ test-results
 
 # Local CLI caches
 .npx-cache/
+.wrangler/
 supabase/.temp/
