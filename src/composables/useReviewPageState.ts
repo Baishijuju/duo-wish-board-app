@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { getThreadEventKindLabel } from '../shared/statusSemantics'
 import { useAuthStore } from '../stores/auth'
 import {
@@ -11,6 +11,11 @@ import { formatBeijingDate, formatBeijingDateTime } from '../utils/datetime'
 export function useReviewPageState() {
   const authStore = useAuthStore()
   const wishStore = useWishStore()
+
+  // 月刊快照已从主同步移出（单次 1 MB 以上），改为打开回顾页时才加载。
+  onMounted(() => {
+    void wishStore.loadMonthlyJournalSnapshots()
+  })
 
   const reviewTab = ref<'journals' | 'live' | 'snapshots'>('live')
   const expandedReviewReactionKey = ref<string | null>(null)

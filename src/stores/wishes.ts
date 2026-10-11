@@ -7,6 +7,7 @@ import {
   createMonthlyJournalSnapshotRecord as createMonthlyJournalSnapshotRecordModule,
   createThreadReactionRecord as createThreadReactionRecordModule,
   createWishThreadEntry as createWishThreadEntryModule,
+  isPlainRecord,
 } from '../modules/journal/journal.factories'
 import {
   buildDerivedWishThreadEntries as buildDerivedWishThreadEntriesModule,
@@ -34,7 +35,7 @@ import {
 } from '../modules/sync/wish.sync.controller'
 import { composeWishCloudState } from '../modules/sync/wish.cloud.compose'
 import { buildWishThreadEntriesFromRows } from '../modules/journal/journal.mapping.cloud'
-import { fetchRewardClaimsForReview, fetchWishCloudRows, fetchWishThreadRowsForWish } from '../modules/sync/wish.cloud.fetch'
+import { fetchMonthlyJournalSnapshots, fetchRewardClaimsForReview, fetchWishCloudRows, fetchWishThreadRowsForWish } from '../modules/sync/wish.cloud.fetch'
 import { createRewardClaimRecord as createRewardClaimRecordModule, createRewardPoolItem as createRewardPoolItemModule } from '../modules/rewards/reward.factories'
 import {
   addRewardPoolItemWrite,
@@ -1717,6 +1718,49 @@ export const useWishStore = defineStore('wishes', () => {
       .sort((left, right) => compareIsoAscending(right.createdAt, left.createdAt) || left.id.localeCompare(right.id))
   }
 
+  /**
+   * 按需加载月刊快照（回顾页专用）。
+   *
+   * 快照已从主同步移出：单次响应实测可达 1 MB 以上（1,053 KB / 2,820 ms），
+   * 而消费方只有回顾页。现在只有真正打开回顾页时才会发这个请求。
+   */
+  async function loadMonthlyJournalSnapshots(spaceId = authStore.currentSpaceId) {
+    if (!supabase || !spaceId) {
+      return false
+    }
+
+    const fetched = await fetchMonthlyJournalSnapshots(supabase, spaceId, (message) => {
+      syncMessage.value = message
+    })
+
+    if (!fetched.ok) {
+      syncMessage.value = fetched.message
+      return false
+    }
+
+    monthlyJournalSnapshots.value = fetched.data.map((snapshot) =>
+      createMonthlyJournalSnapshotRecord({
+        coverSubtitle: snapshot.cover_subtitle,
+        coverTitle: snapshot.cover_title,
+        createdAt: snapshot.created_at,
+        createdBy: snapshot.created_by,
+        id: snapshot.id,
+        metricsSnapshot: isPlainRecord(snapshot.metrics_snapshot) ? snapshot.metrics_snapshot : {},
+        monthKey: snapshot.month_key,
+        narrativeBlocks: Array.isArray(snapshot.narrative_blocks)
+          ? snapshot.narrative_blocks.filter(isPlainRecord)
+          : [],
+        snapshotStatus: snapshot.snapshot_status,
+        sourceRefs: Array.isArray(snapshot.source_refs)
+          ? snapshot.source_refs.filter(isPlainRecord)
+          : [],
+        spaceId: snapshot.space_id,
+      }),
+    )
+
+    return true
+  }
+
   function patchCommentImages(commentId: string, images: WishImage[]) {
     const nextImages = images.map((image) => ({ ...image }))
 
@@ -2293,6 +2337,8 @@ export const useWishStore = defineStore('wishes', () => {
       rewardClaimReviewCache.clear()
       reviewRewardClaims.value = []
       reviewRewardClaimOpeningBalances.value = new Map()
+      // 月刊快照按空间隔离且改为按需加载，切空间时必须清空，避免残留上一个空间的数据
+      monthlyJournalSnapshots.value = []
     }
 
     if (shouldUseCloudflareBackend()) {
@@ -2363,7 +2409,9 @@ export const useWishStore = defineStore('wishes', () => {
       wishes.value = composed.wishes
       threadReactions.value = composed.threadReactions
       wishThreads.value = composed.wishThreads
-      monthlyJournalSnapshots.value = composed.monthlyJournalSnapshots
+      // 注意：这里**不**赋值 monthlyJournalSnapshots。
+      // 快照已从主同步移出，改由回顾页挂载时调用 loadMonthlyJournalSnapshots() 按需加载；
+      // 若在此处赋值，每次后台同步都会把已加载的快照清空。
       lastLoadedSpaceId.value = spaceId
       await Promise.all(loadedWishIdsToRefresh.map((wishId) => loadWishThreadEntries(wishId, spaceId)))
       syncMessage.value = '当前显示的是 Supabase 云端愿望数据。'
@@ -4016,6 +4064,7 @@ export const useWishStore = defineStore('wishes', () => {
     latestComments,
     latestRewardClaims,
     loadRewardClaimsForReview,
+    loadMonthlyJournalSnapshots,
     reviewRewardClaims,
     reviewRewardClaimOpeningBalances,
     reviewRewardClaimRange,

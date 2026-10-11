@@ -132,21 +132,27 @@ describe('wish.cloud.fetch', () => {
   })
 
   it('returns a clear error when wish fetch fails', async () => {
-    const supabase = {
-      from() {
-        return {
-          select() {
-            return {
-              eq() {
-                return {
-                  order: vi.fn().mockResolvedValue({ data: null, error: { message: 'boom' } }),
-                }
-              },
-            }
-          },
-        }
-      },
+    // PostgREST builder 是惰性的 thenable 链。这里用同样形状的假对象：
+    // 任何链式调用都返回自身，await 时统一给出错误。
+    // （fetchWishCloudRows 现在会并行预发若干只依赖 spaceId 的查询，
+    //   因此假对象必须支持完整的链式方法，而不只是 eq/order。）
+    const failingQuery = () => {
+      const query: Record<string, unknown> = {}
+      const chain = () => query
+      Object.assign(query, {
+        select: chain,
+        eq: chain,
+        gte: chain,
+        in: chain,
+        order: chain,
+        limit: chain,
+        then: (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
+          Promise.resolve({ data: null, error: { message: 'boom' } }).then(resolve, reject),
+      })
+      return query
     }
+
+    const supabase = { from: failingQuery }
 
     const result = await fetchWishCloudRows(supabase as never, 'space-1', {
       capabilities: null,

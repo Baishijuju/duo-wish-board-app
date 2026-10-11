@@ -5,7 +5,7 @@ import type {
   ThreadReactionRecord,
   WishThreadEntry,
 } from '../../stores/wishes'
-import { createMonthlyJournalSnapshotRecord, isPlainRecord } from '../journal/journal.factories'
+import { isPlainRecord } from '../journal/journal.factories'
 import { buildDerivedWishThreadEntries } from '../journal/journal.projection.local'
 import {
   buildWishThreadEntriesFromRows,
@@ -112,25 +112,8 @@ export function composeWishCloudState(fetchResult: WishCloudFetchResult) {
     )
     : buildDerivedWishThreadEntries(nextWishes, nextRewardClaims, fetchResult.threadReactionRows)
 
-  const nextMonthlySnapshots = fetchResult.monthlySnapshotRows.map((snapshot) =>
-    createMonthlyJournalSnapshotRecord({
-      coverSubtitle: snapshot.cover_subtitle,
-      coverTitle: snapshot.cover_title,
-      createdAt: snapshot.created_at,
-      createdBy: snapshot.created_by,
-      id: snapshot.id,
-      metricsSnapshot: isPlainRecord(snapshot.metrics_snapshot) ? snapshot.metrics_snapshot : {},
-      monthKey: snapshot.month_key,
-      narrativeBlocks: Array.isArray(snapshot.narrative_blocks)
-        ? snapshot.narrative_blocks.filter(isPlainRecord)
-        : [],
-      snapshotStatus: snapshot.snapshot_status,
-      sourceRefs: Array.isArray(snapshot.source_refs)
-        ? snapshot.source_refs.filter(isPlainRecord)
-        : [],
-      spaceId: snapshot.space_id,
-    }),
-  )
+  // 月刊快照不再参与主同步的组装，改由回顾页挂载时按需加载
+  // （见 fetchMonthlyJournalSnapshots 与 wishStore.loadMonthlyJournalSnapshots）。
 
   return {
     rewardPoolItems: nextRewardPoolItems,
@@ -140,7 +123,6 @@ export function composeWishCloudState(fetchResult: WishCloudFetchResult) {
     wishes: nextWishes,
     threadReactions: fetchResult.threadReactionRows,
     wishThreads: nextWishThreads,
-    monthlyJournalSnapshots: nextMonthlySnapshots,
   }
 }
 

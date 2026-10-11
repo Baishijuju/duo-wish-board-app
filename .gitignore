@@ -34,5 +34,8 @@ test-results
 # 本机专用的 Node 22 便携版切换脚本（含本机绝对路径，不入库）
 use-node22.ps1
 npm22.cmd
+
+# 一次性诊断脚本与产物（含登录态与验证码中转文件，绝不入库）
+.e2e/
 .wrangler/
 supabase/.temp/

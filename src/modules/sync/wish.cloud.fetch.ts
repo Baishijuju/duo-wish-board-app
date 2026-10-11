@@ -79,6 +79,47 @@ export async function fetchRewardClaimsForReview(
   }
 }
 
+/**
+ * 按需拉取月刊快照（回顾页专用）。
+ *
+ * 从主同步中移出的两件事：
+ *   1. monthly_journal_snapshots 查询本身 —— 单次实测 1,053 KB / 2,820 ms，
+ *      而消费方只有回顾页（useReviewPageState → Stats.vue）。
+ *   2. ensure_monthly_journal_snapshots 补冻结 RPC —— 实测 372 ms 却只返回 2 字节，
+ *      且它的作用同样只体现在月刊快照上。
+ *
+ * 现在只有真正打开回顾页时才会付出这两项开销。
+ */
+export async function fetchMonthlyJournalSnapshots(
+  supabase: SupabaseClient,
+  spaceId: string,
+  onWarningMessage: (message: string) => void = () => {},
+) {
+  const { error: ensureError } = await supabase.rpc('ensure_monthly_journal_snapshots', {
+    target_space_id: spaceId,
+  })
+
+  // 函数不存在时不打扰用户（旧环境可能没执行对应 migration）
+  if (ensureError && ensureError.code !== '42883' && !/ensure_monthly_journal_snapshots/i.test(ensureError.message)) {
+    onWarningMessage(`云端月刊补冻结失败：${ensureError.message}`)
+  }
+
+  const { data, error } = await supabase
+    .from('monthly_journal_snapshots')
+    .select('id, space_id, month_key, snapshot_status, cover_title, cover_subtitle, narrative_blocks, metrics_snapshot, source_refs, created_at, created_by')
+    .eq('space_id', spaceId)
+    .order('month_key', { ascending: false })
+
+  if (error) {
+    return { ok: false as const, message: `云端月刊同步失败：${error.message}` }
+  }
+
+  return {
+    ok: true as const,
+    data: (data ?? []) as MonthlyJournalSnapshotRowLike[],
+  }
+}
+
 export async function fetchWishThreadRowsForWish(
   supabase: SupabaseClient,
   spaceId: string,
@@ -183,14 +224,12 @@ export interface WishCloudFetchResult {
   threadRows: WishThreadRowLike[]
   threadImageRows: WishThreadImageRowLike[]
   threadReactionRows: ThreadReactionRecord[]
-  monthlySnapshotRows: MonthlyJournalSnapshotRowLike[]
   hasUnifiedThreadData: boolean
   imageRows: WishImageRowLike[]
   stepRows: WishStepRowLike[]
   countProgressDailyRows: WishCountProgressDailyRowLike[]
   imageUrlMap: Map<string, string>
   commentImageUrlMap: Map<string, string>
-  snapshotWarningMessage: string
 }
 
 export interface WishCountProgressDailyRowLike {
@@ -295,6 +334,74 @@ export async function fetchWishCloudRows(
 ): Promise<{ ok: true; data: WishCloudFetchResult } | { ok: false; message: string }> {
   const allowsLegacyCapabilityFallback = !options.capabilities
 
+  // ---- 提前发起「只依赖 spaceId」的查询 ----
+  //
+  // PostgREST 的 builder 是惰性的：只有 then/await 时才真正发请求。
+  // 用 Promise.resolve 在这里立即触发，它们就会与下面的 wishes 查询并行在途，
+  // 而不是等 wishes 返回后再逐个串行 —— 每省一轮就少等约 200-450ms。
+  //
+  // 只预发「主路径」的那一次请求；依赖其结果的旧版兼容回退仍保持串行（极少触发）。
+
+  const rewardPoolAttemptPromise = (!options.capabilities || options.capabilities.hasRewardPools)
+    ? Promise.resolve(
+        supabase
+          .from('reward_pool_items')
+          .select('id, space_id, owner_id, reward_scope, tier, title, note, star_coin_cost, is_archived, created_at, updated_at')
+          .eq('space_id', spaceId)
+          .order('updated_at', { ascending: false }),
+      )
+    : null
+
+  const rewardClaimPayloadPromise = options.capabilities?.hasRewardClaimSummary && (!options.capabilities || options.capabilities.hasRewardPools)
+    ? Promise.resolve(
+        supabase.rpc('get_reward_claim_sync_payload', { target_space_id: spaceId }),
+      )
+    : null
+
+  // 能力未知或没有汇总能力时，走的是这条旧版全量查询（实测 398 KB / 530 ms）。
+  // 同样提前发起；只有极少数情况（汇总 RPC 意外失败）才会重新发一次。
+  const buildLegacyRewardClaimQuery = () =>
+    supabase
+      .from('reward_claims')
+      .select('id, owner_id, reward_item_id, source_wish_id, source_step_id, claim_kind, quantity, title_snapshot, note_snapshot, star_coin_delta, created_at')
+      .eq('space_id', spaceId)
+      .order('created_at', { ascending: false })
+
+  const rewardClaimLegacyPromise = (!options.capabilities || options.capabilities.hasRewardPools) && !options.capabilities?.hasRewardClaimSummary
+    ? Promise.resolve(buildLegacyRewardClaimQuery())
+    : null
+
+  const threadRowsPromise = (!options.capabilities || options.capabilities.hasUnifiedThreads)
+    ? Promise.all([
+        Promise.resolve(
+          supabase
+            .from('wish_threads')
+            .select('id, space_id, wish_id, actor_id, event_kind, message_text, meta, created_at, updated_at')
+            .eq('space_id', spaceId)
+            .gte('created_at', getCurrentMonthThreadStartIso())
+            .order('created_at', { ascending: false }),
+        ),
+        Promise.resolve(
+          supabase
+            .from('wish_threads')
+            .select('id, space_id, wish_id, actor_id, event_kind, message_text, meta, created_at, updated_at')
+            .eq('space_id', spaceId)
+            .order('created_at', { ascending: false })
+            .limit(1),
+        ),
+      ])
+    : null
+
+  const threadReactionsPromise = (!options.capabilities || options.capabilities.hasUnifiedThreads)
+    ? Promise.resolve(
+        supabase
+          .from('thread_reactions')
+          .select('id, space_id, target_thread_id, actor_id, emoji, created_at')
+          .eq('space_id', spaceId)
+          .order('created_at', { ascending: true }),
+      )
+    : null
+
   const wishRowsResult = !options.capabilities || options.capabilities.hasWishProgress
     ? await supabase
       .from('wishes')
@@ -325,21 +432,15 @@ export async function fetchWishCloudRows(
   let threadRows: WishThreadRowLike[] = []
   let threadImageRows: WishThreadImageRowLike[] = []
   let threadReactionRows: ThreadReactionRecord[] = []
-  let monthlySnapshotRows: MonthlyJournalSnapshotRowLike[] = []
   let hasUnifiedThreadData = false
   let imageRows: WishImageRowLike[] = []
   let stepRows: WishStepRowLike[] = []
   let countProgressDailyRows: WishCountProgressDailyRowLike[] = []
   let imageUrlMap = new Map<string, string>()
   let commentImageUrlMap = new Map<string, string>()
-  let snapshotWarningMessage = ''
 
-  if (!options.capabilities || options.capabilities.hasRewardPools) {
-    const { data: rewardPoolItemData, error: rewardPoolItemError } = await supabase
-      .from('reward_pool_items')
-      .select('id, space_id, owner_id, reward_scope, tier, title, note, star_coin_cost, is_archived, created_at, updated_at')
-      .eq('space_id', spaceId)
-      .order('updated_at', { ascending: false })
+  if (rewardPoolAttemptPromise) {
+    const { data: rewardPoolItemData, error: rewardPoolItemError } = await rewardPoolAttemptPromise
 
     if (rewardPoolItemError) {
       const isMissingRewardScope = rewardPoolItemError.code === '42703' || /reward_scope/i.test(rewardPoolItemError.message)
@@ -367,10 +468,8 @@ export async function fetchWishCloudRows(
   if (!options.capabilities || options.capabilities.hasRewardPools) {
     let shouldFetchLegacyRewardClaims = !options.capabilities?.hasRewardClaimSummary
 
-    if (options.capabilities?.hasRewardClaimSummary) {
-      const { data, error } = await supabase.rpc('get_reward_claim_sync_payload', {
-        target_space_id: spaceId,
-      })
+    if (rewardClaimPayloadPromise) {
+      const { data, error } = await rewardClaimPayloadPromise
 
       if (error) {
         const summaryRpcMissing = error.code === '42883' || /get_reward_claim_sync_payload/i.test(error.message)
@@ -392,11 +491,7 @@ export async function fetchWishCloudRows(
     }
 
     if (shouldFetchLegacyRewardClaims) {
-      const { data: rewardClaimData, error: rewardClaimError } = await supabase
-        .from('reward_claims')
-        .select('id, owner_id, reward_item_id, source_wish_id, source_step_id, claim_kind, quantity, title_snapshot, note_snapshot, star_coin_delta, created_at')
-        .eq('space_id', spaceId)
-        .order('created_at', { ascending: false })
+      const { data: rewardClaimData, error: rewardClaimError } = await (rewardClaimLegacyPromise ?? buildLegacyRewardClaimQuery())
 
       if (rewardClaimError) {
         if (!allowsLegacyCapabilityFallback || (rewardClaimError.code !== '42P01' && !/reward_claims/i.test(rewardClaimError.message))) {
@@ -409,32 +504,11 @@ export async function fetchWishCloudRows(
     }
   }
 
-  if (!options.capabilities || options.capabilities.hasMonthlySnapshotBackfill) {
-    const { error: ensureMonthlySnapshotsError } = await supabase.rpc('ensure_monthly_journal_snapshots', {
-      target_space_id: spaceId,
-    })
+  // 注意：ensure_monthly_journal_snapshots 补冻结 RPC 也已移出主同步，
+  // 改由 fetchMonthlyJournalSnapshots() 在回顾页按需执行。
 
-    if (ensureMonthlySnapshotsError && (!allowsLegacyCapabilityFallback || !options.isWishThreadFeatureMissing(ensureMonthlySnapshotsError.message))) {
-      snapshotWarningMessage = `云端月刊补冻结失败：${ensureMonthlySnapshotsError.message}`
-      options.onWarningMessage(snapshotWarningMessage)
-    }
-  }
-
-  if (!options.capabilities || options.capabilities.hasUnifiedThreads) {
-    const [threadResult, latestThreadResult] = await Promise.all([
-      supabase
-        .from('wish_threads')
-        .select('id, space_id, wish_id, actor_id, event_kind, message_text, meta, created_at, updated_at')
-        .eq('space_id', spaceId)
-        .gte('created_at', getCurrentMonthThreadStartIso())
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('wish_threads')
-        .select('id, space_id, wish_id, actor_id, event_kind, message_text, meta, created_at, updated_at')
-        .eq('space_id', spaceId)
-        .order('created_at', { ascending: false })
-        .limit(1),
-    ])
+  if (threadRowsPromise && threadReactionsPromise) {
+    const [threadResult, latestThreadResult] = await threadRowsPromise
     const threadError = threadResult.error ?? latestThreadResult.error
 
     if (threadError) {
@@ -473,11 +547,7 @@ export async function fetchWishCloudRows(
       }
 
       const [reactionResult, threadImageResult] = await Promise.all([
-        supabase
-          .from('thread_reactions')
-          .select('id, space_id, target_thread_id, actor_id, emoji, created_at')
-          .eq('space_id', spaceId)
-          .order('created_at', { ascending: true }),
+        threadReactionsPromise,
         fetchThreadImages(),
       ])
 
@@ -524,40 +594,60 @@ export async function fetchWishCloudRows(
     }
   }
 
-  if (!options.capabilities || options.capabilities.hasMonthlySnapshots) {
-    const { data: snapshotData, error: snapshotError } = await supabase
-      .from('monthly_journal_snapshots')
-      .select('id, space_id, month_key, snapshot_status, cover_title, cover_subtitle, narrative_blocks, metrics_snapshot, source_refs, created_at, created_by')
-      .eq('space_id', spaceId)
-      .order('month_key', { ascending: false })
-
-    if (snapshotError) {
-      if (!allowsLegacyCapabilityFallback || (snapshotError.code !== '42P01' && !/monthly_journal_snapshots/i.test(snapshotError.message))) {
-        return { ok: false, message: `云端月刊同步失败：${snapshotError.message}` }
-      }
-    } else {
-      monthlySnapshotRows = (snapshotData ?? []) as MonthlyJournalSnapshotRowLike[]
-    }
-  }
+  // 注意：月刊快照（monthly_journal_snapshots）**不在这里拉取**。
+  // 它是回顾页专用数据，单次可达 1 MB 以上（实测 1,053 KB / 2,820 ms），
+  // 却在每次登录或刷新时被无条件加载，占当时同步总耗时约 31%。
+  // 现已改为由回顾页挂载时按需调用 fetchMonthlyJournalSnapshots()。
 
   if (wishIds.length) {
-    const { data, error: commentError } = await supabase
-      .from('wish_comments')
-      .select('id, wish_id, author_id, body, created_at')
-      .in('wish_id', wishIds)
-      .order('created_at', { ascending: false })
+    const wantsSteps = !options.capabilities || options.capabilities.hasWishProgress
 
-    if (commentError) {
+    // 这四个查询彼此独立，只依赖 wishIds。
+    // 原先逐个 await 串行执行，每一步都要等上一轮网络往返（实测约 350ms/次）。
+    // PostgREST builder 是惰性的（只有 then/await 时才发请求），所以交给
+    // Promise.all 即可真正并发在途。
+    const [commentResult, stepResult, dailyResult, imageResult] = await Promise.all([
+      supabase
+        .from('wish_comments')
+        .select('id, wish_id, author_id, body, created_at')
+        .in('wish_id', wishIds)
+        .order('created_at', { ascending: false }),
+
+      wantsSteps
+        ? supabase
+            .from('wish_steps')
+            .select('id, wish_id, title, star_coin_value, is_done, created_at, updated_at')
+            .in('wish_id', wishIds)
+            .order('created_at', { ascending: true })
+        : Promise.resolve({ data: [] as WishStepRowLike[], error: null }),
+
+      supabase
+        .from('wish_count_progress_daily')
+        .select('wish_id, owner_id, progress_date, progress_units')
+        .in('wish_id', wishIds)
+        .eq('space_id', spaceId),
+
+      supabase
+        .from('wish_images')
+        .select('id, wish_id, created_by, storage_path, file_name, mime_type, note, size_bytes, sort_order, created_at')
+        .in('wish_id', wishIds)
+        .order('sort_order', { ascending: true })
+        .order('created_at', { ascending: true }),
+    ])
+
+    // ---- 留言 ----
+    if (commentResult.error) {
       const allowsMissingLegacyComments = hasUnifiedThreadData
-        && (commentError.code === '42P01' || /wish_comments/i.test(commentError.message))
+        && (commentResult.error.code === '42P01' || /wish_comments/i.test(commentResult.error.message))
 
       if (!allowsMissingLegacyComments) {
-        return { ok: false, message: `云端留言同步失败：${commentError.message}` }
+        return { ok: false, message: `云端留言同步失败：${commentResult.error.message}` }
       }
     } else {
-      commentRows = (data ?? []) as WishCommentRowLike[]
+      commentRows = (commentResult.data ?? []) as WishCommentRowLike[]
     }
 
+    // ---- 留言图片（依赖上面的 commentIds，属于第二轮）----
     const commentIds = commentRows.map((comment) => comment.id)
 
     if (commentIds.length && (!options.capabilities || options.capabilities.hasWishCommentImages)) {
@@ -590,48 +680,30 @@ export async function fetchWishCloudRows(
       }
     }
 
-    if (!options.capabilities || options.capabilities.hasWishProgress) {
-      const { data: stepData, error: stepError } = await supabase
-        .from('wish_steps')
-        .select('id, wish_id, title, star_coin_value, is_done, created_at, updated_at')
-        .in('wish_id', wishIds)
-        .order('created_at', { ascending: true })
-
-      if (stepError) {
-        return { ok: false, message: `云端步骤同步失败：${stepError.message}` }
-      }
-
-      stepRows = (stepData ?? []) as WishStepRowLike[]
+    // ---- 步骤 ----
+    if (stepResult.error) {
+      return { ok: false, message: `云端步骤同步失败：${stepResult.error.message}` }
     }
 
-    const { data: dailyData, error: dailyError } = await supabase
-      .from('wish_count_progress_daily')
-      .select('wish_id, owner_id, progress_date, progress_units')
-      .in('wish_id', wishIds)
-      .eq('space_id', spaceId)
+    stepRows = (stepResult.data ?? []) as WishStepRowLike[]
 
-    if (dailyError) {
+    // ---- 每日推进投影 ----
+    if (dailyResult.error) {
       const allowsMissingDailyTableFallback = allowsLegacyCapabilityFallback || options.capabilities?.hasWishProgress === false
 
-      if (!allowsMissingDailyTableFallback || (dailyError.code !== '42P01' && !/wish_count_progress_daily/i.test(dailyError.message))) {
-        return { ok: false, message: `云端每日推进同步失败：${dailyError.message}` }
+      if (!allowsMissingDailyTableFallback || (dailyResult.error.code !== '42P01' && !/wish_count_progress_daily/i.test(dailyResult.error.message))) {
+        return { ok: false, message: `云端每日推进同步失败：${dailyResult.error.message}` }
       }
     } else {
-      countProgressDailyRows = (dailyData ?? []) as WishCountProgressDailyRowLike[]
+      countProgressDailyRows = (dailyResult.data ?? []) as WishCountProgressDailyRowLike[]
     }
 
-    const { data: imageData, error: imageError } = await supabase
-      .from('wish_images')
-      .select('id, wish_id, created_by, storage_path, file_name, mime_type, note, size_bytes, sort_order, created_at')
-      .in('wish_id', wishIds)
-      .order('sort_order', { ascending: true })
-      .order('created_at', { ascending: true })
-
-    if (imageError) {
-      return { ok: false, message: `云端图片同步失败：${imageError.message}` }
+    // ---- 愿望图片 ----
+    if (imageResult.error) {
+      return { ok: false, message: `云端图片同步失败：${imageResult.error.message}` }
     }
 
-    imageRows = (imageData ?? []) as WishImageRowLike[]
+    imageRows = (imageResult.data ?? []) as WishImageRowLike[]
 
     if (imageRows.length) {
       imageUrlMap = await createCachedSignedUrlMap(
@@ -658,14 +730,12 @@ export async function fetchWishCloudRows(
       threadRows,
       threadImageRows,
       threadReactionRows,
-      monthlySnapshotRows,
       hasUnifiedThreadData,
       imageRows,
       stepRows,
       countProgressDailyRows,
       imageUrlMap,
       commentImageUrlMap,
-      snapshotWarningMessage,
     },
   }
 }

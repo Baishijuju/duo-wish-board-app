@@ -45,14 +45,12 @@ describe('wish.cloud.compose', () => {
       threadRows: [],
       threadImageRows: [],
       threadReactionRows: [],
-      monthlySnapshotRows: [],
       hasUnifiedThreadData: false,
       imageRows: [],
       stepRows: [],
       countProgressDailyRows: [],
       imageUrlMap: new Map(),
       commentImageUrlMap: new Map(),
-      snapshotWarningMessage: '',
     })
 
     expect(result.wishes).toHaveLength(1)
@@ -96,14 +94,12 @@ describe('wish.cloud.compose', () => {
       threadRows: [],
       threadImageRows: [],
       threadReactionRows: [],
-      monthlySnapshotRows: [],
       hasUnifiedThreadData: true,
       imageRows: [],
       stepRows: [],
       countProgressDailyRows: [],
       imageUrlMap: new Map(),
       commentImageUrlMap: new Map(),
-      snapshotWarningMessage: '',
     })
 
     expect(result.wishes[0]?.comments.map((comment) => comment.id)).toEqual(['comment-old'])

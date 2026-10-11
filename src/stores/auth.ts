@@ -413,10 +413,14 @@ export const useAuthStore = defineStore('auth', () => {
     isRefreshingSpace.value = true
 
     try {
-      await refreshAppCapabilities()
-      await ensureBoundSpacesForSession(session)
+      // 这三步互不依赖，并行发起可省掉两轮网络往返（实测每轮约 200ms）。
+      const [, , initialMemberships] = await Promise.all([
+        refreshAppCapabilities(),
+        ensureBoundSpacesForSession(session),
+        listMemberships(session.user.id),
+      ])
 
-      let memberships = await listMemberships(session.user.id)
+      let memberships = initialMemberships
 
       if (!memberships.length) {
         const createdSpace = await createDefaultSpaceForSession(session)
@@ -472,8 +476,13 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  // 记录最近一次已「完整应用」的访问令牌。
+  // 用于在 onAuthStateChange 里识别重复派发，避免重跑 refreshSpaceContext。
+  let lastAppliedAccessToken: string | null = null
+
   async function applySupabaseSession(session: Session | null) {
     activeSession.value = session
+    lastAppliedAccessToken = session?.access_token ?? null
     const nextEmail = session?.user?.email?.trim().toLowerCase() || ''
 
     if (nextEmail) {
@@ -634,8 +643,24 @@ export const useAuthStore = defineStore('auth', () => {
     const { data } = await supabase.auth.getSession()
     await applySupabaseSession(redirectedSession ?? data.session)
 
-    supabase.auth.onAuthStateChange((_event, session) => {
+    supabase.auth.onAuthStateChange((event, session) => {
       setTimeout(() => {
+        const nextAccessToken = session?.access_token ?? null
+
+        // Supabase 在注册订阅时会立即派发一次 INITIAL_SESSION，内容与上面 getSession()
+        // 拿到的完全相同。跳过它可以省掉一整轮 refreshSpaceContext（6 个请求）。
+        if (event === 'INITIAL_SESSION' && nextAccessToken === lastAppliedAccessToken) {
+          return
+        }
+
+        // 令牌续期只更换 access_token，空间上下文没有变化，无需重跑 refreshSpaceContext。
+        // 但必须更新本地会话镜像，否则会丢掉续期后的令牌。
+        if (event === 'TOKEN_REFRESHED') {
+          activeSession.value = session
+          lastAppliedAccessToken = nextAccessToken
+          return
+        }
+
         void applySupabaseSession(session)
       }, 0)
     })
