@@ -8,6 +8,7 @@ import { createRewardClaimFromRow } from '../modules/wishes/wish.mapping.cloud'
 import { buildMemberWeeklyChart, chartDateKey, weeklyChartDates } from '../shared/memberWeeklyCharts'
 import '../shared/reviewUsagePalette.css'
 
+const props = defineProps<{ refreshToken?: number }>()
 const authStore = useAuthStore()
 const wishStore = useWishStore()
 const today = ref(chartDateKey(new Date()))
@@ -27,6 +28,7 @@ const palettes = ['ocean', 'candy', 'sunset', 'aurora', 'neon', 'tropical', 'mac
 const paletteIndex = computed(() => (new Date(`${today.value}T00:00:00Z`).getUTCDay() + 6) % 7)
 const periodLabel = computed(() => `${formatDay(dates.value[0]!)} - ${formatDay(dates.value[6]!)}`)
 let loadSequence = 0
+let activeRequestKey = ''
 let dateTimer: ReturnType<typeof setInterval> | undefined
 
 function formatDay(date: string) {
@@ -38,14 +40,17 @@ function numberLabel(value: number) {
 }
 
 async function loadClaims() {
-  const sequence = ++loadSequence
   const spaceId = authStore.currentSpaceId
+  const requestKey = `${spaceId}:${dates.value[0]}`
+  if (isLoading.value && activeRequestKey === requestKey) return
+  const sequence = ++loadSequence
   if (!supabase || !authStore.usesSupabaseSpace || !spaceId) {
     claims.value = []
     isLoading.value = false
     return
   }
   isLoading.value = true
+  activeRequestKey = requestKey
   errorMessage.value = ''
   try {
     const result = await fetchRewardClaimsForReview(supabase, spaceId, dates.value[0]!, dates.value[6]!)
@@ -63,7 +68,7 @@ async function loadClaims() {
 }
 
 watch(
-  () => [authStore.currentSpaceId, authStore.usesSupabaseSpace, dates.value[0], wishStore.isLoading, wishStore.rewardClaims.map((claim) => `${claim.id}:${claim.quantity}:${claim.starCoinDelta}`).join('|')] as const,
+  () => [authStore.currentSpaceId, authStore.usesSupabaseSpace, dates.value[0], props.refreshToken, wishStore.isLoading, wishStore.rewardClaims.map((claim) => `${claim.id}:${claim.quantity}:${claim.starCoinDelta}`).join('|')] as const,
   () => {
     if (!wishStore.isLoading) void loadClaims()
   },
@@ -165,4 +170,21 @@ onBeforeUnmount(() => {
 .is-selected { background: var(--usage-track); border-radius: 4px; }
 .member-chart-bar:focus-visible { outline: 2px solid var(--usage-accent-deep); outline-offset: 1px; }
 .chart-error { font-size: 0.8rem; color: var(--danger, #a14c3e); margin: 0; }
+
+@media (min-width: 721px) and (max-width: 1180px) and (min-height: 721px) {
+  .board-weekly-charts { gap: 0.55rem; }
+  .weekly-chart-toolbar { gap: 0.3rem; font-size: 1.6rem; }
+  .weekly-member-legend { gap: 0.35rem 0.55rem; }
+  .member-chart { padding-top: 0.45rem; }
+  .member-chart-heading h3 { font-size: 1.95rem; }
+  .member-chart-heading > span,
+  .member-chart-totals,
+  .member-chart-detail,
+  .member-chart-legend { font-size: 1.6rem; }
+  .member-chart-plot { grid-template-columns: 2rem minmax(0, 1fr); gap: 0.25rem; }
+  .member-chart-axis { font-size: 1.44rem; }
+  .member-chart-weekday,
+  .member-chart-date { font-size: 1.44rem; }
+  .member-chart-legend { gap: 0.25rem 0.55rem; }
+}
 </style>

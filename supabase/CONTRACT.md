@@ -74,6 +74,13 @@
 - `public.monthly_journal_snapshots`
 - `public.wish_comment_images`
 
+共享看板还订阅以下表；目标环境需执行 `202610090001_shared_board_realtime.sql` 以补齐便签推送：
+
+- `public.shared_boards`
+- `public.shared_board_todos`
+
+看板每 5 分钟以局部只读查询兜底，页面隐藏或离线时暂停，恢复可见或联网时补刷。编辑期间延后刷新，失败后逐步退避，不触发整页重载或全量愿望同步。
+
 ## 迁移对应关系
 
 ### 基础空间与愿望

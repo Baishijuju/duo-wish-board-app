@@ -51,7 +51,7 @@
 - 202610070002_idempotent_wish_creation.sql
 - 202610070003_shared_board.sql
 - 202610070004_shared_board_todos.sql
-- 202610070003_shared_board.sql
+- 202610090001_shared_board_realtime.sql
 
 ## historical-patch（按需执行）
 

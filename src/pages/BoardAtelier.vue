@@ -5,6 +5,7 @@ import { createId } from '../shared/ids'
 import { useAuthStore } from '../stores/auth'
 import { supabase } from '../lib/supabase'
 import BoardWeeklyCharts from '../components/BoardWeeklyCharts.vue'
+import { createBoardAutoRefresh } from '../modules/sync/board.auto-refresh'
 
 type BoardTextBlock = {
   id: string
@@ -76,6 +77,11 @@ const todoSubtaskTitle = ref('')
 const editingTodoId = ref('')
 const todoEditDraft = ref<SharedBoardTodo | null>(null)
 const todoEditSubtaskTitle = ref('')
+const pendingTodoWrites = ref(0)
+const chartRefreshToken = ref(0)
+const canAutoRefreshBoard = computed(() => isAuthenticatedSpace.value && !!boardId.value
+  && !isLoading.value && !isSaving.value && !isEditing.value
+  && !editingTodoId.value && !isTodoComposerOpen.value && !isCreatingTodo.value && pendingTodoWrites.value === 0)
 const isAuthenticatedSpace = computed(() => authStore.usesSupabaseSpace && !!authStore.currentSpaceId)
 const lastEditorName = computed(() => authStore.members.find((member) => member.id === updatedBy.value)?.displayName ?? '')
 const feedbackClass = computed(() => `board-feedback-${feedbackTone.value}`)
@@ -90,6 +96,56 @@ const todoProgress = computed(() => {
 let boardChannel: RealtimeChannel | null = null
 let loadSequence = 0
 let previousBodyOverflow = ''
+let todoMutationVersion = 0
+let todoLoadPromise: Promise<boolean> | null = null
+let todoLoadContext = ''
+const autoRefresh = createBoardAutoRefresh({
+  canRefresh: () => canAutoRefreshBoard.value,
+  isVisible: () => document.visibilityState === 'visible',
+  isOnline: () => navigator.onLine,
+  refresh: refreshBoardData,
+})
+
+function handleBoardResume() {
+  void autoRefresh.request()
+}
+
+async function withTodoMutation<T>(mutate: () => PromiseLike<T>) {
+  pendingTodoWrites.value += 1
+  todoMutationVersion += 1
+  try {
+    return await mutate()
+  } finally {
+    pendingTodoWrites.value -= 1
+  }
+}
+
+async function refreshBoardData() {
+  if (!supabase || !canAutoRefreshBoard.value) return false
+  const spaceId = authStore.currentSpaceId
+  const currentBoardId = boardId.value
+  const sequence = loadSequence
+  const { data, error } = await supabase
+    .from('shared_boards')
+    .select('id, space_id, title, blocks, revision, updated_by, updated_at')
+    .eq('id', currentBoardId)
+    .eq('space_id', spaceId)
+    .single()
+
+  if (error || !data || sequence !== loadSequence || spaceId !== authStore.currentSpaceId) return false
+  if (!canAutoRefreshBoard.value) {
+    void autoRefresh.request()
+    return true
+  }
+  if ((data as SharedBoardRow).revision > revision.value) applyBoardRow(data as SharedBoardRow)
+  const todosUpdated = await loadTodos(currentBoardId)
+  if (!canAutoRefreshBoard.value && sequence === loadSequence) {
+    void autoRefresh.request()
+    return true
+  }
+  if (sequence === loadSequence && spaceId === authStore.currentSpaceId) chartRefreshToken.value += 1
+  return todosUpdated
+}
 let splitterDrag: { axis: 'vertical' | 'horizontal'; pointerId: number; element: HTMLElement } | null = null
 
 const splitterStyle = computed(() => ({
@@ -255,10 +311,26 @@ function applyTodoRows(rows: unknown[]) {
 }
 
 async function loadTodos(boardIdValue = boardId.value) {
+  const context = `${authStore.currentSpaceId}:${boardIdValue}:${loadSequence}`
+  if (todoLoadPromise && todoLoadContext === context) return todoLoadPromise
+  todoLoadContext = context
+  const request = fetchTodos(boardIdValue).finally(() => {
+    if (todoLoadPromise === request) todoLoadPromise = null
+  })
+  todoLoadPromise = request
+  return request
+}
+
+async function fetchTodos(boardIdValue: string) {
   if (!supabase || !boardIdValue) {
     boardTodos.value = []
-    return
+    return false
   }
+
+  if (editingTodoId.value || isTodoComposerOpen.value || pendingTodoWrites.value > 0) return false
+  const sequence = loadSequence
+  const spaceId = authStore.currentSpaceId
+  const mutationVersion = todoMutationVersion
 
   const { data, error } = await supabase
     .from('shared_board_todos')
@@ -268,9 +340,13 @@ async function loadTodos(boardIdValue = boardId.value) {
     .order('sort_order', { ascending: true })
     .order('created_at', { ascending: true })
 
-  if (!error) {
+  if (!error && sequence === loadSequence && spaceId === authStore.currentSpaceId
+    && mutationVersion === todoMutationVersion && boardIdValue === boardId.value
+    && !editingTodoId.value && !isTodoComposerOpen.value && pendingTodoWrites.value === 0) {
     applyTodoRows(data ?? [])
+    return true
   }
+  return false
 }
 
 async function updateTodo(todoId: string, updates: Partial<Pick<SharedBoardTodo, 'is_done' | 'subtasks'>>) {
@@ -284,13 +360,13 @@ async function updateTodo(todoId: string, updates: Partial<Pick<SharedBoardTodo,
   }
 
   boardTodos.value = boardTodos.value.map((todo) => todo.id === todoId ? { ...todo, ...updates } : todo)
-  const { data, error } = await supabase
+  const { data, error } = await withTodoMutation(() => supabase!
     .from('shared_board_todos')
     .update({ ...updates, updated_by: authStore.currentMemberId })
     .eq('id', todoId)
     .eq('space_id', authStore.currentSpaceId)
     .select('id, board_id, space_id, due_date, assignee_id, title, is_done, subtasks, sort_order, created_by, updated_by, created_at, updated_at')
-    .single()
+    .single())
 
   if (error || !data) {
     boardTodos.value = boardTodos.value.map((todo) => todo.id === todoId ? previous : todo)
@@ -330,7 +406,7 @@ async function saveTodoDetails() {
   }
 
   const draft = todoEditDraft.value
-  const { data, error } = await supabase
+  const { data, error } = await withTodoMutation(() => supabase!
     .from('shared_board_todos')
     .update({
       due_date: draft.due_date,
@@ -342,7 +418,7 @@ async function saveTodoDetails() {
     .eq('id', draft.id)
     .eq('space_id', authStore.currentSpaceId)
     .select('id, board_id, space_id, due_date, assignee_id, title, is_done, subtasks, sort_order, created_by, updated_by, created_at, updated_at')
-    .single()
+    .single())
 
   if (error || !data) {
     feedback.value = error?.message ?? '待办保存失败，请重试。'
@@ -361,11 +437,11 @@ async function deleteTodo(todoId: string) {
     return
   }
 
-  const { error } = await supabase
+  const { error } = await withTodoMutation(() => supabase!
     .from('shared_board_todos')
     .delete()
     .eq('id', todoId)
-    .eq('space_id', authStore.currentSpaceId)
+    .eq('space_id', authStore.currentSpaceId))
 
   if (error) {
     feedback.value = error.message
@@ -401,11 +477,11 @@ async function createTodo() {
     updated_by: authStore.currentMemberId,
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await withTodoMutation(() => supabase!
     .from('shared_board_todos')
     .insert(payload)
     .select('id, board_id, space_id, due_date, assignee_id, title, is_done, subtasks, sort_order, created_by, updated_by, created_at, updated_at')
-    .single()
+    .single())
 
   isCreatingTodo.value = false
   if (error || !data) {
@@ -532,6 +608,10 @@ async function loadBoard(spaceId: string) {
         table: 'shared_board_todos',
         filter: `board_id=eq.${(data as SharedBoardRow).id}`,
       }, () => {
+        if (editingTodoId.value || isTodoComposerOpen.value || pendingTodoWrites.value > 0) {
+          void autoRefresh.request()
+          return
+        }
         void loadTodos((data as SharedBoardRow).id)
       })
       .subscribe()
@@ -664,14 +744,24 @@ watch(
     if (spaceId && usesSupabaseSpace) {
       void loadBoard(spaceId)
     } else {
+      loadSequence += 1
+      if (boardChannel && supabase) {
+        void supabase.removeChannel(boardChannel)
+        boardChannel = null
+      }
       boardId.value = ''
       boardTitle.value = '我们的展板'
       boardBlocks.value = []
+      boardTodos.value = []
       isEditing.value = false
     }
   },
   { immediate: true },
 )
+
+watch(canAutoRefreshBoard, (allowed) => {
+  if (allowed) void autoRefresh.flush()
+})
 
 
 onBeforeUnmount(() => {
@@ -686,10 +776,18 @@ onBeforeUnmount(() => {
 
 onMounted(() => {
   document.addEventListener('keydown', handleFullscreenKeydown)
+  document.addEventListener('visibilitychange', handleBoardResume)
+  window.addEventListener('online', handleBoardResume)
+  window.addEventListener('pageshow', handleBoardResume)
+  autoRefresh.start()
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleFullscreenKeydown)
+  document.removeEventListener('visibilitychange', handleBoardResume)
+  window.removeEventListener('online', handleBoardResume)
+  window.removeEventListener('pageshow', handleBoardResume)
+  autoRefresh.stop()
 })
 </script>
 
@@ -734,7 +832,7 @@ onBeforeUnmount(() => {
 
       <div ref="boardMainLayout" class="board-main-layout">
         <section class="board-progress-panel" aria-label="愿望进度回看">
-          <BoardWeeklyCharts />
+          <BoardWeeklyCharts :refresh-token="chartRefreshToken" />
         </section>
 
         <div
@@ -817,20 +915,33 @@ onBeforeUnmount(() => {
           </div>
         </header>
 
-        <div class="board-todo-columns" aria-hidden="true"><span>完成</span><span>事项 / 到期日</span><span>负责人</span><span></span></div>
-        <div class="board-todo-list">
-          <article v-for="todo in sortedTodos" :key="todo.id" class="board-todo-row" :class="{ 'is-done': todo.is_done }">
-            <label class="board-todo-check"><input :checked="todo.is_done" type="checkbox" :aria-label="`完成：${todo.title}`" @change="void updateTodo(todo.id, { is_done: !todo.is_done })" /></label>
+        <div class="board-todo-table">
+          <div class="board-todo-columns" aria-hidden="true"><span></span><span>事项</span><span>所有者</span><span>目标日期</span><span>清单</span><span></span></div>
+          <div class="board-todo-list">
+          <article v-for="(todo, index) in sortedTodos" :key="todo.id" class="board-todo-row" :class="{ 'is-done': todo.is_done }">
+            <span class="board-todo-index">{{ index + 1 }}</span>
             <div class="board-todo-main">
               <template v-if="editingTodoId === todo.id && todoEditDraft">
-                <input v-model="todoEditDraft.title" class="board-todo-edit-title" aria-label="待办标题" maxlength="240" />
-                <div class="board-todo-edit-fields">
-                  <input v-model="todoEditDraft.due_date" aria-label="到期日" type="date" />
-                  <select v-model="todoEditDraft.assignee_id" aria-label="负责人">
-                    <option value="">所有人</option>
-                    <option v-for="member in authStore.members" :key="member.id" :value="member.id">{{ member.displayName }}</option>
-                  </select>
-                </div>
+                <input v-model="todoEditDraft.title" class="board-todo-edit-title" aria-label="事项" maxlength="240" />
+              </template>
+              <template v-else>
+                <label class="board-todo-check"><input :checked="todo.is_done" type="checkbox" :aria-label="`完成：${todo.title}`" @change="void updateTodo(todo.id, { is_done: !todo.is_done })" /></label>
+                <strong>{{ todo.title }}</strong>
+              </template>
+            </div>
+            <div class="board-todo-owner-cell">
+              <select v-if="editingTodoId === todo.id && todoEditDraft" v-model="todoEditDraft.assignee_id" aria-label="所有者">
+                <option value="">所有人</option>
+                <option v-for="member in authStore.members" :key="member.id" :value="member.id">{{ member.displayName }}</option>
+              </select>
+              <span v-else>{{ todo.assignee_id ? authStore.members.find((member) => member.id === todo.assignee_id)?.displayName ?? '成员' : '所有人' }}</span>
+            </div>
+            <div class="board-todo-date-cell">
+              <input v-if="editingTodoId === todo.id && todoEditDraft" v-model="todoEditDraft.due_date" aria-label="目标日期" type="date" />
+              <time v-else :datetime="todo.due_date">{{ formatBoardDueDate(todo.due_date) }}</time>
+            </div>
+            <div class="board-todo-checklist-cell">
+              <template v-if="editingTodoId === todo.id && todoEditDraft">
                 <ul v-if="todoEditDraft.subtasks.length" class="board-todo-subtasks">
                   <li v-for="subtask in todoEditDraft.subtasks" :key="subtask.id">
                     <label><input v-model="subtask.is_done" type="checkbox" /><input v-model="subtask.title" aria-label="小项标题" /></label>
@@ -839,16 +950,14 @@ onBeforeUnmount(() => {
                 <div class="board-todo-subtask-add"><input v-model="todoEditSubtaskTitle" aria-label="新增小项" placeholder="添加小项" @keydown.enter.prevent="addTodoEditSubtask" /><button type="button" @click="addTodoEditSubtask">添加</button></div>
               </template>
               <template v-else>
-                <strong>{{ todo.title }}</strong>
-                <time class="board-todo-due-date" :datetime="todo.due_date">{{ todo.due_date }} 到期</time>
                 <ul v-if="todo.subtasks.length" class="board-todo-subtasks">
                   <li v-for="subtask in todo.subtasks" :key="subtask.id">
                     <label><input :checked="subtask.is_done" type="checkbox" :aria-label="`完成小项：${subtask.title}`" @change="toggleTodoSubtask(todo, subtask.id)" /><span :class="{ 'is-done': subtask.is_done }">{{ subtask.title }}</span></label>
                   </li>
                 </ul>
+                <span v-else class="board-todo-no-subtasks">—</span>
               </template>
             </div>
-            <span class="board-todo-assignee">{{ todo.assignee_id ? authStore.members.find((member) => member.id === todo.assignee_id)?.displayName ?? '成员' : '所有人' }}</span>
             <div class="board-todo-row-actions">
               <template v-if="editingTodoId === todo.id">
                 <button type="button" aria-label="保存待办" @click="void saveTodoDetails()">✓</button>
@@ -865,7 +974,8 @@ onBeforeUnmount(() => {
               </template>
             </div>
           </article>
-          <p v-if="!sortedTodos.length" class="board-todo-empty">还没有待办。</p>
+            <p v-if="!sortedTodos.length" class="board-todo-empty">还没有待办。</p>
+          </div>
         </div>
 
         <div v-if="isTodoComposerOpen" class="board-todo-composer">
@@ -892,6 +1002,16 @@ export function formatBoardTime(value: string) {
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+  }).format(date)
+}
+
+export function formatBoardDueDate(value: string) {
+  const date = new Date(`${value}T12:00:00`)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: 'numeric',
+    day: 'numeric',
+    weekday: 'short',
   }).format(date)
 }
 </script>
@@ -1276,25 +1396,27 @@ export function formatBoardTime(value: string) {
   font-size: 0.7rem;
 }
 
-.board-todo-columns,
-.board-todo-row {
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) minmax(60px, 0.16fr) 48px;
-  gap: 0.45rem;
-  align-items: center;
-}
-
 .board-todo-columns {
   flex: 0 0 auto;
-  padding: 0.3rem 0.4rem;
-  border-top: 0;
-  border-bottom: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: 32px minmax(160px, 1.35fr) minmax(100px, 0.75fr) minmax(110px, 0.8fr) minmax(170px, 1.2fr) 44px;
+  align-items: center;
+  border-bottom: 1px solid var(--line-strong);
   color: var(--text-soft);
-  font-size: 0.67rem;
+  background: var(--surface-soft);
+  font-size: 0.74rem;
+  font-weight: 600;
 }
 
-.board-todo-columns span:first-child {
-  grid-column: 1;
+.board-todo-table {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface-card);
 }
 
 .board-todo-list {
@@ -1304,11 +1426,36 @@ export function formatBoardTime(value: string) {
   overscroll-behavior: contain;
 }
 
+.board-todo-columns > span,
+.board-todo-row > * {
+  min-width: 0;
+  padding: 0.55rem 0.7rem;
+  border-right: 1px solid var(--line);
+}
+
+.board-todo-columns > span:last-child,
+.board-todo-row > *:last-child {
+  border-right: 0;
+}
+
 .board-todo-row {
-  min-height: 44px;
-  padding: 0.5rem 0.4rem;
-  align-items: start;
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  display: grid;
+  grid-template-columns: 32px minmax(160px, 1.35fr) minmax(100px, 0.75fr) minmax(110px, 0.8fr) minmax(170px, 1.2fr) 44px;
+  align-items: stretch;
+  min-height: 56px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-card);
+}
+
+.board-todo-row:last-of-type {
+  border-bottom: 0;
+}
+
+.board-todo-index {
+  display: grid;
+  place-items: start center;
+  color: var(--text-soft);
+  font-size: 0.78rem;
 }
 
 .board-todo-row.is-done .board-todo-main > strong {
@@ -1317,10 +1464,10 @@ export function formatBoardTime(value: string) {
 }
 
 .board-todo-check {
-  display: grid;
-  place-items: center;
-  min-width: 32px;
-  min-height: 38px;
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  min-width: 0;
 }
 
 .board-todo-check input,
@@ -1334,50 +1481,70 @@ export function formatBoardTime(value: string) {
 .board-todo-main {
   display: flex;
   min-width: 0;
-  align-items: baseline;
-  gap: 0.55rem;
-  flex-wrap: wrap;
+  align-items: flex-start;
+  padding-top: 0.68rem !important;
+  padding-bottom: 0.68rem !important;
 }
 
 .board-todo-main > strong {
   color: var(--text-main);
   font-size: 0.9rem;
   font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
-.board-todo-due-date,
-.board-todo-assignee {
+.board-todo-owner-cell,
+.board-todo-date-cell,
+.board-todo-checklist-cell {
+  color: var(--text-main);
+  font-size: 0.83rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.board-todo-owner-cell,
+.board-todo-date-cell {
+  padding-top: 0.72rem !important;
+}
+
+.board-todo-date-cell time {
   overflow: hidden;
   color: var(--text-soft);
-  font-size: 0.68rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.board-todo-assignee {
-  padding: 0.35rem 0;
-  border-radius: 0;
-  background: transparent;
-  text-align: right;
+.board-todo-owner-cell select,
+.board-todo-date-cell input {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--text-main);
+  background: var(--input-bg);
+  font: inherit;
+  font-size: 0.78rem;
 }
 
 .board-todo-subtasks {
-  width: 100%;
-  grid-column: 2 / -1;
   display: grid;
-  gap: 0.15rem;
-  margin: 0.3rem 0 0;
-  padding-left: 0.1rem;
+  gap: 0.12rem;
+  margin: -0.2rem 0 0;
+  padding: 0;
+  list-style: none;
 }
 
 .board-todo-subtasks li label,
 .board-todo-draft-subtasks label {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 0.28rem;
-  color: var(--text-soft);
+  gap: 0.45rem;
+  color: var(--text-main);
   font-size: 0.8rem;
-  min-height: 32px;
+  min-height: 30px;
 }
 
 .board-todo-subtasks li,
@@ -1388,13 +1555,19 @@ export function formatBoardTime(value: string) {
 }
 
 .board-todo-subtasks input[type='checkbox'] {
-  flex: 0 0 16px;
+  flex: 0 0 18px;
 }
 
 .board-todo-subtasks input,
 .board-todo-draft-subtasks input {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
+}
+
+.board-todo-subtasks input:not([type='checkbox']) {
+  width: auto;
+  min-width: 40px;
+  flex: 1 1 auto;
 }
 
 .board-todo-subtasks .is-done {
@@ -1402,10 +1575,18 @@ export function formatBoardTime(value: string) {
   opacity: 0.68;
 }
 
+.board-todo-no-subtasks {
+  color: var(--text-soft);
+}
+
+.board-todo-edit-title {
+  width: 100%;
+}
+
 .board-todo-row-actions {
   display: flex;
-  justify-content: flex-end;
-  gap: 0.15rem;
+  justify-content: center;
+  padding: 0.3rem 0.1rem !important;
 }
 
 .board-todo-more summary {
@@ -1636,11 +1817,7 @@ export function formatBoardTime(value: string) {
 }
 
 .shared-board-page.is-fullscreen .board-todo-row {
-  min-height: 36px;
-}
-
-.shared-board-page.is-fullscreen .board-todo-check {
-  min-height: 34px;
+  min-height: 50px;
 }
 
 .shared-board-page.is-fullscreen .board-todo-add-button {
@@ -1980,6 +2157,113 @@ export function formatBoardTime(value: string) {
     overflow: visible;
   }
 
+  .board-todo-panel {
+    overflow: visible;
+  }
+
+  .board-todo-columns {
+    display: none;
+  }
+
+  .board-todo-table {
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .board-todo-list {
+    display: grid;
+    gap: 0.55rem;
+    overflow: visible;
+  }
+
+  .board-todo-row {
+    grid-template-columns: 30px minmax(0, 1fr) 44px;
+    min-height: 0;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--surface-card);
+  }
+
+  .board-todo-row > * {
+    border-right: 0;
+  }
+
+  .board-todo-index {
+    grid-column: 1;
+    grid-row: 1 / span 4;
+    padding: 0.75rem 0.3rem;
+  }
+
+  .board-todo-main {
+    grid-column: 2;
+    grid-row: 1;
+    padding: 0.65rem 0.55rem 0.25rem !important;
+  }
+
+  .board-todo-owner-cell,
+  .board-todo-date-cell,
+  .board-todo-checklist-cell {
+    grid-column: 2;
+    padding: 0.25rem 0.55rem !important;
+  }
+
+  .board-todo-owner-cell {
+    grid-row: 2;
+  }
+
+  .board-todo-date-cell {
+    grid-row: 3;
+  }
+
+  .board-todo-checklist-cell {
+    grid-row: 4;
+    padding-bottom: 0.55rem !important;
+  }
+
+  .board-todo-owner-cell::before,
+  .board-todo-date-cell::before,
+  .board-todo-checklist-cell::before {
+    display: inline-block;
+    width: 4.2rem;
+    color: var(--text-soft);
+    font-size: 0.72rem;
+  }
+
+  .board-todo-owner-cell::before {
+    content: '所有者';
+  }
+
+  .board-todo-date-cell::before {
+    content: '目标日期';
+  }
+
+  .board-todo-checklist-cell::before {
+    content: '清单';
+    vertical-align: top;
+    padding-top: 0.3rem;
+  }
+
+  .board-todo-row-actions {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .board-todo-subtasks {
+    display: inline-grid;
+    vertical-align: top;
+    width: calc(100% - 4.4rem);
+  }
+
+  .board-todo-no-subtasks {
+    display: inline-block;
+  }
+
+  .board-todo-checklist-cell > .board-todo-subtask-add {
+    margin-top: 0.35rem;
+  }
+
   .board-todo-composer {
     grid-template-columns: 1fr 1fr;
   }
@@ -2036,6 +2320,57 @@ export function formatBoardTime(value: string) {
 
   .shared-board-page.is-fullscreen .board-splitter {
     display: none;
+  }
+}
+
+@media (min-width: 721px) and (max-width: 1180px) and (min-height: 721px) {
+  .shared-board-page.is-fullscreen {
+    gap: 0.35rem;
+  }
+
+  .shared-board-page.is-fullscreen .shared-board-header h2 {
+    font-size: 2.25rem;
+  }
+
+  .shared-board-page.is-fullscreen .board-progress-panel,
+  .shared-board-page.is-fullscreen .board-notes-panel {
+    padding: 0.55rem;
+  }
+
+  .shared-board-page.is-fullscreen .board-section-heading h3 {
+    font-size: 2.05rem;
+  }
+
+  .shared-board-page.is-fullscreen .board-note h3 {
+    font-size: 2.05rem;
+  }
+
+  .shared-board-page.is-fullscreen .board-note p {
+    font-size: 1.9rem;
+    line-height: 1.45;
+  }
+
+  .shared-board-page.is-fullscreen .board-todo-columns {
+    font-size: 1.68rem;
+  }
+
+  .shared-board-page.is-fullscreen .board-todo-main > strong {
+    font-size: 1.95rem;
+  }
+
+  .shared-board-page.is-fullscreen .board-todo-owner-cell,
+  .shared-board-page.is-fullscreen .board-todo-date-cell,
+  .shared-board-page.is-fullscreen .board-todo-checklist-cell {
+    font-size: 1.8rem;
+    overflow-wrap: anywhere;
+  }
+
+  .shared-board-page.is-fullscreen .board-todo-subtasks li label {
+    font-size: 1.72rem;
+  }
+
+  .shared-board-page.is-fullscreen .board-todo-date-cell time {
+    white-space: normal;
   }
 }
 
