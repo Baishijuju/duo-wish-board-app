@@ -52,6 +52,8 @@
 - 202610070003_shared_board.sql
 - 202610070004_shared_board_todos.sql
 - 202610090001_shared_board_realtime.sql
+- 202610110001_reconcile_count_progress_daily_from_claims.sql
+- 202610110002_fix_count_progress_daily_write_symmetry.sql
 
 ## historical-patch（按需执行）
 

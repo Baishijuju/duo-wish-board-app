@@ -13,8 +13,39 @@
 | 202608050030 baseline_v2 第三批访问与权限护栏 | 已执行 | 核心访问函数 + RLS + policy/grant，已完成幂等验证 |
 | 日常健康审计脚本 | 已提供 | `supabase/diagnostics/20260804_schema_health_audit.sql` |
 | 上线后一键验收脚本 | 已提供 | `supabase/diagnostics/20260804_post_migration_acceptance.sql` |
+| 202610110001 投影漂移数据修复 | 已执行 | 从 `reward_claims` 重算 `wish_count_progress_daily`，drift 4 → 0 |
+| 202610110002 写入不对称根因修复 | 已执行 | 移除 RPC 对投影表的直接累加，改由触发器独占维护并显式重算 |
 
 > 备注：当前一键验收结果为 5/5 通过（2026-08-04），其中 `daily drift = 0`、`missing reward_claim threads = 0`。
+
+## 2026-10-11 复查：漂移复发与根因修复
+
+**现象**：2026-10-11 复跑一键验收，`count_progress_daily_drift_count` 由 0 变为 **4**。
+
+**诊断结论**：
+- `progress_current` 与 `reward_claims` 流水**完全一致**，愿望级数据无损；
+- 只有 `wish_count_progress_daily` 偏高，共多出 9 个单位，涉及 3 条「每日一万步」愿望；
+- 同步触发器 `trg_reward_claims_sync_count_progress_daily` **存在且启用**，不是触发器缺失。
+
+**根因**：`set_wish_count_progress_with_star_coin` 存在写入不对称 —— 对投影表按
+`increased_quantity` **无条件累加**，但只在 `pending_quantity > 0 and target_delta > 0`
+时才写 `reward_claims`。当第二个守卫为假时，投影被累加却无流水支撑，
+而触发器只在流水变更时才重算，差异因此永久残留。
+
+典型触发场景：`claimed_quantity` 是「全生命周期、含三种 kind」的总量，
+先下调再上调 `progress_current`（例如纠正误记）会让 `unclaimed_quantity` 归零，
+于是 `pending_quantity = 0`，但 `increased_quantity > 0`。
+
+**修复**：
+1. `202610110001` —— 按既定契约从流水全量重算投影（数据修复，drift 归零）；
+2. `202610110002` —— 删除 RPC 对投影表的直接写入，改由触发器独占维护，
+   并在函数末尾显式调用 `recompute_count_progress_daily_for_wish_date` 自愈当天投影。
+
+**本次的教训（对 Phase D 的补充）**：
+- 「以 `reward_claims` 为事实源」这条原则必须落实到**写入侧**，而不只是读取侧与验收侧。
+  只要还有第二个写入方，口径漂移就会复发。
+- 验收脚本能在漂移发生后抓到问题，但**不会阻止漂移产生**。若要真正闭环，
+  应考虑为 `wish_count_progress_daily` 增加写入侧护栏（例如仅允许触发器写入）。
 
 ## 日常执行入口
 

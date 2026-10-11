@@ -29,5 +29,10 @@ test-results
 
 # Local CLI caches
 .npx-cache/
+.npm-cache/
+
+# 本机专用的 Node 22 便携版切换脚本（含本机绝对路径，不入库）
+use-node22.ps1
+npm22.cmd
 .wrangler/
 supabase/.temp/

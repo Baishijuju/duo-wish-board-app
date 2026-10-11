@@ -9,6 +9,7 @@
     "clean:workspace": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$targets=@('.npx-cache','dist','node_modules/.vite'); foreach($t in $targets){ if(Test-Path $t){ Remove-Item -Recurse -Force $t } }; Write-Host 'workspace cache cleaned'\"",
     "db:audit": "npm run supabase -- db query --linked -f \"supabase/diagnostics/20260804_schema_health_audit.sql\"",
     "db:acceptance": "npm run supabase -- db query --linked -f \"supabase/diagnostics/20260804_post_migration_acceptance.sql\"",
+    "db:probe": "node scripts/check-cloud-contract.mjs",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "worker:dev": "wrangler dev --port 8787",
