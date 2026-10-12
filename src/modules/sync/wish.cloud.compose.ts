@@ -112,8 +112,8 @@ export function composeWishCloudState(fetchResult: WishCloudFetchResult) {
     )
     : buildDerivedWishThreadEntries(nextWishes, nextRewardClaims, fetchResult.threadReactionRows)
 
-  // 月刊快照不再参与主同步的组装，改由回顾页挂载时按需加载
-  // （见 fetchMonthlyJournalSnapshots 与 wishStore.loadMonthlyJournalSnapshots）。
+  // 月刊快照不参与主同步的组装：它唯一的消费方 Stats.vue 已确认为死代码，
+  // 整条云端取数链路已移除（详见 wish.cloud.fetch.ts）。
 
   return {
     rewardPoolItems: nextRewardPoolItems,

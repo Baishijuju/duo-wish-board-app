@@ -79,47 +79,6 @@ export async function fetchRewardClaimsForReview(
   }
 }
 
-/**
- * 按需拉取月刊快照（回顾页专用）。
- *
- * 从主同步中移出的两件事：
- *   1. monthly_journal_snapshots 查询本身 —— 单次实测 1,053 KB / 2,820 ms，
- *      而消费方只有回顾页（useReviewPageState → Stats.vue）。
- *   2. ensure_monthly_journal_snapshots 补冻结 RPC —— 实测 372 ms 却只返回 2 字节，
- *      且它的作用同样只体现在月刊快照上。
- *
- * 现在只有真正打开回顾页时才会付出这两项开销。
- */
-export async function fetchMonthlyJournalSnapshots(
-  supabase: SupabaseClient,
-  spaceId: string,
-  onWarningMessage: (message: string) => void = () => {},
-) {
-  const { error: ensureError } = await supabase.rpc('ensure_monthly_journal_snapshots', {
-    target_space_id: spaceId,
-  })
-
-  // 函数不存在时不打扰用户（旧环境可能没执行对应 migration）
-  if (ensureError && ensureError.code !== '42883' && !/ensure_monthly_journal_snapshots/i.test(ensureError.message)) {
-    onWarningMessage(`云端月刊补冻结失败：${ensureError.message}`)
-  }
-
-  const { data, error } = await supabase
-    .from('monthly_journal_snapshots')
-    .select('id, space_id, month_key, snapshot_status, cover_title, cover_subtitle, narrative_blocks, metrics_snapshot, source_refs, created_at, created_by')
-    .eq('space_id', spaceId)
-    .order('month_key', { ascending: false })
-
-  if (error) {
-    return { ok: false as const, message: `云端月刊同步失败：${error.message}` }
-  }
-
-  return {
-    ok: true as const,
-    data: (data ?? []) as MonthlyJournalSnapshotRowLike[],
-  }
-}
-
 export async function fetchWishThreadRowsForWish(
   supabase: SupabaseClient,
   spaceId: string,
@@ -237,20 +196,6 @@ export interface WishCountProgressDailyRowLike {
   owner_id: string
   progress_date: string
   progress_units: number
-}
-
-export interface MonthlyJournalSnapshotRowLike {
-  id: string
-  space_id: string
-  month_key: string
-  snapshot_status: 'ready'
-  cover_title: string
-  cover_subtitle: string
-  narrative_blocks: unknown
-  metrics_snapshot: unknown
-  source_refs: unknown
-  created_at: string
-  created_by: string | null
 }
 
 function getSignedUrlCacheKey(bucketName: string, storagePath: string) {
@@ -504,8 +449,10 @@ export async function fetchWishCloudRows(
     }
   }
 
-  // 注意：ensure_monthly_journal_snapshots 补冻结 RPC 也已移出主同步，
-  // 改由 fetchMonthlyJournalSnapshots() 在回顾页按需执行。
+  // 注意：ensure_monthly_journal_snapshots 补冻结 RPC 也已移出主同步。
+  // 它原先实测 372 ms 却只返回 2 字节，且作用只体现在月刊快照上；
+  // 而月刊快照（monthly_journal_snapshots）唯一的消费方 Stats.vue 已是死代码，
+  // 整条链路随之移除。数据库里的表和 RPC 仍然保留。
 
   if (threadRowsPromise && threadReactionsPromise) {
     const [threadResult, latestThreadResult] = await threadRowsPromise
@@ -595,9 +542,9 @@ export async function fetchWishCloudRows(
   }
 
   // 注意：月刊快照（monthly_journal_snapshots）**不在这里拉取**。
-  // 它是回顾页专用数据，单次可达 1 MB 以上（实测 1,053 KB / 2,820 ms），
-  // 却在每次登录或刷新时被无条件加载，占当时同步总耗时约 31%。
-  // 现已改为由回顾页挂载时按需调用 fetchMonthlyJournalSnapshots()。
+  // 它单次实测 1,053 KB / 2,820 ms，而唯一消费方 Stats.vue 已确认为死代码
+  // （不在路由、无任何 import），因此这条取数链路已整体移除。
+  // 若将来要做月刊 UI，可从 git 历史取回，或重新实现。
 
   if (wishIds.length) {
     const wantsSteps = !options.capabilities || options.capabilities.hasWishProgress
