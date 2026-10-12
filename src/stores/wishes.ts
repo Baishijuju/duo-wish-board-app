@@ -1,7 +1,7 @@
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { fetchCloudflareWishList, shouldUseCloudflareBackend, writeCloudflareWishProgress } from '../lib/cloudflare'
-import { supabase } from '../lib/supabase'
+import { localWriteClock, supabase } from '../lib/supabase'
 import {
   compareIsoAscending as compareIsoAscendingModule,
   createMonthlyJournalSnapshotRecord as createMonthlyJournalSnapshotRecordModule,
@@ -1767,7 +1767,34 @@ export const useWishStore = defineStore('wishes', () => {
     return getKnownAppCapabilityMessage(capabilityAccess, key)
   }
 
+  /**
+   * 判断本地是否刚刚写过云端。
+   *
+   * 为什么需要它
+   *   Supabase Realtime 推给本应用的 payload 里 new/old 都是空对象 ——
+   *   在同一个页面、用同一个 client 直接订阅同一张表却能拿到完整行，
+   *   差异只在于应用那个 channel 的建立方式。
+   *   因此「按行 id 匹配回声」的墓碑逻辑永远命中不了，
+   *   每次写入都会被误判成他人改动，触发一次完整的全量同步（实测 5-6 秒）。
+   *
+   * 既然拿不到行 id，就退一步用「刚才有没有本地写入」来判断。
+   * 时钟由 src/lib/supabase.ts 在 client 层统一打点，覆盖全部写入路径。
+   *
+   * 取舍
+   *   窗口内如果对方恰好也改了东西，那一次推送会被一起跳过。
+   *   改动不会丢失（它在云端），下一次事件或重新加载就会同步到。
+   *   窗口刻意取得较短（默认 2 秒），而自己的回声通常在写入后 1 秒内到达。
+   */
+  function hasRecentLocalWrite(windowMs = 2000) {
+    return Date.now() - localWriteClock.lastAt < windowMs
+  }
+
   function scheduleRealtimeSync(reason: string) {
+    // 本地刚写过 -> 这几乎必然是自己写入的回声，跳过全量重拉。
+    if (hasRecentLocalWrite()) {
+      return
+    }
+
     scheduleRealtimeSyncModule(realtimeSyncController, {
       isUsingCloudSpace: isUsingCloudWishes.value,
       currentSpaceId: authStore.currentSpaceId,
