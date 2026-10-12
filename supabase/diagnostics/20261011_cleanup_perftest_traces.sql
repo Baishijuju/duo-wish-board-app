@@ -11,7 +11,7 @@
 with target as (
   select w.id
   from public.wishes w
-  where w.title ~ '^(性能探针|对照探针|严格探针|调试探针)-'
+  where w.title ~ '^(性能探针|对照探针|严格探针|调试探针|载荷探针|多表探针|事务探针|原始探针)-'
 ),
 deleted_reactions as (
   delete from public.thread_reactions tr
