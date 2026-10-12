@@ -19,6 +19,7 @@
     "test:home-list": "npm run build && playwright test tests/visual-screenshots.spec.ts --grep \"home|list\" && playwright test tests/home-list-acceptance.spec.ts",
     "test:screenshots": "npm run build && playwright test tests/visual-screenshots.spec.ts",
     "test:unit": "vitest run",
+    "perf:sync": "node scripts/measure-sync-perf.mjs",
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
