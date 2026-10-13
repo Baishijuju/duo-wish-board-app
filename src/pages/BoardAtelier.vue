@@ -1,5 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import {
+  getBoardSubtaskProgress,
+  getBoardTodoProgress,
+  splitBoardTodos,
+} from '../modules/board/board.todos'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createId } from '../shared/ids'
 import { useAuthStore } from '../stores/auth'
@@ -46,6 +51,31 @@ type SharedBoardTodo = {
   updated_at: string
 }
 
+/** 「已完成」分组是否展开，记住用户的选择 */
+const BOARD_TODO_SHOW_DONE_KEY = 'duo-wish-board-todo-show-done:v1'
+
+/**
+ * 勾选完成后停留多久再收进「已完成」分组。
+ * 参考成熟待办应用的做法：立刻消失会让人怀疑误删，停留片刻让人确认。
+ */
+const TODO_COMPLETE_FEEDBACK_MS = 620
+
+function readShowDoneTodos() {
+  try {
+    return window.localStorage.getItem(BOARD_TODO_SHOW_DONE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function persistShowDoneTodos(value: boolean) {
+  try {
+    window.localStorage.setItem(BOARD_TODO_SHOW_DONE_KEY, value ? '1' : '0')
+  } catch {
+    // 隐私模式等场景下不可用，忽略即可：这只是个显示偏好
+  }
+}
+
 const authStore = useAuthStore()
 const isLoading = ref(false)
 const isSaving = ref(false)
@@ -78,20 +108,24 @@ const editingTodoId = ref('')
 const todoEditDraft = ref<SharedBoardTodo | null>(null)
 const todoEditSubtaskTitle = ref('')
 const pendingTodoWrites = ref(0)
+const completingTodoIds = ref<string[]>([])
+const showDoneTodos = ref(readShowDoneTodos())
+const editingTitleId = ref('')
+const todoTitleDraft = ref('')
 const chartRefreshToken = ref(0)
 const canAutoRefreshBoard = computed(() => isAuthenticatedSpace.value && !!boardId.value
   && !isLoading.value && !isSaving.value && !isEditing.value
-  && !editingTodoId.value && !isTodoComposerOpen.value && !isCreatingTodo.value && pendingTodoWrites.value === 0)
+  && !editingTodoId.value && !editingTitleId.value
+  && !isTodoComposerOpen.value && !isCreatingTodo.value && pendingTodoWrites.value === 0)
 const isAuthenticatedSpace = computed(() => authStore.usesSupabaseSpace && !!authStore.currentSpaceId)
 const lastEditorName = computed(() => authStore.members.find((member) => member.id === updatedBy.value)?.displayName ?? '')
 const feedbackClass = computed(() => `board-feedback-${feedbackTone.value}`)
-const sortedTodos = computed(() => [...boardTodos.value]
-  .sort((left, right) => left.due_date.localeCompare(right.due_date) || left.sort_order - right.sort_order || left.created_at.localeCompare(right.created_at)))
-const todoProgress = computed(() => {
-  const total = sortedTodos.value.length
-  const done = sortedTodos.value.filter((todo) => todo.is_done).length
-  return { done, total }
-})
+// 分组与排序规则在 src/modules/board/board.todos.ts 里，带单测覆盖。
+// 未完成永远在主列表；已完成收进底部可展开的分组 —— 否则列表只会越来越长。
+const todoGroups = computed(() => splitBoardTodos(boardTodos.value))
+const openTodos = computed(() => todoGroups.value.open)
+const doneTodos = computed(() => todoGroups.value.done)
+const todoProgress = computed(() => getBoardTodoProgress(boardTodos.value))
 
 let boardChannel: RealtimeChannel | null = null
 let loadSequence = 0
@@ -514,6 +548,93 @@ function toggleTodoSubtask(todo: SharedBoardTodo, subtaskId: string) {
   })
 }
 
+/**
+ * 勾选完成：先让这一行划线淡出，再真正写入并收进「已完成」。
+ *
+ * 为什么要延迟：立刻消失会让人怀疑是不是误删了。延迟期间 is_done 还没变，
+ * 所以这一行仍在未完成列表里，只是带上了 is-completing 样式。
+ */
+function completeTodo(todo: SharedBoardTodo) {
+  if (todo.is_done || completingTodoIds.value.includes(todo.id)) {
+    return
+  }
+
+  completingTodoIds.value = [...completingTodoIds.value, todo.id]
+
+  window.setTimeout(() => {
+    completingTodoIds.value = completingTodoIds.value.filter((id) => id !== todo.id)
+    void updateTodo(todo.id, { is_done: true })
+  }, TODO_COMPLETE_FEEDBACK_MS)
+}
+
+function toggleShowDoneTodos() {
+  showDoneTodos.value = !showDoneTodos.value
+  persistShowDoneTodos(showDoneTodos.value)
+}
+
+function todoOwnerLabel(todo: SharedBoardTodo) {
+  return todo.assignee_id
+    ? authStore.members.find((member) => member.id === todo.assignee_id)?.displayName ?? '成员'
+    : '所有人'
+}
+
+function subtaskDoneCount(todo: SharedBoardTodo) {
+  return getBoardSubtaskProgress(todo.subtasks).done
+}
+
+/** 让行内改标题的输入框一出现就拿到焦点，省掉一次点击 */
+function focusTodoTitleInput(element: unknown) {
+  if (element instanceof HTMLInputElement) {
+    element.focus()
+    element.select()
+  }
+}
+
+function startTodoTitleEdit(todo: SharedBoardTodo) {
+  if (editingTodoId.value === todo.id) {
+    return
+  }
+
+  editingTitleId.value = todo.id
+  todoTitleDraft.value = todo.title
+}
+
+function cancelTodoTitleEdit() {
+  editingTitleId.value = ''
+  todoTitleDraft.value = ''
+}
+
+async function saveTodoTitle(todo: SharedBoardTodo) {
+  if (editingTitleId.value !== todo.id) {
+    return
+  }
+
+  const title = todoTitleDraft.value.trim()
+  cancelTodoTitleEdit()
+
+  if (!title || title === todo.title || !supabase || !authStore.currentSpaceId) {
+    return
+  }
+
+  const { data, error } = await withTodoMutation(() => supabase!
+    .from('shared_board_todos')
+    .update({ title, updated_by: authStore.currentMemberId })
+    .eq('id', todo.id)
+    .eq('space_id', authStore.currentSpaceId)
+    .select('id, board_id, space_id, due_date, assignee_id, title, is_done, subtasks, sort_order, created_by, updated_by, created_at, updated_at')
+    .single())
+
+  if (error) {
+    feedback.value = error.message
+    feedbackTone.value = 'danger'
+    return
+  }
+
+  boardTodos.value = boardTodos.value.map((item) => item.id === todo.id
+    ? { ...(data as SharedBoardTodo), subtasks: normalizeTodoSubtasks((data as SharedBoardTodo).subtasks) }
+    : item)
+}
+
 function getBoardQuery() {
   return supabase?.from('shared_boards')
 }
@@ -928,70 +1049,161 @@ onBeforeUnmount(() => {
         <header class="board-todo-header">
           <div class="board-section-heading">
             <h3>待办</h3>
-            <span class="board-todo-completion">{{ todoProgress.done }} / {{ todoProgress.total }}</span>
+            <span class="board-todo-completion">{{ todoProgress.open }} 项待完成</span>
+          </div>
+
+          <div v-if="todoProgress.total" class="board-todo-progress">
+            <div
+              class="board-todo-progress-track"
+              role="img"
+              :aria-label="`已完成 ${todoProgress.done} / ${todoProgress.total}`"
+            >
+              <span class="board-todo-progress-fill" :style="{ width: `${todoProgress.percent}%` }"></span>
+            </div>
+            <span class="board-todo-progress-label">{{ todoProgress.done }} / {{ todoProgress.total }}</span>
           </div>
         </header>
 
         <div class="board-todo-table">
-          <div class="board-todo-columns" aria-hidden="true"><span></span><span>事项</span><span>所有者</span><span>目标日期</span><span>清单</span><span></span></div>
           <div class="board-todo-list">
-          <article v-for="(todo, index) in sortedTodos" :key="todo.id" class="board-todo-row" :class="{ 'is-done': todo.is_done }">
-            <span class="board-todo-index">{{ index + 1 }}</span>
-            <div class="board-todo-main">
-              <template v-if="editingTodoId === todo.id && todoEditDraft">
-                <input v-model="todoEditDraft.title" class="board-todo-edit-title" aria-label="事项" maxlength="240" />
-              </template>
-              <template v-else>
-                <label class="board-todo-check"><input :checked="todo.is_done" type="checkbox" :aria-label="`完成：${todo.title}`" @change="void updateTodo(todo.id, { is_done: !todo.is_done })" /></label>
-                <strong>{{ todo.title }}</strong>
-              </template>
-            </div>
-            <div class="board-todo-owner-cell">
-              <select v-if="editingTodoId === todo.id && todoEditDraft" v-model="todoEditDraft.assignee_id" aria-label="所有者">
-                <option value="">所有人</option>
-                <option v-for="member in authStore.members" :key="member.id" :value="member.id">{{ member.displayName }}</option>
-              </select>
-              <span v-else>{{ todo.assignee_id ? authStore.members.find((member) => member.id === todo.assignee_id)?.displayName ?? '成员' : '所有人' }}</span>
-            </div>
-            <div class="board-todo-date-cell">
-              <input v-if="editingTodoId === todo.id && todoEditDraft" v-model="todoEditDraft.due_date" aria-label="目标日期" type="date" />
-              <time v-else :datetime="todo.due_date">{{ formatBoardDueDate(todo.due_date) }}</time>
-            </div>
-            <div class="board-todo-checklist-cell">
-              <template v-if="editingTodoId === todo.id && todoEditDraft">
-                <ul v-if="todoEditDraft.subtasks.length" class="board-todo-subtasks">
-                  <li v-for="subtask in todoEditDraft.subtasks" :key="subtask.id">
-                    <label><input v-model="subtask.is_done" type="checkbox" /><input v-model="subtask.title" aria-label="小项标题" /></label>
-                  </li>
-                </ul>
-                <div class="board-todo-subtask-add"><input v-model="todoEditSubtaskTitle" aria-label="新增小项" placeholder="添加小项" @keydown.enter.prevent="addTodoEditSubtask" /><button type="button" @click="addTodoEditSubtask">添加</button></div>
-              </template>
-              <template v-else>
-                <ul v-if="todo.subtasks.length" class="board-todo-subtasks">
+            <article
+              v-for="todo in openTodos"
+              :key="todo.id"
+              class="board-todo-row"
+              :class="{ 'is-completing': completingTodoIds.includes(todo.id) }"
+            >
+              <label class="board-todo-check">
+                <input
+                  type="checkbox"
+                  :checked="completingTodoIds.includes(todo.id)"
+                  :aria-label="`完成：${todo.title}`"
+                  @change="completeTodo(todo)"
+                />
+              </label>
+
+              <div class="board-todo-body">
+                <input
+                  v-if="editingTitleId === todo.id"
+                  :ref="focusTodoTitleInput"
+                  v-model="todoTitleDraft"
+                  class="board-todo-title-input"
+                  aria-label="事项"
+                  maxlength="240"
+                  @keydown.enter.prevent="void saveTodoTitle(todo)"
+                  @keydown.esc.prevent="cancelTodoTitleEdit()"
+                  @blur="void saveTodoTitle(todo)"
+                />
+                <strong v-else class="board-todo-title" @click="startTodoTitleEdit(todo)">{{ todo.title }}</strong>
+
+                <ul v-if="editingTodoId !== todo.id && todo.subtasks.length" class="board-todo-subtasks">
                   <li v-for="subtask in todo.subtasks" :key="subtask.id">
-                    <label><input :checked="subtask.is_done" type="checkbox" :aria-label="`完成小项：${subtask.title}`" @change="toggleTodoSubtask(todo, subtask.id)" /><span :class="{ 'is-done': subtask.is_done }">{{ subtask.title }}</span></label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        :checked="subtask.is_done"
+                        :aria-label="`完成小项：${subtask.title}`"
+                        @change="toggleTodoSubtask(todo, subtask.id)"
+                      />
+                      <span class="board-todo-subtask-title" :class="{ 'is-done': subtask.is_done }">{{ subtask.title }}</span>
+                    </label>
                   </li>
                 </ul>
-                <span v-else class="board-todo-no-subtasks">—</span>
-              </template>
-            </div>
-            <div class="board-todo-row-actions">
-              <template v-if="editingTodoId === todo.id">
-                <button type="button" aria-label="保存待办" @click="void saveTodoDetails()">✓</button>
-                <button type="button" aria-label="取消编辑" @click="cancelEditingTodo()">×</button>
-              </template>
-              <template v-else>
-                <details class="board-todo-more">
-                  <summary :aria-label="`更多操作：${todo.title}`" title="更多操作">···</summary>
-                  <div class="board-todo-menu">
-                    <button type="button" :aria-label="`编辑待办：${todo.title}`" @click="startEditingTodo(todo)">编辑</button>
-                    <button type="button" :aria-label="`删除待办：${todo.title}`" @click="void deleteTodo(todo.id)">删除</button>
+
+                <div v-if="editingTodoId === todo.id && todoEditDraft" class="board-todo-edit-panel">
+                  <div class="board-todo-edit-field">
+                    <span class="board-todo-edit-label">负责人</span>
+                    <select v-model="todoEditDraft.assignee_id" aria-label="所有者">
+                      <option value="">所有人</option>
+                      <option v-for="member in authStore.members" :key="member.id" :value="member.id">{{ member.displayName }}</option>
+                    </select>
                   </div>
-                </details>
-              </template>
+
+                  <div class="board-todo-edit-field">
+                    <span class="board-todo-edit-label">目标日期</span>
+                    <input v-model="todoEditDraft.due_date" aria-label="目标日期" type="date" />
+                  </div>
+
+                  <div class="board-todo-edit-field is-block">
+                    <span class="board-todo-edit-label">清单</span>
+                    <ul v-if="todoEditDraft.subtasks.length" class="board-todo-subtasks is-editing">
+                      <li v-for="subtask in todoEditDraft.subtasks" :key="subtask.id">
+                        <label>
+                          <input v-model="subtask.is_done" type="checkbox" />
+                          <input v-model="subtask.title" aria-label="小项标题" />
+                        </label>
+                      </li>
+                    </ul>
+                    <div class="board-todo-subtask-add">
+                      <input v-model="todoEditSubtaskTitle" aria-label="新增小项" placeholder="添加小项" @keydown.enter.prevent="addTodoEditSubtask" />
+                      <button type="button" @click="addTodoEditSubtask">添加</button>
+                    </div>
+                  </div>
+
+                  <div class="board-todo-edit-actions">
+                    <button type="button" @click="cancelEditingTodo()">取消</button>
+                    <button type="button" class="is-primary" @click="void saveTodoDetails()">保存</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="board-todo-meta">
+                <span v-if="todo.subtasks.length" class="board-todo-subtask-badge">{{ subtaskDoneCount(todo) }}/{{ todo.subtasks.length }}</span>
+                <span class="board-todo-owner">{{ todoOwnerLabel(todo) }}</span>
+                <time class="board-todo-due" :datetime="todo.due_date">{{ formatBoardDueDate(todo.due_date) }}</time>
+              </div>
+
+              <div v-if="editingTodoId !== todo.id" class="board-todo-row-actions">
+                <button type="button" :aria-label="`编辑待办：${todo.title}`" @click="startEditingTodo(todo)">编辑</button>
+                <button type="button" class="board-todo-remove" :aria-label="`删除待办：${todo.title}`" @click="void deleteTodo(todo.id)">删除</button>
+              </div>
+            </article>
+
+            <p v-if="!todoProgress.total" class="board-todo-empty">还没有待办。</p>
+            <p v-else-if="!openTodos.length" class="board-todo-empty">都做完了。</p>
+
+            <div v-if="todoProgress.done" class="board-todo-done-group">
+              <button
+                type="button"
+                class="board-todo-done-summary"
+                :aria-expanded="showDoneTodos"
+                @click="toggleShowDoneTodos()"
+              >
+                <span class="board-todo-done-caret" :class="{ 'is-open': showDoneTodos }" aria-hidden="true"></span>
+                已完成 {{ todoProgress.done }}
+              </button>
+
+              <div v-if="showDoneTodos" class="board-todo-done-list">
+                <article v-for="todo in doneTodos" :key="todo.id" class="board-todo-row is-done">
+                  <label class="board-todo-check">
+                    <input
+                      type="checkbox"
+                      :checked="true"
+                      :aria-label="`取消完成：${todo.title}`"
+                      @change="void updateTodo(todo.id, { is_done: false })"
+                    />
+                  </label>
+
+                  <div class="board-todo-body">
+                    <strong class="board-todo-title">{{ todo.title }}</strong>
+                    <ul v-if="todo.subtasks.length" class="board-todo-subtasks">
+                      <li v-for="subtask in todo.subtasks" :key="subtask.id">
+                        <span class="board-todo-subtask-title" :class="{ 'is-done': subtask.is_done }">{{ subtask.title }}</span>
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div class="board-todo-meta">
+                    <span v-if="todo.subtasks.length" class="board-todo-subtask-badge">{{ subtaskDoneCount(todo) }}/{{ todo.subtasks.length }}</span>
+                    <span class="board-todo-owner">{{ todoOwnerLabel(todo) }}</span>
+                    <time class="board-todo-due" :datetime="todo.due_date">{{ formatBoardDueDate(todo.due_date) }}</time>
+                  </div>
+
+                  <div class="board-todo-row-actions">
+                    <button type="button" class="board-todo-remove" :aria-label="`删除待办：${todo.title}`" @click="void deleteTodo(todo.id)">删除</button>
+                  </div>
+                </article>
+              </div>
             </div>
-          </article>
-            <p v-if="!sortedTodos.length" class="board-todo-empty">还没有待办。</p>
           </div>
         </div>
 
@@ -2394,6 +2606,497 @@ export function formatBoardDueDate(value: string) {
 @media (prefers-reduced-motion: reduce) {
   .board-note {
     animation: none;
+  }
+}
+
+/* ── 待办清单 v2 ────────────────────────────────────────────────
+   从「电子表格」改成「清单」。旧的表格样式仍在上方，这一节放在文件末尾，
+   靠「同作用域内后置覆盖」生效：
+     去掉表头行与单元格边框 · 去掉序号列 · 子项移到标题下方 ·
+     勾选框改为自绘圆形 · 已完成收进底部可折叠分组
+   注意：操作按钮**不做 hover 才显示** —— 主要使用设备是 iPad，
+   触屏没有 hover，藏起来就点不到了。
+   ───────────────────────────────────────────────────────────── */
+
+/* 整块面板做成一张卡片：头部与列表都透明，由面板统一提供底色。
+   否则列表会直接露出展板的青绿底，看起来很脏。 */
+.board-todo-panel {
+  padding: 0.7rem 0.75rem 0.75rem;
+  border-radius: 12px;
+  background: var(--surface-card);
+}
+
+.board-todo-header {
+  align-items: center;
+  gap: 0.75rem;
+  background: transparent;
+}
+
+.board-todo-completion {
+  color: var(--text-soft);
+  font-size: var(--type-l7-size, 0.78rem);
+  font-weight: 600;
+}
+
+.board-todo-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-left: auto;
+}
+
+.board-todo-progress-track {
+  width: 96px;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.board-todo-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--success);
+  transition: width 0.35s ease;
+}
+
+.board-todo-progress-label {
+  color: var(--text-soft);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 容器：去掉表格边框与表头行，改用分隔线（底色由面板提供） */
+.board-todo-table {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.board-todo-columns {
+  display: none;
+}
+
+.board-todo-list {
+  padding: 0.1rem 0;
+}
+
+/* 单行：由 6 列 grid 改为 flex 清单行 */
+.board-todo-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  min-height: 0;
+  padding: 0.7rem 0.4rem;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  transition: background 0.15s ease, opacity 0.3s ease;
+}
+
+.board-todo-row:hover {
+  background: var(--surface-soft);
+}
+
+.board-todo-row > * {
+  padding: 0;
+  border-right: 0;
+}
+
+/* 勾选框：自绘圆形 + 对勾（appearance: none 覆盖浏览器默认外观） */
+.board-todo-check {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  padding-top: 0.1rem;
+}
+
+.board-todo-check input[type='checkbox'],
+.board-todo-subtasks input[type='checkbox'] {
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  /* 未勾选时是「空环」，不能填成实心 —— 实心浅色圆看起来就是个白点，
+     而且旧样式给 checkbox 加了 padding，不重置 box-sizing 会让它胀大 */
+  border: 1.5px solid var(--text-soft);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.board-todo-subtasks input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  border-width: 1.25px;
+}
+
+.board-todo-check input[type='checkbox']:hover,
+.board-todo-subtasks input[type='checkbox']:hover {
+  border-color: var(--accent);
+  background: var(--accent-panel);
+}
+
+.board-todo-check input[type='checkbox']:checked,
+.board-todo-subtasks input[type='checkbox']:checked {
+  border-color: var(--success);
+  background: var(--success);
+}
+
+.board-todo-check input[type='checkbox']::after,
+.board-todo-subtasks input[type='checkbox']::after {
+  content: '';
+  width: 4px;
+  height: 8px;
+  border: solid var(--accent-contrast);
+  border-width: 0 1.75px 1.75px 0;
+  transform: rotate(45deg) translate(-0.5px, -1px) scale(0);
+  transition: transform 0.14s ease;
+}
+
+.board-todo-subtasks input[type='checkbox']::after {
+  width: 3px;
+  height: 6px;
+}
+
+.board-todo-check input[type='checkbox']:checked::after,
+.board-todo-subtasks input[type='checkbox']:checked::after {
+  transform: rotate(45deg) translate(-0.5px, -1px) scale(1);
+}
+
+.board-todo-check input[type='checkbox']:focus-visible,
+.board-todo-subtasks input[type='checkbox']:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* 主体：标题在上，子项缩进在下方 */
+.board-todo-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.board-todo-title {
+  color: var(--text-main);
+  font-size: var(--type-l6-size, 0.95rem);
+  font-weight: 600;
+  line-height: 1.35;
+  word-break: break-word;
+  cursor: text;
+}
+
+.board-todo-title:hover {
+  color: var(--accent-dark);
+}
+
+.board-todo-title-input {
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--accent-border);
+  border-radius: 6px;
+  background: var(--input-bg);
+  color: var(--text-main);
+  font: inherit;
+  font-weight: 600;
+}
+
+.board-todo-subtasks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.board-todo-subtasks li {
+  border: 0;
+}
+
+.board-todo-subtasks li label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.board-todo-subtask-title {
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.board-todo-subtask-title.is-done {
+  text-decoration: line-through;
+  opacity: 0.65;
+}
+
+.board-todo-subtasks input:not([type='checkbox']) {
+  padding: 0.25rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--input-bg);
+  color: var(--text-main);
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+/* 右侧次要信息：负责人 · 日期 · 子项完成度 */
+.board-todo-meta {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding-top: 0.15rem;
+  color: var(--text-soft);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.board-todo-subtask-badge {
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.board-todo-due {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 操作按钮：始终可见（触屏没有 hover），hover 时再加重 */
+.board-todo-row-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.25rem;
+  padding-top: 0.1rem;
+  opacity: 0.8;
+  transition: opacity 0.15s ease;
+}
+
+.board-todo-row:hover .board-todo-row-actions,
+.board-todo-row:focus-within .board-todo-row-actions {
+  opacity: 1;
+}
+
+.board-todo-row-actions button {
+  padding: 0.28rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 0.74rem;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.board-todo-row-actions button:hover {
+  border-color: var(--line);
+  background: var(--surface-card);
+  color: var(--accent-dark);
+}
+
+.board-todo-row-actions .board-todo-remove:hover {
+  border-color: var(--danger-border);
+  background: var(--danger-panel);
+  color: var(--danger);
+}
+
+/* 完成瞬间：先划掉并淡出，稍后才收进「已完成」 */
+.board-todo-row.is-completing {
+  background: var(--success-panel);
+  opacity: 0.55;
+}
+
+.board-todo-row.is-completing .board-todo-title,
+.board-todo-row.is-completing .board-todo-subtask-title {
+  text-decoration: line-through;
+}
+
+/* 已完成分组 */
+.board-todo-done-group {
+  margin-top: 0.35rem;
+  border-top: 1px dashed var(--line);
+}
+
+.board-todo-done-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  padding: 0.6rem 0.4rem;
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.board-todo-done-summary:hover {
+  color: var(--accent-dark);
+}
+
+.board-todo-done-caret {
+  width: 0;
+  height: 0;
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+  border-left: 4px solid currentColor;
+  transition: transform 0.15s ease;
+}
+
+.board-todo-done-caret.is-open {
+  transform: rotate(90deg);
+}
+
+.board-todo-done-list {
+  opacity: 0.85;
+}
+
+.board-todo-row.is-done .board-todo-title {
+  color: var(--text-soft);
+  text-decoration: line-through;
+}
+
+/* 编辑面板：展开在标题下方，而不是把整行的每一格都变成表单 */
+.board-todo-edit-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.6rem;
+  margin-top: 0.25rem;
+  padding: 0.65rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.board-todo-edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.board-todo-edit-field.is-block {
+  flex: 1 1 100%;
+}
+
+.board-todo-edit-label {
+  color: var(--text-soft);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.board-todo-edit-panel select,
+.board-todo-edit-panel input[type='date'] {
+  padding: 0.3rem 0.45rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--input-bg);
+  color: var(--text-main);
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.board-todo-edit-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+.board-todo-edit-actions button {
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface-card);
+  color: var(--text-main);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.board-todo-edit-actions .is-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+/* 空状态与添加入口 */
+.board-todo-empty {
+  padding: 1.1rem 0.4rem;
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.board-todo-add-button {
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-soft);
+}
+
+.board-todo-add-button:hover {
+  border-color: var(--accent);
+  background: var(--accent-panel);
+  color: var(--accent-dark);
+}
+
+@media (max-width: 720px) {
+  .board-todo-row {
+    flex-wrap: wrap;
+  }
+
+  .board-todo-check {
+    order: 1;
+  }
+
+  .board-todo-body {
+    order: 2;
+    flex: 1 1 0;
+  }
+
+  .board-todo-row-actions {
+    order: 3;
+  }
+
+  .board-todo-meta {
+    order: 4;
+    flex: 1 1 100%;
+    margin-left: 1.75rem;
+    padding-top: 0;
+  }
+
+  .board-todo-progress-track {
+    width: 64px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-todo-row,
+  .board-todo-progress-fill,
+  .board-todo-done-caret,
+  .board-todo-check input[type='checkbox'],
+  .board-todo-subtasks input[type='checkbox'],
+  .board-todo-check input[type='checkbox']::after,
+  .board-todo-subtasks input[type='checkbox']::after {
+    transition: none;
   }
 }
 </style>
