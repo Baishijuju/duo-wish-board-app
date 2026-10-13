@@ -3024,6 +3024,14 @@ export function formatBoardDueDate(value: string) {
    不会出现「文字变大后被固定行高截断或互相重叠」。
    数值由面板调整，最终写死在 --board-zoom-* 上。 */
 
+.shared-board-page.is-fullscreen {
+  /* iOS Safari 会对文字做「自动调整」以保持可读，这会覆盖页面设定的字号 ——
+     表现就是缩放只放大了版面与图形、文字却几乎不变。
+     这里明确关掉它，字号才能真正跟着缩放走。 */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 .shared-board-page.is-fullscreen .shared-board-header {
   zoom: var(--board-zoom-header, 1);
 }
