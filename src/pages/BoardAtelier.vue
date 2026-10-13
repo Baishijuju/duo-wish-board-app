@@ -91,7 +91,7 @@ const BOARD_ZOOM_STEP = 0.2
  * 每次发布后加 0.1，用来确认设备上跑的到底是不是最新版
  * （PWA 有 Service Worker 缓存，重开一两次才会换新）。
  */
-const BOARD_BUILD_VERSION = 'v1.1'
+const BOARD_BUILD_VERSION = 'v1.2'
 
 const BOARD_ZOOM_BLOCKS = [
   { key: 'header', label: '看板标题' },
@@ -3027,33 +3027,49 @@ export function formatBoardDueDate(value: string) {
     transition: none;
   }
 }
-/* ── 全屏看板：按区块缩放 ───────────────────────────────────────
-   用 zoom 而不是逐个改 font-size：缩放会连行高与间距一起按比例放大，
-   不会出现「文字变大后被固定行高截断或互相重叠」。
-   数值由面板调整，最终写死在 --board-zoom-* 上。 */
+/* ── 全屏看板：按区块放大 ───────────────────────────────────────
+   为什么不用 zoom：在 iPad 的 WebKit 上，zoom 只放大了版面盒子，
+   字形没有跟着变大 —— 实测四个区块的文字全都不动，只有边框和间距在变。
+   所以图表 / 便签 / 待办改用 transform: scale()：它是绘制层面的缩放，
+   任何引擎都会连字形一起放大。
+   transform 不改变布局占位，因此按比例补偿宽高，让视觉尺寸仍等于原面板区域。 */
 
 .shared-board-page.is-fullscreen {
-  /* iOS Safari 会对文字做「自动调整」以保持可读，这会覆盖页面设定的字号 ——
-     表现就是缩放只放大了版面与图形、文字却几乎不变。
-     这里明确关掉它，字号才能真正跟着缩放走。 */
+  /* iOS Safari 会对文字做「自动调整」以保持可读，这会覆盖页面设定的字号，
+     明确关掉它，字号才由我们说了算。 */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
 
-.shared-board-page.is-fullscreen .shared-board-header {
-  zoom: var(--board-zoom-header, 1);
+/* 看板标题：走改字号。
+   它由内容撑高，用缩放会和下方内容重叠，所以只能改字号。
+   全屏下 h2 的原始字号是 1.05rem。 */
+.shared-board-page.is-fullscreen .shared-board-header h2 {
+  font-size: calc(1.05rem * var(--board-zoom-header, 1));
+}
+
+.shared-board-page.is-fullscreen .board-progress-panel,
+.shared-board-page.is-fullscreen .board-notes-panel,
+.shared-board-page.is-fullscreen > .board-todo-panel {
+  transform-origin: top left;
 }
 
 .shared-board-page.is-fullscreen .board-progress-panel {
-  zoom: var(--board-zoom-chart, 1);
+  transform: scale(var(--board-zoom-chart, 1));
+  width: calc(100% / var(--board-zoom-chart, 1));
+  height: calc(100% / var(--board-zoom-chart, 1));
 }
 
 .shared-board-page.is-fullscreen .board-notes-panel {
-  zoom: var(--board-zoom-notes, 1);
+  transform: scale(var(--board-zoom-notes, 1));
+  width: calc(100% / var(--board-zoom-notes, 1));
+  height: calc(100% / var(--board-zoom-notes, 1));
 }
 
 .shared-board-page.is-fullscreen > .board-todo-panel {
-  zoom: var(--board-zoom-todo, 1);
+  transform: scale(var(--board-zoom-todo, 1));
+  width: calc(100% / var(--board-zoom-todo, 1));
+  height: calc(100% / var(--board-zoom-todo, 1));
 }
 
 /* 调参面板：固定在右下角，本身不参与任何区块的缩放 */
