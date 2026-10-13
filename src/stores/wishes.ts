@@ -2399,6 +2399,14 @@ export const useWishStore = defineStore('wishes', () => {
       await Promise.all(loadedWishIdsToRefresh.map((wishId) => loadWishThreadEntries(wishId, spaceId)))
       syncMessage.value = '当前显示的是 Supabase 云端愿望数据。'
       return true
+    } catch (error) {
+      // 以前这里没有 catch，而调用方是 `void syncFromSupabase(...)`，
+      // 于是任何异常都会被静默吞掉：界面永远停在旧的同步提示上（例如
+      // 「当前使用本地演示数据。」），用户看不到真正的原因，也无法判断该重试什么。
+      // 现在把原因写进同步提示，「同步详情 → 数据来源」会直接显示出来。
+      const message = error instanceof Error ? error.message : String(error)
+      syncMessage.value = `云端愿望同步失败：${message}`
+      return false
     } finally {
       isLoading.value = false
     }

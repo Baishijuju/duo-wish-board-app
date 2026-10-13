@@ -51,6 +51,7 @@ export const ENTRY_STATUS_LABELS = {
 } as const
 
 export const SYNC_STATUS_LABELS = {
+  degraded: '已同步 · 实时更新中断',
   error: '同步异常',
   healthy: '同步正常',
   notSynced: '暂未同步',
@@ -101,8 +102,17 @@ export function getSyncStatusLabel(params: {
     return SYNC_STATUS_LABELS.notSynced
   }
 
-  if (params.realtimeStatus === 'error' || params.syncMessage.includes('失败')) {
+  // 只有「数据同步本身失败」才算异常。
+  if (params.syncMessage.includes('失败')) {
     return SYNC_STATUS_LABELS.error
+  }
+
+  // Realtime 只是「实时推送」这一条通道，断了不影响数据读写：
+  // 应用在每次写入后都会主动重新拉取。所以这里降级显示。
+  // 以前两者共用「同步异常」，导致数据明明同步成功却报异常，
+  // 真正的失败反而淹没在假警报里、无法辨认。
+  if (params.realtimeStatus === 'error') {
+    return SYNC_STATUS_LABELS.degraded
   }
 
   if (params.realtimeStatus === 'connecting' || params.isLoading) {

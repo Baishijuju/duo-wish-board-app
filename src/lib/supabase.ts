@@ -103,3 +103,48 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
 export const supabaseReadinessMessage = isSupabaseConfigured
   ? `环境变量已就绪，当前前端将使用 ${supabaseAuthMode} 连接 Supabase。`
   : '尚未配置 VITE_SUPABASE_URL 与 VITE_SUPABASE_PUBLISHABLE_KEY，当前使用本地 mock 数据。'
+
+/**
+ * 把 Supabase 返回的签名 URL 改写到当前配置的域名上。
+ *
+ * 为什么必须做
+ *   createSignedUrls / getPublicUrl 返回的是**绝对地址**，主机名永远是项目
+ *   原始域名（*.supabase.co）。当 VITE_SUPABASE_URL 指向自建反代域名时
+ *   （用于绕开 supabase.co 在部分地区被阻断的问题），图片请求如果还指向
+ *   原始域名，就会绕过反代、直连那条已经不通的路径 —— 表现为数据都正常，
+ *   只有图片全部加载失败。
+ *
+ * 未配置反代时是空操作，行为与之前完全一致。
+ */
+const configuredSupabaseOrigin = (() => {
+  if (!supabaseUrl) {
+    return ''
+  }
+
+  try {
+    return new URL(supabaseUrl).origin
+  } catch {
+    return ''
+  }
+})()
+
+export function rewriteSignedStorageUrl(url: string) {
+  if (!url || !configuredSupabaseOrigin) {
+    return url
+  }
+
+  try {
+    const parsed = new URL(url)
+
+    if (parsed.hostname.endsWith('.supabase.co') || parsed.hostname.endsWith('.supabase.in')) {
+      const configured = new URL(configuredSupabaseOrigin)
+      parsed.protocol = configured.protocol
+      parsed.host = configured.host
+      return parsed.toString()
+    }
+  } catch {
+    // 相对路径或非法 URL：原样返回，交给上层处理
+  }
+
+  return url
+}

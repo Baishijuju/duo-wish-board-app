@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { rewriteSignedStorageUrl } from '../../lib/supabase'
 import type { AppCapabilities } from './capabilities'
 import type { ThreadReactionRecord } from '../../stores/wishes'
 import { createThreadReactionRecord } from '../journal/journal.factories'
@@ -257,10 +258,13 @@ async function createCachedSignedUrlMap(
 
   for (const item of signedUrls ?? []) {
     if (item.path && item.signedUrl) {
-      signedUrlMap.set(item.path, item.signedUrl)
+      // 改写到当前配置的域名后再进缓存：缓存里存的必须是手机真正能访问的地址，
+      // 否则反代场景下图片仍然会去直连被阻断的 *.supabase.co。
+      const usableUrl = rewriteSignedStorageUrl(item.signedUrl)
+      signedUrlMap.set(item.path, usableUrl)
       signedUrlCache.set(getSignedUrlCacheKey(bucketName, item.path), {
         expiresAt,
-        signedUrl: item.signedUrl,
+        signedUrl: usableUrl,
       })
     }
   }

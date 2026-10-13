@@ -413,14 +413,16 @@ export const useAuthStore = defineStore('auth', () => {
     isRefreshingSpace.value = true
 
     try {
-      // 这三步互不依赖，并行发起可省掉两轮网络往返（实测每轮约 200ms）。
-      const [, , initialMemberships] = await Promise.all([
+      // refreshAppCapabilities 与绑定补全互不依赖，可并行省一轮往返。
+      // 但 listMemberships 必须等绑定补全之后：ensure_bound_space_memberships 可能
+      // 正是创建/修复成员记录的那一步，并行会让它读到空结果，
+      // 进而误判为「没有空间」并自动新建一个个人空间。
+      await Promise.all([
         refreshAppCapabilities(),
         ensureBoundSpacesForSession(session),
-        listMemberships(session.user.id),
       ])
 
-      let memberships = initialMemberships
+      let memberships = await listMemberships(session.user.id)
 
       if (!memberships.length) {
         const createdSpace = await createDefaultSpaceForSession(session)

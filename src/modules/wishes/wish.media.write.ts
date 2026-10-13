@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { rewriteSignedStorageUrl } from '../../lib/supabase'
 import type { WishImage, WishRecord } from '../../stores/wishes'
 import { createWishImage } from './wish.factories'
 
@@ -104,7 +105,7 @@ export async function uploadCommentImagesWrite(options: {
 
     for (const item of signedUrls ?? []) {
       if (item.path && item.signedUrl) {
-        signedUrlEntries.push([item.path, item.signedUrl])
+        signedUrlEntries.push([item.path, rewriteSignedStorageUrl(item.signedUrl)])
       }
     }
 
@@ -261,7 +262,7 @@ export async function uploadWishImagesWrite(options: {
 
       for (const item of signedUrls ?? []) {
         if (item.path && item.signedUrl) {
-          signedUrlMap.set(item.path, item.signedUrl)
+          signedUrlMap.set(item.path, rewriteSignedStorageUrl(item.signedUrl))
         }
       }
 
