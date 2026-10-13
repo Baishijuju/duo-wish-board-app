@@ -87,6 +87,24 @@ function instrumentLocalWrites(client: SupabaseClient) {
   return client
 }
 
+/**
+ * 固定会话存储键。
+ *
+ * supabase-js 默认按 `sb-${URL 主机名的第一段}-auth-token` 生成键名：
+ *   https://cimwhpatnazndnnvvfoz.supabase.co -> sb-cimwhpatnazndnnvvfoz-auth-token
+ *
+ * 一旦把 VITE_SUPABASE_URL 换成本项目的自建反代域名（见 cloudflare/supabase-proxy.js），
+ * 主机名变成 sb.yuetaijie.top，第一段就成了 "sb"，键名会变成 sb-sb-auth-token。
+ * 后果不是「提示重新登录」，而是应用去错误的位置找会话、静默当作未登录：
+ * 请求不带令牌 -> 401 (42501 permission denied) -> 界面显示同步异常，
+ * 已登录的用户看起来像是数据坏了。
+ *
+ * 因此把键名固定为项目原始取值：换域名不丢登录态，两人都不需要重新登录。
+ * 如果将来更换 Supabase 项目，这里要一并改。
+ */
+const SUPABASE_PROJECT_REF = 'cimwhpatnazndnnvvfoz'
+const SUPABASE_AUTH_STORAGE_KEY = `sb-${SUPABASE_PROJECT_REF}-auth-token`
+
 export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? instrumentLocalWrites(
       createClient(supabaseUrl ?? '', supabaseClientKey, {
@@ -95,6 +113,7 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
           flowType: 'pkce',
           persistSession: true,
           autoRefreshToken: true,
+          storageKey: SUPABASE_AUTH_STORAGE_KEY,
         },
       }),
     )
