@@ -1303,6 +1303,8 @@ export function formatBoardDueDate(value: string) {
 }
 
 .shared-board-kicker,
+
+
 .shared-board-meta {
   margin: 0;
   color: var(--text-soft);
@@ -1355,6 +1357,8 @@ export function formatBoardDueDate(value: string) {
 }
 
 .shared-board-page.is-fullscreen .shared-board-kicker,
+
+
 .shared-board-page.is-fullscreen .shared-board-meta {
   display: none;
 }
@@ -1372,7 +1376,11 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-progress-panel,
+
+
 .board-notes-panel,
+
+
 .board-todo-panel {
   min-width: 0;
   border: 0;
@@ -1381,6 +1389,8 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-progress-panel,
+
+
 .board-notes-panel {
   min-height: 0;
   overflow-y: auto;
@@ -1411,7 +1421,11 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-period-caption,
+
+
 .board-note-count,
+
+
 .board-todo-completion {
   flex: 0 0 auto;
   color: var(--text-soft);
@@ -1442,12 +1456,16 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-progress-day > header span,
+
+
 .board-progress-day small {
   color: var(--text-soft);
   font-size: 0.68rem;
 }
 
 .board-progress-day ul,
+
+
 .board-todo-subtasks {
   display: grid;
   gap: 0.4rem;
@@ -1527,6 +1545,8 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-notes-panel .board-note-toolbar > span,
+
+
 .board-notes-panel .board-note-topline > span:first-child {
   font-size: 0.64rem;
 }
@@ -1588,55 +1608,6 @@ export function formatBoardDueDate(value: string) {
   padding-bottom: 0.45rem;
 }
 
-.board-todo-date-tabs {
-  display: flex;
-  align-items: center;
-  gap: 0.2rem;
-  padding: 0.18rem;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: var(--surface-soft);
-}
-
-.board-todo-date-tabs button {
-  min-height: 34px;
-  padding: 0.25rem 0.55rem;
-  border: 0;
-  border-radius: 7px;
-  color: var(--text-soft);
-  background: transparent;
-  font: inherit;
-  font-size: 0.75rem;
-}
-
-.board-todo-date-tabs button.is-active {
-  color: var(--text-main);
-  background: var(--surface-card);
-  box-shadow: 0 1px 3px rgba(45, 34, 25, 0.12);
-}
-
-.board-todo-date-tabs input {
-  width: 38px;
-  min-height: 34px;
-  border: 0;
-  color: var(--text-soft);
-  background: transparent;
-  font: inherit;
-  font-size: 0.7rem;
-}
-
-.board-todo-columns {
-  flex: 0 0 auto;
-  display: grid;
-  grid-template-columns: 32px minmax(160px, 1.35fr) minmax(100px, 0.75fr) minmax(110px, 0.8fr) minmax(170px, 1.2fr) 44px;
-  align-items: center;
-  border-bottom: 1px solid var(--line-strong);
-  color: var(--text-soft);
-  background: var(--surface-soft);
-  font-size: 0.74rem;
-  font-weight: 600;
-}
-
 .board-todo-table {
   display: flex;
   min-height: 0;
@@ -1655,14 +1626,12 @@ export function formatBoardDueDate(value: string) {
   overscroll-behavior: contain;
 }
 
-.board-todo-columns > span,
 .board-todo-row > * {
   min-width: 0;
   padding: 0.55rem 0.7rem;
   border-right: 1px solid var(--line);
 }
 
-.board-todo-columns > span:last-child,
 .board-todo-row > *:last-child {
   border-right: 0;
 }
@@ -1680,18 +1649,6 @@ export function formatBoardDueDate(value: string) {
   border-bottom: 0;
 }
 
-.board-todo-index {
-  display: grid;
-  place-items: start center;
-  color: var(--text-soft);
-  font-size: 0.78rem;
-}
-
-.board-todo-row.is-done .board-todo-main > strong {
-  color: var(--text-soft);
-  text-decoration: line-through;
-}
-
 .board-todo-check {
   display: inline-flex;
   align-items: flex-start;
@@ -1700,62 +1657,15 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-todo-check input,
+
+
 .board-todo-subtasks input,
+
+
 .board-todo-draft-subtasks input {
   width: 20px;
   height: 20px;
   accent-color: var(--accent-dark);
-}
-
-.board-todo-main {
-  display: flex;
-  min-width: 0;
-  align-items: flex-start;
-  padding-top: 0.68rem !important;
-  padding-bottom: 0.68rem !important;
-}
-
-.board-todo-main > strong {
-  color: var(--text-main);
-  font-size: 0.9rem;
-  font-weight: 600;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-
-.board-todo-owner-cell,
-.board-todo-date-cell,
-.board-todo-checklist-cell {
-  color: var(--text-main);
-  font-size: 0.83rem;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-
-.board-todo-owner-cell,
-.board-todo-date-cell {
-  padding-top: 0.72rem !important;
-}
-
-.board-todo-date-cell time {
-  overflow: hidden;
-  color: var(--text-soft);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.board-todo-owner-cell select,
-.board-todo-date-cell input {
-  width: 100%;
-  min-width: 0;
-  min-height: 38px;
-  padding: 0.35rem;
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  color: var(--text-main);
-  background: var(--input-bg);
-  font: inherit;
-  font-size: 0.78rem;
 }
 
 .board-todo-subtasks {
@@ -1767,6 +1677,8 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-todo-subtasks li label,
+
+
 .board-todo-draft-subtasks label {
   display: flex;
   align-items: center;
@@ -1777,7 +1689,11 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-todo-subtasks li,
+
+
 .board-todo-subtasks label,
+
+
 .board-todo-subtasks label > span {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -1788,6 +1704,8 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-todo-subtasks input,
+
+
 .board-todo-draft-subtasks input {
   width: 18px;
   height: 18px;
@@ -1804,48 +1722,10 @@ export function formatBoardDueDate(value: string) {
   opacity: 0.68;
 }
 
-.board-todo-no-subtasks {
-  color: var(--text-soft);
-}
-
-.board-todo-edit-title {
-  width: 100%;
-}
-
 .board-todo-row-actions {
   display: flex;
   justify-content: center;
   padding: 0.3rem 0.1rem !important;
-}
-
-.board-todo-more summary {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  list-style: none;
-  cursor: pointer;
-  color: var(--text-soft);
-  border-radius: 6px;
-  font-size: 1.15rem;
-}
-
-.board-todo-more summary::-webkit-details-marker {
-  display: none;
-}
-
-.board-todo-more summary:hover,
-.board-todo-more[open] summary {
-  background: var(--surface-soft);
-}
-
-.board-todo-menu {
-  display: grid;
-  gap: 2px;
-}
-
-.board-todo-menu button {
-  min-height: 44px;
 }
 
 .board-todo-row-actions button {
@@ -1895,10 +1775,11 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-todo-composer > input,
+
+
 .board-todo-composer > select,
-.board-todo-edit-fields input,
-.board-todo-edit-fields select,
-.board-todo-edit-title,
+
+
 .board-todo-subtask-add input {
   min-width: 0;
   min-height: 36px;
@@ -1912,7 +1793,11 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-todo-draft-subtasks,
+
+
 .board-todo-subtask-add,
+
+
 .board-todo-composer-actions {
   display: flex;
   grid-column: 1 / -1;
@@ -1922,6 +1807,8 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-todo-subtask-add button,
+
+
 .board-todo-composer-actions button {
   min-height: 36px;
   padding: 0.35rem 0.65rem;
@@ -1935,20 +1822,6 @@ export function formatBoardDueDate(value: string) {
 
 .board-todo-composer-actions {
   justify-content: flex-end;
-}
-
-.board-todo-edit-fields {
-  display: flex;
-  width: 100%;
-  gap: 0.35rem;
-}
-
-.board-todo-edit-title {
-  width: 100%;
-}
-
-.board-todo-edit-fields > * {
-  flex: 1 1 0;
 }
 
 .shared-board-page.is-fullscreen > .board-main-layout {
@@ -1982,7 +1855,11 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-splitter:hover span,
+
+
 .board-splitter:focus-visible span,
+
+
 .board-splitter:active span {
   background: var(--accent-border);
 }
@@ -2032,6 +1909,8 @@ export function formatBoardDueDate(value: string) {
 }
 
 .shared-board-page.is-fullscreen .board-progress-panel,
+
+
 .shared-board-page.is-fullscreen .board-notes-panel {
   overflow-y: auto;
 }
@@ -2062,9 +1941,17 @@ export function formatBoardDueDate(value: string) {
 }
 
 .shared-board-primary-button,
+
+
 .shared-board-quiet-button,
+
+
 .shared-board-edit-button,
+
+
 .shared-board-add-button,
+
+
 .board-note-order-actions button {
   min-height: 44px;
   padding: 0.5rem 0.8rem;
@@ -2083,6 +1970,8 @@ export function formatBoardDueDate(value: string) {
 }
 
 .shared-board-primary-button:disabled,
+
+
 .shared-board-quiet-button:disabled {
   cursor: wait;
   opacity: 0.6;
@@ -2157,19 +2046,27 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-note-topline,
+
+
 .board-note-toolbar,
+
+
 .board-note-order-actions {
   display: flex;
   align-items: center;
 }
 
 .board-note-topline,
+
+
 .board-note-toolbar {
   justify-content: space-between;
   gap: 0.6rem;
 }
 
 .board-note-topline > span:first-child,
+
+
 .board-note-toolbar > span {
   color: var(--text-soft);
   font-size: var(--type-l7-size);
@@ -2295,7 +2192,11 @@ export function formatBoardDueDate(value: string) {
 }
 
 .shared-board-empty h3,
+
+
 .shared-board-empty p,
+
+
 .shared-board-edit-hint {
   margin: 0;
 }
@@ -2307,6 +2208,8 @@ export function formatBoardDueDate(value: string) {
 }
 
 .shared-board-empty p,
+
+
 .shared-board-edit-hint {
   color: var(--text-soft);
   line-height: 1.7;
@@ -2374,6 +2277,8 @@ export function formatBoardDueDate(value: string) {
   }
 
   .shared-board-page.is-fullscreen .board-progress-panel,
+
+
   .shared-board-page.is-fullscreen .board-notes-panel {
     max-height: none;
     overflow: visible;
@@ -2388,10 +2293,6 @@ export function formatBoardDueDate(value: string) {
 
   .board-todo-panel {
     overflow: visible;
-  }
-
-  .board-todo-columns {
-    display: none;
   }
 
   .board-todo-table {
@@ -2419,61 +2320,6 @@ export function formatBoardDueDate(value: string) {
     border-right: 0;
   }
 
-  .board-todo-index {
-    grid-column: 1;
-    grid-row: 1 / span 4;
-    padding: 0.75rem 0.3rem;
-  }
-
-  .board-todo-main {
-    grid-column: 2;
-    grid-row: 1;
-    padding: 0.65rem 0.55rem 0.25rem !important;
-  }
-
-  .board-todo-owner-cell,
-  .board-todo-date-cell,
-  .board-todo-checklist-cell {
-    grid-column: 2;
-    padding: 0.25rem 0.55rem !important;
-  }
-
-  .board-todo-owner-cell {
-    grid-row: 2;
-  }
-
-  .board-todo-date-cell {
-    grid-row: 3;
-  }
-
-  .board-todo-checklist-cell {
-    grid-row: 4;
-    padding-bottom: 0.55rem !important;
-  }
-
-  .board-todo-owner-cell::before,
-  .board-todo-date-cell::before,
-  .board-todo-checklist-cell::before {
-    display: inline-block;
-    width: 4.2rem;
-    color: var(--text-soft);
-    font-size: 0.72rem;
-  }
-
-  .board-todo-owner-cell::before {
-    content: '所有者';
-  }
-
-  .board-todo-date-cell::before {
-    content: '目标日期';
-  }
-
-  .board-todo-checklist-cell::before {
-    content: '清单';
-    vertical-align: top;
-    padding-top: 0.3rem;
-  }
-
   .board-todo-row-actions {
     grid-column: 3;
     grid-row: 1;
@@ -2483,14 +2329,6 @@ export function formatBoardDueDate(value: string) {
     display: inline-grid;
     vertical-align: top;
     width: calc(100% - 4.4rem);
-  }
-
-  .board-todo-no-subtasks {
-    display: inline-block;
-  }
-
-  .board-todo-checklist-cell > .board-todo-subtask-add {
-    margin-top: 0.35rem;
   }
 
   .board-todo-composer {
@@ -2535,6 +2373,8 @@ export function formatBoardDueDate(value: string) {
   }
 
   .shared-board-page.is-fullscreen .board-progress-panel,
+
+
   .shared-board-page.is-fullscreen .board-notes-panel {
     max-height: none;
     overflow: visible;
@@ -2562,6 +2402,8 @@ export function formatBoardDueDate(value: string) {
   }
 
   .shared-board-page.is-fullscreen .board-progress-panel,
+
+
   .shared-board-page.is-fullscreen .board-notes-panel {
     padding: 0.55rem;
   }
@@ -2579,27 +2421,8 @@ export function formatBoardDueDate(value: string) {
     line-height: 1.45;
   }
 
-  .shared-board-page.is-fullscreen .board-todo-columns {
-    font-size: 1.68rem;
-  }
-
-  .shared-board-page.is-fullscreen .board-todo-main > strong {
-    font-size: 1.95rem;
-  }
-
-  .shared-board-page.is-fullscreen .board-todo-owner-cell,
-  .shared-board-page.is-fullscreen .board-todo-date-cell,
-  .shared-board-page.is-fullscreen .board-todo-checklist-cell {
-    font-size: 1.8rem;
-    overflow-wrap: anywhere;
-  }
-
   .shared-board-page.is-fullscreen .board-todo-subtasks li label {
     font-size: 1.72rem;
-  }
-
-  .shared-board-page.is-fullscreen .board-todo-date-cell time {
-    white-space: normal;
   }
 }
 
@@ -2675,10 +2498,6 @@ export function formatBoardDueDate(value: string) {
   background: transparent;
 }
 
-.board-todo-columns {
-  display: none;
-}
-
 .board-todo-list {
   padding: 0.1rem 0;
 }
@@ -2700,6 +2519,7 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-todo-row > * {
+  min-width: 0;
   padding: 0;
   border-right: 0;
 }
@@ -2713,6 +2533,8 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-todo-check input[type='checkbox'],
+
+
 .board-todo-subtasks input[type='checkbox'] {
   box-sizing: border-box;
   display: grid;
@@ -2741,18 +2563,24 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-todo-check input[type='checkbox']:hover,
+
+
 .board-todo-subtasks input[type='checkbox']:hover {
   border-color: var(--accent);
   background: var(--accent-panel);
 }
 
 .board-todo-check input[type='checkbox']:checked,
+
+
 .board-todo-subtasks input[type='checkbox']:checked {
   border-color: var(--success);
   background: var(--success);
 }
 
 .board-todo-check input[type='checkbox']::after,
+
+
 .board-todo-subtasks input[type='checkbox']::after {
   content: '';
   width: 4px;
@@ -2769,11 +2597,15 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-todo-check input[type='checkbox']:checked::after,
+
+
 .board-todo-subtasks input[type='checkbox']:checked::after {
   transform: rotate(45deg) translate(-0.5px, -1px) scale(1);
 }
 
 .board-todo-check input[type='checkbox']:focus-visible,
+
+
 .board-todo-subtasks input[type='checkbox']:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -2887,6 +2719,8 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-todo-row:hover .board-todo-row-actions,
+
+
 .board-todo-row:focus-within .board-todo-row-actions {
   opacity: 1;
 }
@@ -2922,6 +2756,8 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-todo-row.is-completing .board-todo-title,
+
+
 .board-todo-row.is-completing .board-todo-subtask-title {
   text-decoration: line-through;
 }
@@ -3004,6 +2840,8 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-todo-edit-panel select,
+
+
 .board-todo-edit-panel input[type='date'] {
   padding: 0.3rem 0.45rem;
   border: 1px solid var(--line-strong);
@@ -3090,11 +2928,17 @@ export function formatBoardDueDate(value: string) {
 
 @media (prefers-reduced-motion: reduce) {
   .board-todo-row,
+
   .board-todo-progress-fill,
+
   .board-todo-done-caret,
+
   .board-todo-check input[type='checkbox'],
+
   .board-todo-subtasks input[type='checkbox'],
+
   .board-todo-check input[type='checkbox']::after,
+
   .board-todo-subtasks input[type='checkbox']::after {
     transition: none;
   }
