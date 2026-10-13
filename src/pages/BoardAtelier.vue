@@ -76,11 +76,72 @@ function persistShowDoneTodos(value: boolean) {
   }
 }
 
+/* ── 全屏看板的按区块缩放 ──────────────────────────────────────
+   数值是倍数，1 = 原大小。做成可调是因为「站远看」到底要多大
+   只有本人知道 —— 先在面板里调好，再把数值写死成默认值即可。 */
+
+const BOARD_ZOOM_STORAGE_KEY = 'duo-wish-board-zoom:v1'
+const BOARD_ZOOM_MIN = 0.8
+const BOARD_ZOOM_MAX = 3
+const BOARD_ZOOM_STEP = 0.05
+
+const BOARD_ZOOM_BLOCKS = [
+  { key: 'header', label: '看板标题' },
+  { key: 'chart', label: '图表' },
+  { key: 'notes', label: '便签' },
+  { key: 'todo', label: '待办' },
+] as const
+
+type BoardZoomKey = (typeof BOARD_ZOOM_BLOCKS)[number]['key']
+type BoardZoomMap = Record<BoardZoomKey, number>
+
+function createDefaultBoardZoom(): BoardZoomMap {
+  return { header: 1, chart: 1, notes: 1, todo: 1 }
+}
+
+function readBoardZoom(): BoardZoomMap {
+  const fallback = createDefaultBoardZoom()
+
+  try {
+    const raw = window.localStorage.getItem(BOARD_ZOOM_STORAGE_KEY)
+
+    if (!raw) {
+      return fallback
+    }
+
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    const next = createDefaultBoardZoom()
+
+    for (const block of BOARD_ZOOM_BLOCKS) {
+      const value = Number(parsed?.[block.key])
+
+      if (Number.isFinite(value) && value >= BOARD_ZOOM_MIN && value <= BOARD_ZOOM_MAX) {
+        next[block.key] = value
+      }
+    }
+
+    return next
+  } catch {
+    return fallback
+  }
+}
+
+function persistBoardZoom(value: BoardZoomMap) {
+  try {
+    window.localStorage.setItem(BOARD_ZOOM_STORAGE_KEY, JSON.stringify(value))
+  } catch {
+    // 隐私模式等场景下不可用，忽略即可：这只是个显示偏好
+  }
+}
+
 const authStore = useAuthStore()
 const isLoading = ref(false)
 const isSaving = ref(false)
 const isEditing = ref(false)
 const isFullscreen = ref(false)
+const boardZoom = ref<BoardZoomMap>(readBoardZoom())
+const isZoomPanelOpen = ref(false)
+const zoomCopyLabel = ref('复制数值')
 const hasRemoteChanges = ref(false)
 const boardId = ref('')
 const boardTitle = ref('我们的展板')
@@ -187,6 +248,45 @@ const splitterStyle = computed(() => ({
   '--board-upper-fr': `${upperPaneRatio.value}`,
   '--board-lower-fr': `${100 - upperPaneRatio.value}`,
 }))
+
+const boardZoomStyle = computed(() => ({
+  '--board-zoom-header': String(boardZoom.value.header),
+  '--board-zoom-chart': String(boardZoom.value.chart),
+  '--board-zoom-notes': String(boardZoom.value.notes),
+  '--board-zoom-todo': String(boardZoom.value.todo),
+}))
+
+/** 调好之后把这一行发我即可 */
+const boardZoomSummary = computed(() =>
+  BOARD_ZOOM_BLOCKS.map((block) => `${block.label} ${boardZoom.value[block.key].toFixed(2)}`).join(' · '))
+
+function stepBoardZoom(key: BoardZoomKey, direction: 1 | -1) {
+  const next = Math.min(
+    BOARD_ZOOM_MAX,
+    Math.max(BOARD_ZOOM_MIN, Number((boardZoom.value[key] + direction * BOARD_ZOOM_STEP).toFixed(2))),
+  )
+
+  boardZoom.value = { ...boardZoom.value, [key]: next }
+  persistBoardZoom(boardZoom.value)
+}
+
+function resetBoardZoom() {
+  boardZoom.value = createDefaultBoardZoom()
+  persistBoardZoom(boardZoom.value)
+}
+
+async function copyBoardZoom() {
+  try {
+    await navigator.clipboard.writeText(boardZoomSummary.value)
+    zoomCopyLabel.value = '已复制'
+  } catch {
+    zoomCopyLabel.value = '复制失败，请手动读'
+  }
+
+  window.setTimeout(() => {
+    zoomCopyLabel.value = '复制数值'
+  }, 1600)
+}
 
 function enterFullscreen() {
   previousBodyOverflow = document.body.style.overflow
@@ -930,7 +1030,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section ref="boardRoot" class="shared-board-page" :class="{ 'is-editing': isEditing, 'is-fullscreen': isFullscreen }" :style="splitterStyle">
+  <section ref="boardRoot" class="shared-board-page" :class="{ 'is-editing': isEditing, 'is-fullscreen': isFullscreen }" :style="[splitterStyle, boardZoomStyle]">
     <header class="shared-board-header">
       <div class="shared-board-heading">
         <h2 v-if="!isEditing">{{ boardTitle }}</h2>
@@ -953,6 +1053,36 @@ onBeforeUnmount(() => {
         <button v-else class="shared-board-edit-button" type="button" :disabled="isLoading || !isAuthenticatedSpace" @click="startEditing">编辑便签</button>
       </div>
     </header>
+
+    <div v-if="isFullscreen" class="board-zoom-tools">
+      <button
+        type="button"
+        class="board-zoom-toggle"
+        aria-controls="board-zoom-panel"
+        :aria-expanded="isZoomPanelOpen"
+        @click="isZoomPanelOpen = !isZoomPanelOpen"
+      >
+        Aa 字号
+      </button>
+
+      <div v-if="isZoomPanelOpen" id="board-zoom-panel" class="board-zoom-panel">
+        <p class="board-zoom-hint">按区块放大。数值是倍数，1.00 就是原大小。调好后把下面那行发我，我写死成默认值。</p>
+
+        <div v-for="block in BOARD_ZOOM_BLOCKS" :key="block.key" class="board-zoom-row">
+          <span class="board-zoom-label">{{ block.label }}</span>
+          <button type="button" :aria-label="`缩小${block.label}`" @click="stepBoardZoom(block.key, -1)">−</button>
+          <output class="board-zoom-value">{{ boardZoom[block.key].toFixed(2) }}</output>
+          <button type="button" :aria-label="`放大${block.label}`" @click="stepBoardZoom(block.key, 1)">＋</button>
+        </div>
+
+        <div class="board-zoom-actions">
+          <button type="button" @click="resetBoardZoom()">恢复 1.00</button>
+          <button type="button" class="is-primary" @click="void copyBoardZoom()">{{ zoomCopyLabel }}</button>
+        </div>
+
+        <p class="board-zoom-summary">{{ boardZoomSummary }}</p>
+      </div>
+    </div>
 
     <p v-if="!isAuthenticatedSpace" class="shared-board-state">登录共享空间后，就能打开你们的展板。</p>
     <p v-else-if="isLoading" class="shared-board-state">正在打开展板…</p>
@@ -1304,7 +1434,6 @@ export function formatBoardDueDate(value: string) {
 
 .shared-board-kicker,
 
-
 .shared-board-meta {
   margin: 0;
   color: var(--text-soft);
@@ -1358,7 +1487,6 @@ export function formatBoardDueDate(value: string) {
 
 .shared-board-page.is-fullscreen .shared-board-kicker,
 
-
 .shared-board-page.is-fullscreen .shared-board-meta {
   display: none;
 }
@@ -1377,9 +1505,7 @@ export function formatBoardDueDate(value: string) {
 
 .board-progress-panel,
 
-
 .board-notes-panel,
-
 
 .board-todo-panel {
   min-width: 0;
@@ -1389,7 +1515,6 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-progress-panel,
-
 
 .board-notes-panel {
   min-height: 0;
@@ -1422,9 +1547,7 @@ export function formatBoardDueDate(value: string) {
 
 .board-period-caption,
 
-
 .board-note-count,
-
 
 .board-todo-completion {
   flex: 0 0 auto;
@@ -1457,14 +1580,12 @@ export function formatBoardDueDate(value: string) {
 
 .board-progress-day > header span,
 
-
 .board-progress-day small {
   color: var(--text-soft);
   font-size: 0.68rem;
 }
 
 .board-progress-day ul,
-
 
 .board-todo-subtasks {
   display: grid;
@@ -1545,7 +1666,6 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-notes-panel .board-note-toolbar > span,
-
 
 .board-notes-panel .board-note-topline > span:first-child {
   font-size: 0.64rem;
@@ -1658,9 +1778,7 @@ export function formatBoardDueDate(value: string) {
 
 .board-todo-check input,
 
-
 .board-todo-subtasks input,
-
 
 .board-todo-draft-subtasks input {
   width: 20px;
@@ -1678,7 +1796,6 @@ export function formatBoardDueDate(value: string) {
 
 .board-todo-subtasks li label,
 
-
 .board-todo-draft-subtasks label {
   display: flex;
   align-items: center;
@@ -1690,9 +1807,7 @@ export function formatBoardDueDate(value: string) {
 
 .board-todo-subtasks li,
 
-
 .board-todo-subtasks label,
-
 
 .board-todo-subtasks label > span {
   min-width: 0;
@@ -1704,7 +1819,6 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-todo-subtasks input,
-
 
 .board-todo-draft-subtasks input {
   width: 18px;
@@ -1776,9 +1890,7 @@ export function formatBoardDueDate(value: string) {
 
 .board-todo-composer > input,
 
-
 .board-todo-composer > select,
-
 
 .board-todo-subtask-add input {
   min-width: 0;
@@ -1794,9 +1906,7 @@ export function formatBoardDueDate(value: string) {
 
 .board-todo-draft-subtasks,
 
-
 .board-todo-subtask-add,
-
 
 .board-todo-composer-actions {
   display: flex;
@@ -1807,7 +1917,6 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-todo-subtask-add button,
-
 
 .board-todo-composer-actions button {
   min-height: 36px;
@@ -1856,9 +1965,7 @@ export function formatBoardDueDate(value: string) {
 
 .board-splitter:hover span,
 
-
 .board-splitter:focus-visible span,
-
 
 .board-splitter:active span {
   background: var(--accent-border);
@@ -1910,7 +2017,6 @@ export function formatBoardDueDate(value: string) {
 
 .shared-board-page.is-fullscreen .board-progress-panel,
 
-
 .shared-board-page.is-fullscreen .board-notes-panel {
   overflow-y: auto;
 }
@@ -1942,15 +2048,11 @@ export function formatBoardDueDate(value: string) {
 
 .shared-board-primary-button,
 
-
 .shared-board-quiet-button,
-
 
 .shared-board-edit-button,
 
-
 .shared-board-add-button,
-
 
 .board-note-order-actions button {
   min-height: 44px;
@@ -1970,7 +2072,6 @@ export function formatBoardDueDate(value: string) {
 }
 
 .shared-board-primary-button:disabled,
-
 
 .shared-board-quiet-button:disabled {
   cursor: wait;
@@ -2047,9 +2148,7 @@ export function formatBoardDueDate(value: string) {
 
 .board-note-topline,
 
-
 .board-note-toolbar,
-
 
 .board-note-order-actions {
   display: flex;
@@ -2058,14 +2157,12 @@ export function formatBoardDueDate(value: string) {
 
 .board-note-topline,
 
-
 .board-note-toolbar {
   justify-content: space-between;
   gap: 0.6rem;
 }
 
 .board-note-topline > span:first-child,
-
 
 .board-note-toolbar > span {
   color: var(--text-soft);
@@ -2193,9 +2290,7 @@ export function formatBoardDueDate(value: string) {
 
 .shared-board-empty h3,
 
-
 .shared-board-empty p,
-
 
 .shared-board-edit-hint {
   margin: 0;
@@ -2208,7 +2303,6 @@ export function formatBoardDueDate(value: string) {
 }
 
 .shared-board-empty p,
-
 
 .shared-board-edit-hint {
   color: var(--text-soft);
@@ -2277,7 +2371,6 @@ export function formatBoardDueDate(value: string) {
   }
 
   .shared-board-page.is-fullscreen .board-progress-panel,
-
 
   .shared-board-page.is-fullscreen .board-notes-panel {
     max-height: none;
@@ -2374,7 +2467,6 @@ export function formatBoardDueDate(value: string) {
 
   .shared-board-page.is-fullscreen .board-progress-panel,
 
-
   .shared-board-page.is-fullscreen .board-notes-panel {
     max-height: none;
     overflow: visible;
@@ -2402,7 +2494,6 @@ export function formatBoardDueDate(value: string) {
   }
 
   .shared-board-page.is-fullscreen .board-progress-panel,
-
 
   .shared-board-page.is-fullscreen .board-notes-panel {
     padding: 0.55rem;
@@ -2534,7 +2625,6 @@ export function formatBoardDueDate(value: string) {
 
 .board-todo-check input[type='checkbox'],
 
-
 .board-todo-subtasks input[type='checkbox'] {
   box-sizing: border-box;
   display: grid;
@@ -2564,7 +2654,6 @@ export function formatBoardDueDate(value: string) {
 
 .board-todo-check input[type='checkbox']:hover,
 
-
 .board-todo-subtasks input[type='checkbox']:hover {
   border-color: var(--accent);
   background: var(--accent-panel);
@@ -2572,14 +2661,12 @@ export function formatBoardDueDate(value: string) {
 
 .board-todo-check input[type='checkbox']:checked,
 
-
 .board-todo-subtasks input[type='checkbox']:checked {
   border-color: var(--success);
   background: var(--success);
 }
 
 .board-todo-check input[type='checkbox']::after,
-
 
 .board-todo-subtasks input[type='checkbox']::after {
   content: '';
@@ -2598,13 +2685,11 @@ export function formatBoardDueDate(value: string) {
 
 .board-todo-check input[type='checkbox']:checked::after,
 
-
 .board-todo-subtasks input[type='checkbox']:checked::after {
   transform: rotate(45deg) translate(-0.5px, -1px) scale(1);
 }
 
 .board-todo-check input[type='checkbox']:focus-visible,
-
 
 .board-todo-subtasks input[type='checkbox']:focus-visible {
   outline: 2px solid var(--accent);
@@ -2720,7 +2805,6 @@ export function formatBoardDueDate(value: string) {
 
 .board-todo-row:hover .board-todo-row-actions,
 
-
 .board-todo-row:focus-within .board-todo-row-actions {
   opacity: 1;
 }
@@ -2756,7 +2840,6 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-todo-row.is-completing .board-todo-title,
-
 
 .board-todo-row.is-completing .board-todo-subtask-title {
   text-decoration: line-through;
@@ -2840,7 +2923,6 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-todo-edit-panel select,
-
 
 .board-todo-edit-panel input[type='date'] {
   padding: 0.3rem 0.45rem;
@@ -2928,19 +3010,159 @@ export function formatBoardDueDate(value: string) {
 
 @media (prefers-reduced-motion: reduce) {
   .board-todo-row,
-
   .board-todo-progress-fill,
-
   .board-todo-done-caret,
-
   .board-todo-check input[type='checkbox'],
-
   .board-todo-subtasks input[type='checkbox'],
-
   .board-todo-check input[type='checkbox']::after,
-
   .board-todo-subtasks input[type='checkbox']::after {
     transition: none;
   }
+}
+/* ── 全屏看板：按区块缩放 ───────────────────────────────────────
+   用 zoom 而不是逐个改 font-size：缩放会连行高与间距一起按比例放大，
+   不会出现「文字变大后被固定行高截断或互相重叠」。
+   数值由面板调整，最终写死在 --board-zoom-* 上。 */
+
+.shared-board-page.is-fullscreen .shared-board-header {
+  zoom: var(--board-zoom-header, 1);
+}
+
+.shared-board-page.is-fullscreen .board-progress-panel {
+  zoom: var(--board-zoom-chart, 1);
+}
+
+.shared-board-page.is-fullscreen .board-notes-panel {
+  zoom: var(--board-zoom-notes, 1);
+}
+
+.shared-board-page.is-fullscreen > .board-todo-panel {
+  zoom: var(--board-zoom-todo, 1);
+}
+
+/* 调参面板：固定在右下角，本身不参与任何区块的缩放 */
+.board-zoom-tools {
+  position: fixed;
+  right: 0.9rem;
+  bottom: 0.9rem;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+  font-family: var(--font-body);
+}
+
+.board-zoom-toggle {
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface-card);
+  color: var(--text-main);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 18px var(--accent-shadow-soft);
+}
+
+.board-zoom-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent-dark);
+}
+
+.board-zoom-panel {
+  width: min(22rem, calc(100vw - 1.8rem));
+  padding: 0.85rem 0.9rem 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface-card);
+  box-shadow: 0 14px 34px var(--accent-shadow-soft);
+}
+
+.board-zoom-hint {
+  margin: 0 0 0.55rem;
+  color: var(--text-soft);
+  font-size: 0.73rem;
+  line-height: 1.55;
+}
+
+.board-zoom-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.32rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.board-zoom-row:last-of-type {
+  border-bottom: 0;
+}
+
+.board-zoom-label {
+  flex: 1 1 auto;
+  color: var(--text-main);
+  font-size: 0.82rem;
+}
+
+.board-zoom-row button {
+  width: 2.1rem;
+  height: 2.1rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--text-main);
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.board-zoom-row button:hover {
+  border-color: var(--accent);
+  color: var(--accent-dark);
+}
+
+.board-zoom-value {
+  min-width: 3.1rem;
+  color: var(--text-main);
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.board-zoom-actions {
+  display: flex;
+  gap: 0.45rem;
+  margin-top: 0.7rem;
+}
+
+.board-zoom-actions button {
+  flex: 1 1 auto;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface-card);
+  color: var(--text-main);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.board-zoom-actions .is-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.board-zoom-summary {
+  margin: 0.6rem 0 0;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--line);
+  color: var(--text-soft);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.55;
+  word-break: break-word;
 }
 </style>
