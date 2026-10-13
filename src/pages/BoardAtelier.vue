@@ -83,7 +83,15 @@ function persistShowDoneTodos(value: boolean) {
 const BOARD_ZOOM_STORAGE_KEY = 'duo-wish-board-zoom:v1'
 const BOARD_ZOOM_MIN = 0.8
 const BOARD_ZOOM_MAX = 3
-const BOARD_ZOOM_STEP = 0.05
+/** 步进用 0.2：0.05 要点太多次 */
+const BOARD_ZOOM_STEP = 0.2
+
+/**
+ * 展板上显示的版本号。
+ * 每次发布后加 0.1，用来确认设备上跑的到底是不是最新版
+ * （PWA 有 Service Worker 缓存，重开一两次才会换新）。
+ */
+const BOARD_BUILD_VERSION = 'v1.1'
 
 const BOARD_ZOOM_BLOCKS = [
   { key: 'header', label: '看板标题' },
@@ -1033,7 +1041,7 @@ onBeforeUnmount(() => {
   <section ref="boardRoot" class="shared-board-page" :class="{ 'is-editing': isEditing, 'is-fullscreen': isFullscreen }" :style="[splitterStyle, boardZoomStyle]">
     <header class="shared-board-header">
       <div class="shared-board-heading">
-        <h2 v-if="!isEditing">{{ boardTitle }}</h2>
+        <h2 v-if="!isEditing">{{ boardTitle }}<span class="shared-board-version">{{ BOARD_BUILD_VERSION }}</span></h2>
         <p v-if="updatedAt && lastEditorName" class="shared-board-meta">最近由{{ lastEditorName }}整理 · {{ formatBoardTime(updatedAt) }}</p>
       </div>
       <div class="shared-board-actions">
@@ -3172,5 +3180,15 @@ export function formatBoardDueDate(value: string) {
   font-variant-numeric: tabular-nums;
   line-height: 1.55;
   word-break: break-word;
+}
+
+/* 展板标题旁的版本号：用来确认设备上是哪一版 */
+.shared-board-version {
+  margin-left: 0.5rem;
+  color: var(--text-soft);
+  font-size: 0.6em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
 }
 </style>
