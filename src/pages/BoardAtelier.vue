@@ -590,7 +590,24 @@ async function loadBoard(spaceId: string) {
         table: 'shared_boards',
         filter: `space_id=eq.${spaceId}`,
       }, (payload) => {
-        const remoteRow = payload.new as SharedBoardRow
+        const remoteRow = payload.new as SharedBoardRow | null | undefined
+
+        // Realtime 的 payload 可能**不带行数据** —— 实测本应用的频道会推空对象
+        // （与主功能遇到的是同一个现象，详见 src/modules/sync/localWriteEcho.ts）。
+        //
+        // 这时绝不能当成「与我无关」直接返回：remoteRow.id 会是 undefined，
+        // 于是第一个判断永远成立、函数永远提前退出 ——
+        // 结果是对方在展板上改的**正文**永远不实时出现，只能等 5 分钟轮询
+        // 或重新进入页面。（旁边的待办处理没有这个问题，因为它压根不看 payload，
+        // 收到事件就直接重新加载，所以待办一直是实时的。）
+        //
+        // 改为走已有的自动刷新：它自带编辑保护、并发去重与失败退避，
+        // 不会覆盖你正在输入的内容。
+        if (!remoteRow || typeof remoteRow.id !== 'string' || typeof remoteRow.revision !== 'number') {
+          void autoRefresh.request()
+          return
+        }
+
         if (remoteRow.id !== boardId.value || remoteRow.revision <= revision.value) {
           return
         }
