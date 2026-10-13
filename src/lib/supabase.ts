@@ -1,4 +1,9 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import {
+  createLocalWriteClock,
+  markLocalWriteEnd,
+  markLocalWriteStart,
+} from '../modules/sync/localWriteEcho'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim()
 const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim()
@@ -14,22 +19,15 @@ export const supabaseAuthMode = supabasePublishableKey
     : 'not-configured'
 
 /**
- * 最近一次「本地发起云端写入」的时间戳。
- *
- * 为什么需要它
- *   Supabase Realtime 推给本应用的 payload 里 new/old 都是空对象 ——
- *   在同一个页面、用同一个 client 直接订阅同一张表却能拿到完整行，
- *   差异只在于应用那个 channel 的建立方式。结果是「按行 id 匹配回声」
- *   的墓碑逻辑永远命中不了，每次写入都会被误判成他人改动，
- *   触发一次完整的全量同步（实测 5-6 秒）。
- *
- *   既然拿不到行 id，就退一步用「刚才有没有本地写入」来判断。
+ * 全部本地云端写入共用的计时器。
  *
  * 为什么打点在 client 层
  *   项目里有 59 处云端写入点，逐个打点既繁琐又容易漏。
  *   包住 client 是全部写入的唯一咽喉，以后新增写入路径会自动覆盖。
+ *
+ * 判定逻辑本身在 ../modules/sync/localWriteEcho.ts —— 纯函数，有单测覆盖。
  */
-export const localWriteClock = { lastAt: 0 }
+export const localWriteClock = createLocalWriteClock()
 
 /** 只读 RPC：调用它们不算本地写入，否则会误伤同步过程中的真实事件 */
 const READ_ONLY_RPCS = new Set([
@@ -41,11 +39,50 @@ const READ_ONLY_RPCS = new Set([
 const TABLE_WRITE_METHODS = ['insert', 'upsert', 'update', 'delete'] as const
 const STORAGE_WRITE_METHODS = ['upload', 'remove', 'move', 'copy', 'update'] as const
 
-function markLocalWrite() {
-  localWriteClock.lastAt = Date.now()
+/**
+ * 给 thenable 挂上结束回调：写入真正结束（成功或失败）时才记账。
+ *
+ * postgrest 的 builder 是 thenable —— 只有被 await / then 时才真正发出请求，
+ * 所以钩住 then 是拿到「完成时刻」最可靠的位置。
+ */
+function trackCompletion(value: unknown) {
+  if (!value || typeof (value as { then?: unknown }).then !== 'function') {
+    return value
+  }
+
+  const thenable = value as { then: (onFulfilled?: unknown, onRejected?: unknown) => unknown }
+  const originalThen = thenable.then
+  let settled = false
+
+  const settle = () => {
+    if (settled) {
+      return
+    }
+
+    settled = true
+    markLocalWriteEnd(localWriteClock)
+  }
+
+  thenable.then = (onFulfilled?: unknown, onRejected?: unknown) =>
+    originalThen.call(
+      thenable,
+      (result: unknown) => {
+        settle()
+        return typeof onFulfilled === 'function' ? (onFulfilled as (v: unknown) => unknown)(result) : result
+      },
+      (error: unknown) => {
+        settle()
+        if (typeof onRejected === 'function') {
+          return (onRejected as (e: unknown) => unknown)(error)
+        }
+        throw error
+      },
+    )
+
+  return value
 }
 
-/** 把 builder 上的指定方法包一层，调用即记一次本地写入 */
+/** 把 builder 上的指定方法包一层：调用时记「开始」，结束时记「完成」 */
 function trackWriteMethods(builder: object, methods: readonly string[]) {
   const target = builder as unknown as Record<string, unknown>
 
@@ -57,8 +94,8 @@ function trackWriteMethods(builder: object, methods: readonly string[]) {
     }
 
     target[method] = (...args: unknown[]) => {
-      markLocalWrite()
-      return (original as (...inner: unknown[]) => unknown).apply(builder, args)
+      markLocalWriteStart(localWriteClock)
+      return trackCompletion((original as (...inner: unknown[]) => unknown).apply(builder, args))
     }
   }
 
@@ -74,11 +111,14 @@ function instrumentLocalWrites(client: SupabaseClient) {
     trackWriteMethods(originalFrom(relation), TABLE_WRITE_METHODS)) as typeof client.from
 
   client.rpc = ((fn: string, ...rest: unknown[]) => {
-    if (!READ_ONLY_RPCS.has(fn)) {
-      markLocalWrite()
+    const result = (originalRpc as (...args: unknown[]) => unknown)(fn, ...rest)
+
+    if (READ_ONLY_RPCS.has(fn)) {
+      return result
     }
 
-    return (originalRpc as (...args: unknown[]) => unknown)(fn, ...rest)
+    markLocalWriteStart(localWriteClock)
+    return trackCompletion(result)
   }) as typeof client.rpc
 
   client.storage.from = ((bucket: string) =>

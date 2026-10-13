@@ -3,6 +3,10 @@ import { defineStore } from 'pinia'
 import { fetchCloudflareWishList, shouldUseCloudflareBackend, writeCloudflareWishProgress } from '../lib/cloudflare'
 import { localWriteClock, supabase } from '../lib/supabase'
 import {
+  LOCAL_WRITE_ECHO_WINDOW_MS,
+  hasRecentLocalWrite as hasRecentLocalWriteModule,
+} from '../modules/sync/localWriteEcho'
+import {
   compareIsoAscending as compareIsoAscendingModule,
   createMonthlyJournalSnapshotRecord as createMonthlyJournalSnapshotRecordModule,
   createThreadReactionRecord as createThreadReactionRecordModule,
@@ -1785,8 +1789,8 @@ export const useWishStore = defineStore('wishes', () => {
    *   改动不会丢失（它在云端），下一次事件或重新加载就会同步到。
    *   窗口刻意取得较短（默认 2 秒），而自己的回声通常在写入后 1 秒内到达。
    */
-  function hasRecentLocalWrite(windowMs = 2000) {
-    return Date.now() - localWriteClock.lastAt < windowMs
+  function hasRecentLocalWrite(windowMs = LOCAL_WRITE_ECHO_WINDOW_MS) {
+    return hasRecentLocalWriteModule(localWriteClock, Date.now(), windowMs)
   }
 
   function scheduleRealtimeSync(reason: string) {

@@ -31,7 +31,21 @@ import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..')
-const PROFILE = resolve(ROOT, '.e2e', 'chrome-profile')
+const PROFILE = resolve(
+  ROOT,
+  '.e2e',
+  (() => {
+    const index = process.argv.indexOf('--profile')
+    return index !== -1 && process.argv[index + 1] ? process.argv[index + 1] : 'chrome-profile'
+  })(),
+)
+
+/**
+ * 哪些请求算「后端请求」。
+ * 直连时是 *.supabase.co；改走自建反代后是 sb.yuetaijie.top。
+ * 两种都认，否则测生产环境会统计到 0 个请求。
+ */
+const isBackendRequest = (url) => url.includes('supabase.co') || url.includes('sb.yuetaijie.top')
 
 function readArg(name, fallback) {
   const index = process.argv.indexOf(`--${name}`)
@@ -98,7 +112,7 @@ async function measureOnce(context, page, index) {
   page.off('requestfailed', onFailed)
 
   const requests = [...inflight.values()]
-    .filter((r) => r.url.includes('supabase.co'))
+    .filter((r) => isBackendRequest(r.url))
     .map((r) => ({
       path: r.url.replace(/^https?:\/\/[^/]+/, '').split('?')[0],
       status: r.status ?? (r.failed ? `FAIL:${r.failed}` : '?'),
