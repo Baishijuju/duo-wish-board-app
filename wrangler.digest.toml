@@ -1,0 +1,18 @@
+# 每日打卡提醒 Worker（独立于反代 Worker，互不影响）
+#
+# 部署：
+#   npx wrangler deploy -c wrangler.digest.toml
+#
+# 先设置四个 secret（值不要写进本文件）：
+#   npx wrangler secret put SUPABASE_URL -c wrangler.digest.toml
+#   npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY -c wrangler.digest.toml
+#   npx wrangler secret put SERVERCHAN_KEY -c wrangler.digest.toml
+#   npx wrangler secret put DIGEST_KEY -c wrangler.digest.toml
+
+name = "duo-wish-digest"
+main = "cloudflare/daily-digest.js"
+compatibility_date = "2024-11-01"
+
+# 每天 13:30 UTC = 北京时间 21:30
+[triggers]
+crons = ["30 13 * * *"]
