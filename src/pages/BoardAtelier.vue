@@ -179,6 +179,37 @@ const todoEditSubtaskTitle = ref('')
 const pendingTodoWrites = ref(0)
 const completingTodoIds = ref<string[]>([])
 const showDoneTodos = ref(readShowDoneTodos())
+
+/* ── 区块折叠 ──────────────────────────────────────────────── */
+type CollapsedSectionKey = 'chart' | 'todo'
+
+function readCollapsedSections(): Record<CollapsedSectionKey, boolean> {
+  const fallback = { chart: true, todo: true }
+
+  try {
+    const raw = window.localStorage.getItem('duo-wish-board-collapsed-sections:v1')
+    if (!raw) return fallback
+
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+
+    return { chart: parsed?.chart !== false, todo: parsed?.todo !== false }
+  } catch {
+    return fallback
+  }
+}
+
+const collapsedSections = ref<Record<CollapsedSectionKey, boolean>>(readCollapsedSections())
+
+function toggleCollapsedSection(key: CollapsedSectionKey) {
+  const next = { ...collapsedSections.value, [key]: !collapsedSections.value[key] }
+  collapsedSections.value = next
+
+  try {
+    window.localStorage.setItem('duo-wish-board-collapsed-sections:v1', JSON.stringify(next))
+  } catch {
+    // 隐私模式等场景下不可用，忽略即可：这只是个显示偏好
+  }
+}
 const editingTitleId = ref('')
 const todoTitleDraft = ref('')
 const chartRefreshToken = ref(0)
@@ -1107,7 +1138,16 @@ onBeforeUnmount(() => {
       </div>
 
       <div ref="boardMainLayout" class="board-main-layout">
-        <section class="board-progress-panel" aria-label="愿望进度回看">
+        <section class="board-progress-panel" :class="{ 'is-collapsed': collapsedSections.chart }" aria-label="愿望进度回看">
+          <button
+            type="button"
+            class="board-collapse-bar"
+            :aria-expanded="!collapsedSections.chart"
+            @click="toggleCollapsedSection('chart')"
+          >
+            <span>推进分布 · 星币入账</span>
+            <span class="board-collapse-caret" aria-hidden="true">⌄</span>
+          </button>
           <BoardWeeklyCharts :refresh-token="chartRefreshToken" />
         </section>
 
@@ -1183,7 +1223,16 @@ onBeforeUnmount(() => {
         @keydown="handleSplitterKeydown($event, 'horizontal')"
       ><span aria-hidden="true"></span></div>
 
-      <section ref="boardTodoPanel" class="board-todo-panel" aria-label="待办清单">
+      <section ref="boardTodoPanel" class="board-todo-panel" :class="{ 'is-collapsed': collapsedSections.todo }" aria-label="待办清单">
+        <button
+          type="button"
+          class="board-collapse-bar"
+          :aria-expanded="!collapsedSections.todo"
+          @click="toggleCollapsedSection('todo')"
+        >
+          <span>待办 · {{ openTodos.length ? `${openTodos.length} 项待完成` : '全部完成' }}</span>
+          <span class="board-collapse-caret" aria-hidden="true">⌄</span>
+        </button>
         <header class="board-todo-header">
           <div class="board-section-heading">
             <h3>待办</h3>
@@ -3215,5 +3264,79 @@ export function formatBoardDueDate(value: string) {
   transform-origin: top left;
   width: calc(100% / var(--board-zoom-notes, 1));
   height: calc(100% / var(--board-zoom-notes, 1));
+}
+/* ── 上中下布局（竖屏为主）──────────────────────────────────
+   关键：这里必须继续用 grid，不能改成 flex。
+   全屏那套布局是围绕 grid 的行列写的，上一版把它换成 flex 之后
+   便签面板在网格里分不到高度，全屏下便签直接不渲染。
+   所以只做两件事：把列收成一列，行改成「便签吃掉剩余 + 图表自适应」。 */
+
+.board-main-layout {
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: minmax(0, 1fr) auto !important;
+}
+
+.board-notes-panel {
+  order: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.board-progress-panel {
+  order: 2;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 单列之后没有左右分栏可拖 */
+.board-splitter {
+  display: none !important;
+}
+
+/* 折叠条 */
+.board-collapse-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--text-main);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.board-collapse-bar:hover {
+  border-color: var(--line-strong);
+}
+
+.board-collapse-caret {
+  flex: 0 0 auto;
+  color: var(--text-soft);
+  transition: transform 0.18s ease;
+}
+
+.is-collapsed .board-collapse-caret {
+  transform: rotate(-90deg);
+}
+
+/* 收起时只留折叠条。
+   必须用 !important：全屏那批规则（.shared-board-page.is-fullscreen .board-todo-panel > *）
+   选择器比重更高，不加就被它们重新显示出来。 */
+.shared-board-page .board-progress-panel.is-collapsed > *:not(.board-collapse-bar),
+.shared-board-page .board-todo-panel.is-collapsed > *:not(.board-collapse-bar) {
+  display: none !important;
+}
+
+/* 展开时折叠条与内容留间距 */
+.board-progress-panel:not(.is-collapsed) > .board-collapse-bar,
+.board-todo-panel:not(.is-collapsed) > .board-collapse-bar {
+  margin-bottom: 0.5rem;
 }
 </style>
