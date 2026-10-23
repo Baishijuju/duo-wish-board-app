@@ -148,6 +148,27 @@ async function sendToWeChat(env, digest) {
   return response.json()
 }
 
+/**
+ * 文案测试用：用假数据渲染指定分支并发送。
+ * 只通过 /test 手动触发，cron 永远不会走到这里 ——
+ * 不能为了测文案去改真实数据。
+ */
+const TEST_CASES = {
+  a1: {
+    title: '今天，星星又亮了几颗 ✨',
+    body: [
+      '今天有星星亮起来了',
+      '推进 3 次 · 星币 +2.5',
+      '连续 6 天',
+      '慢慢来就好 ( ˘ω˘ )',
+    ].join('\n'),
+  },
+}
+
+function buildTestDigest(caseKey) {
+  return TEST_CASES[caseKey] ?? null
+}
+
 export default {
   /** 定时触发 */
   async scheduled(_event, env, ctx) {
@@ -178,6 +199,22 @@ export default {
       } catch (error) {
         return Response.json({ ok: false, error: error?.message ?? String(error) }, { status: 500 })
       }
+    }
+
+    if (url.pathname === '/test') {
+      if (!env.DIGEST_KEY || url.searchParams.get('key') !== env.DIGEST_KEY) {
+        return new Response('Not Found', { status: 404 })
+      }
+
+      const digest = buildTestDigest(url.searchParams.get('case') ?? 'a1')
+
+      if (!digest) {
+        return new Response('Unknown case', { status: 400 })
+      }
+
+      await sendToWeChat(env, digest)
+
+      return Response.json({ ok: true, sent: digest })
     }
 
     return new Response('Not Found', { status: 404 })
