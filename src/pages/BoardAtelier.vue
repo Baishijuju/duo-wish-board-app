@@ -5,6 +5,7 @@ import {
   getBoardTodoProgress,
   splitBoardTodos,
 } from '../modules/board/board.todos'
+import { sanitizeNoteHtml } from '../modules/board/board.notes.rich'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createId } from '../shared/ids'
 import { useAuthStore } from '../stores/auth'
@@ -17,6 +18,8 @@ type BoardTextBlock = {
   type: 'text'
   title: string
   text: string
+  /** 富文本内容。老便签没有这个字段，按 text 纯文本显示即可。 */
+  html?: string
 }
 
 type SharedBoardRow = {
@@ -1194,7 +1197,9 @@ onBeforeUnmount(() => {
               </template>
               <template v-else>
                 <h3 v-if="block.title">{{ block.title }}</h3>
-                <p>{{ block.text }}</p>
+                <!-- 有富文本就渲染富文本（渲染前过白名单），没有就按纯文本显示 -->
+                <div v-if="block.html" class="board-note-rich" v-html="sanitizeNoteHtml(block.html)"></div>
+                <p v-else>{{ block.text }}</p>
               </template>
             </article>
           </div>
@@ -3357,8 +3362,30 @@ export function formatBoardDueDate(value: string) {
   font-size: 1.05em;
 }
 
-.shared-board-page .board-note p {
+.shared-board-page .board-note p,
+.shared-board-page .board-note-rich {
   font-size: 0.95em;
+}
+
+/* 富文本便签：与纯文本看起来要一致，只是多了格式 */
+.board-note-rich {
+  margin: 0;
+  line-height: inherit;
+  overflow-wrap: anywhere;
+}
+
+.board-note-rich p {
+  margin: 0;
+}
+
+.board-note-rich ul,
+.board-note-rich ol {
+  margin: 0.2em 0;
+  padding-left: 1.25em;
+}
+
+.board-note-rich li {
+  margin: 0.1em 0;
 }
 
 /* ── 待办：先从页面移除（数据库不动，随时可恢复）──────────────
