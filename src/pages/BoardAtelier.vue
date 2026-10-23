@@ -5,11 +5,12 @@ import {
   getBoardTodoProgress,
   splitBoardTodos,
 } from '../modules/board/board.todos'
-import { sanitizeNoteHtml } from '../modules/board/board.notes.rich'
+import { noteHtmlToPlainText, notePlainTextToHtml, sanitizeNoteHtml } from '../modules/board/board.notes.rich'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createId } from '../shared/ids'
 import { useAuthStore } from '../stores/auth'
 import { supabase } from '../lib/supabase'
+import BoardNoteRichEditor from '../components/BoardNoteRichEditor.vue'
 import BoardWeeklyCharts from '../components/BoardWeeklyCharts.vue'
 import { createBoardAutoRefresh } from '../modules/sync/board.auto-refresh'
 
@@ -20,6 +21,11 @@ type BoardTextBlock = {
   text: string
   /** 富文本内容。老便签没有这个字段，按 text 纯文本显示即可。 */
   html?: string
+}
+
+type NoteContentChange = {
+  html: string
+  text: string
 }
 
 type SharedBoardRow = {
@@ -94,7 +100,7 @@ const BOARD_ZOOM_STEP = 0.2
  * 每次发布后加 0.1，用来确认设备上跑的到底是不是最新版
  * （PWA 有 Service Worker 缓存，重开一两次才会换新）。
  */
-const BOARD_BUILD_VERSION = 'v1.3'
+const BOARD_BUILD_VERSION = 'v1.4'
 
 const BOARD_ZOOM_BLOCKS = [
   { key: 'header', label: '看板标题' },
@@ -433,10 +439,16 @@ function normalizeBoardBlocks(value: unknown): BoardTextBlock[] {
       return []
     }
 
-    const text = 'text' in entry && typeof entry.text === 'string' ? entry.text : ''
+    const storedText = 'text' in entry && typeof entry.text === 'string' ? entry.text : ''
     const id = 'id' in entry && typeof entry.id === 'string' ? entry.id : createId()
     const title = 'title' in entry && typeof entry.title === 'string' ? entry.title : ''
-    return [{ id, type: 'text' as const, title, text }]
+    const rawHtml = 'html' in entry && typeof entry.html === 'string' ? entry.html : ''
+    const html = rawHtml.trim() ? sanitizeNoteHtml(rawHtml) : ''
+    const text = html ? (noteHtmlToPlainText(html) || storedText) : storedText
+
+    const block: BoardTextBlock = { id, type: 'text', title, text }
+    if (html) block.html = html
+    return [block]
   })
 }
 
@@ -921,6 +933,15 @@ function addTextBlock() {
   draftBlocks.value = [...draftBlocks.value, { id: createId(), type: 'text', title: '', text: '' }]
 }
 
+function getNoteEditorHtml(block: BoardTextBlock) {
+  return block.html ?? notePlainTextToHtml(block.text)
+}
+
+function updateNoteContent(block: BoardTextBlock, payload: NoteContentChange) {
+  block.html = payload.html
+  block.text = payload.text
+}
+
 function moveTextBlock(blockId: string, offset: -1 | 1) {
   const currentIndex = draftBlocks.value.findIndex((block) => block.id === blockId)
   const nextIndex = currentIndex + offset
@@ -973,8 +994,23 @@ async function saveBoard() {
     return
   }
 
-  const nextBlocks = draftBlocks.value.map((block) => ({ ...block, title: block.title.trim(), text: block.text.trim() }))
-    .filter((block) => block.text.length > 0)
+  const nextBlocks: BoardTextBlock[] = []
+
+  for (const block of draftBlocks.value) {
+    const html = block.html ? sanitizeNoteHtml(block.html) : ''
+    const text = html ? noteHtmlToPlainText(html) : block.text.trim()
+
+    if (!text) continue
+
+    const nextBlock: BoardTextBlock = {
+      id: block.id,
+      type: 'text',
+      title: block.title.trim(),
+      text,
+    }
+    if (html) nextBlock.html = html
+    nextBlocks.push(nextBlock)
+  }
 
   isSaving.value = true
   feedback.value = ''
@@ -1193,7 +1229,11 @@ onBeforeUnmount(() => {
                   </div>
                 </div>
                 <input v-model="block.title" class="board-note-title-input" maxlength="80" :aria-label="`便签 ${index + 1} 标题`" placeholder="给这张便签起个小标题" />
-                <textarea v-model="block.text" rows="5" maxlength="12000" :aria-label="`便签 ${index + 1} 内容`" placeholder="写下你们想记住的事…" />
+                <BoardNoteRichEditor
+                  :initial-html="getNoteEditorHtml(block)"
+                  :ariaLabel="`便签 ${index + 1} 内容`"
+                  @change="updateNoteContent(block, $event)"
+                />
               </template>
               <template v-else>
                 <h3 v-if="block.title">{{ block.title }}</h3>
@@ -1744,10 +1784,8 @@ export function formatBoardDueDate(value: string) {
   font-size: 0.9rem;
 }
 
-.board-notes-panel .board-note textarea {
-  min-height: 5rem;
-  font-size: 0.82rem;
-  line-height: 1.5;
+.board-notes-panel .board-note .note-rich-editor {
+  margin-top: 0.35rem;
 }
 
 .board-notes-panel .shared-board-empty {
@@ -2293,19 +2331,8 @@ export function formatBoardDueDate(value: string) {
   background: transparent;
 }
 
-.board-note textarea {
-  display: block;
+.board-note .note-rich-editor {
   width: 100%;
-  min-height: 10rem;
-  padding: 0.2rem 0;
-  border: 0;
-  resize: vertical;
-  outline-offset: 3px;
-  color: var(--text-main);
-  background: transparent;
-  font: inherit;
-  font-size: 1rem;
-  line-height: 1.8;
 }
 
 .board-note-order-actions {
@@ -2391,8 +2418,8 @@ export function formatBoardDueDate(value: string) {
     font-size: 1.3rem;
   }
 
-  .shared-board-wall {
-    grid-template-columns: 1fr;
+  .board-notes-panel .shared-board-wall {
+    grid-template-columns: minmax(0, 1fr);
     gap: 0.7rem;
   }
 
@@ -2492,8 +2519,8 @@ export function formatBoardDueDate(value: string) {
 }
 
 @media (min-width: 721px) and (max-width: 820px) {
-  .shared-board-wall {
-    grid-template-columns: 1fr;
+  .board-notes-panel .shared-board-wall {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .board-note.is-long-note {
@@ -3371,10 +3398,12 @@ export function formatBoardDueDate(value: string) {
 .board-note-rich {
   margin: 0;
   line-height: inherit;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-.board-note-rich p {
+.board-note-rich p,
+.board-note-rich div {
   margin: 0;
 }
 
