@@ -92,54 +92,57 @@ onBeforeUnmount(() => {
         <span v-for="(member, index) in members" :key="member.id"><i :class="`member-marker member-marker-${index}`" aria-hidden="true"></i>{{ member.displayName }}</span>
       </div>
     </header>
-    <section v-for="chart in charts" :key="chart.metric" class="review-usage-panel member-chart" :aria-label="chart.title">
-      <header class="member-chart-heading">
-        <h3>{{ chart.metric === 'progress' ? '推进分布' : '星币入账' }}</h3>
-      </header>
-      <div class="member-chart-totals">
-        <span v-for="(member, index) in members" :key="member.id" :aria-label="`${member.displayName}：${numberLabel(chart.totals[index]?.total ?? 0)} ${chart.unit}`" :title="member.displayName">
-          <i :class="`member-marker member-marker-${index}`" aria-hidden="true"></i>
-          <strong>{{ numberLabel(chart.totals[index]?.total ?? 0) }}</strong> {{ chart.unit }}
-        </span>
-      </div>
-      <div class="member-chart-plot">
-        <div class="member-chart-axis" aria-hidden="true"><span>{{ numberLabel(chart.max) }}</span><span>{{ numberLabel(chart.max / 2) }}</span><span>0</span></div>
-        <div class="member-chart-days">
-          <div v-for="(day, index) in chart.days" :key="day.date" class="member-chart-day" :class="{ 'is-selected': selectedDate === day.date }">
-            <div class="member-chart-pair">
-              <button
-                v-for="(bar, memberIndex) in day.members" :key="bar.ownerId" type="button"
-                :class="['member-chart-bar', `member-bar-${memberIndex}`]"
-                :aria-label="`${formatDay(day.date)}，${members[memberIndex]?.displayName}，${numberLabel(bar.total)} ${chart.unit}`"
-                :title="`${members[memberIndex]?.displayName}：${numberLabel(bar.total)} ${chart.unit}`"
-                :aria-pressed="selectedDate === day.date"
-                @click="selectedDate = selectedDate === day.date ? null : day.date"
-              >
-                <span v-for="layer in bar.layers" :key="layer.index" :class="`review-usage-layer review-usage-layer-${layer.index === 5 ? 'other' : layer.index}`" :style="{ height: `${layer.units / chart.max * 100}%` }"></span>
-              </button>
+    <div class="weekly-chart-grid">
+      <section v-for="chart in charts" :key="chart.metric" class="review-usage-panel member-chart" :aria-label="chart.title">
+        <header class="member-chart-heading">
+          <h3>{{ chart.metric === 'progress' ? '推进分布' : '星币入账' }}</h3>
+        </header>
+        <div class="member-chart-totals">
+          <span v-for="(member, index) in members" :key="member.id" :aria-label="`${member.displayName}：${numberLabel(chart.totals[index]?.total ?? 0)} ${chart.unit}`" :title="member.displayName">
+            <i :class="`member-marker member-marker-${index}`" aria-hidden="true"></i>
+            <strong>{{ numberLabel(chart.totals[index]?.total ?? 0) }}</strong> {{ chart.unit }}
+          </span>
+        </div>
+        <div class="member-chart-plot">
+          <div class="member-chart-axis" aria-hidden="true"><span>{{ numberLabel(chart.max) }}</span><span>{{ numberLabel(chart.max / 2) }}</span><span>0</span></div>
+          <div class="member-chart-days">
+            <div v-for="(day, index) in chart.days" :key="day.date" class="member-chart-day" :class="{ 'is-selected': selectedDate === day.date }">
+              <div class="member-chart-pair">
+                <button
+                  v-for="(bar, memberIndex) in day.members" :key="bar.ownerId" type="button"
+                  :class="['member-chart-bar', `member-bar-${memberIndex}`]"
+                  :aria-label="`${formatDay(day.date)}，${members[memberIndex]?.displayName}，${numberLabel(bar.total)} ${chart.unit}`"
+                  :title="`${members[memberIndex]?.displayName}：${numberLabel(bar.total)} ${chart.unit}`"
+                  :aria-pressed="selectedDate === day.date"
+                  @click="selectedDate = selectedDate === day.date ? null : day.date"
+                >
+                  <span v-for="layer in bar.layers" :key="layer.index" :class="`review-usage-layer review-usage-layer-${layer.index === 5 ? 'other' : layer.index}`" :style="{ height: `${layer.units / chart.max * 100}%` }"></span>
+                </button>
+              </div>
+              <span class="member-chart-weekday">{{ ['一', '二', '三', '四', '五', '六', '日'][index] }}</span>
+              <span class="member-chart-date">{{ Number(day.date.slice(8, 10)) }}</span>
             </div>
-            <span class="member-chart-weekday">{{ ['一', '二', '三', '四', '五', '六', '日'][index] }}</span>
-            <span class="member-chart-date">{{ Number(day.date.slice(8, 10)) }}</span>
           </div>
         </div>
-      </div>
-      <p v-if="selectedDate" class="member-chart-detail" role="status">
-        {{ formatDay(selectedDate) }} · <template v-for="(member, index) in members" :key="member.id">{{ index ? ' · ' : '' }}{{ member.displayName }} {{ numberLabel(chart.days.find((day) => day.date === selectedDate)?.members[index]?.total ?? 0) }} {{ chart.unit }}</template>
-      </p>
-      <div class="member-chart-legend">
-        <span v-for="(category, index) in chart.categories" :key="category"><i :class="`review-usage-dot-${index}`" aria-hidden="true"></i>{{ category }}</span>
-        <span v-if="!chart.categories.length">{{ isLoading ? '正在读取本周记录…' : '本周还没有记录' }}</span>
-      </div>
-    </section>
+        <p v-if="selectedDate" class="member-chart-detail" role="status">
+          {{ formatDay(selectedDate) }} · <template v-for="(member, index) in members" :key="member.id">{{ index ? ' · ' : '' }}{{ member.displayName }} {{ numberLabel(chart.days.find((day) => day.date === selectedDate)?.members[index]?.total ?? 0) }} {{ chart.unit }}</template>
+        </p>
+        <div class="member-chart-legend">
+          <span v-for="(category, index) in chart.categories" :key="category"><i :class="`review-usage-dot-${index}`" aria-hidden="true"></i>{{ category }}</span>
+          <span v-if="!chart.categories.length">{{ isLoading ? '正在读取本周记录…' : '本周还没有记录' }}</span>
+        </div>
+      </section>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .board-weekly-charts { min-width: 0; gap: 0.8rem; }
+.weekly-chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); align-items: start; gap: 0.8rem; }
 .weekly-chart-toolbar { display: flex; justify-content: space-between; flex-wrap: wrap; align-items: center; gap: 0.45rem; color: var(--text-soft); font-size: 0.75rem; }
 .weekly-member-legend { display: flex; flex-wrap: wrap; gap: 0.7rem; }
 .weekly-member-legend > span { display: inline-flex; align-items: center; gap: 0.3rem; }
-.member-chart { padding: 0.65rem 0 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; color: var(--text-main); }
+.member-chart { min-width: 0; padding: 0.65rem 0 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; color: var(--text-main); }
 .member-chart-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 0.35rem; }
 .member-chart-heading h3 { margin: 0; font-family: var(--font-body); font-size: 0.9rem; font-weight: 600; line-height: 1.4; }
 .member-chart-heading > span, .member-chart-totals, .member-chart-detail, .member-chart-legend { font-size: 0.75rem; color: var(--text-soft); }
@@ -173,6 +176,7 @@ onBeforeUnmount(() => {
 
 @media (min-width: 721px) and (max-width: 1180px) and (min-height: 721px) {
   .board-weekly-charts { gap: 0.55rem; }
+  .weekly-chart-grid { gap: 0.55rem; }
   .weekly-chart-toolbar { gap: 0.3rem; font-size: 1.6rem; }
   .weekly-member-legend { gap: 0.35rem 0.55rem; }
   .member-chart { padding-top: 0.45rem; }

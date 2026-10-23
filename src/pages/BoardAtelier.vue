@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   getBoardSubtaskProgress,
   getBoardTodoProgress,
@@ -100,7 +100,7 @@ const BOARD_ZOOM_STEP = 0.2
  * 每次发布后加 0.1，用来确认设备上跑的到底是不是最新版
  * （PWA 有 Service Worker 缓存，重开一两次才会换新）。
  */
-const BOARD_BUILD_VERSION = 'v1.4'
+const BOARD_BUILD_VERSION = 'v1.5'
 
 const BOARD_ZOOM_BLOCKS = [
   { key: 'header', label: '看板标题' },
@@ -168,6 +168,12 @@ const updatedBy = ref('')
 const updatedAt = ref('')
 const draftTitle = ref('')
 const draftBlocks = ref<BoardTextBlock[]>([])
+const phoneMediaQuery = window.matchMedia('(max-width: 720px), (orientation: landscape) and (max-width: 932px)')
+const isPhoneViewport = ref(phoneMediaQuery.matches)
+const mobileNoteEditorId = ref('')
+const mobileNoteSheet = ref<HTMLElement | null>(null)
+const activeMobileNote = computed(() => draftBlocks.value.find((block) => block.id === mobileNoteEditorId.value) ?? null)
+const activeMobileNoteIndex = computed(() => draftBlocks.value.findIndex((block) => block.id === mobileNoteEditorId.value))
 const feedback = ref('')
 const feedbackTone = ref<'success' | 'danger'>('success')
 const boardTodos = ref<SharedBoardTodo[]>([])
@@ -357,7 +363,14 @@ function toggleFullscreen() {
 }
 
 function handleFullscreenKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape' && isFullscreen.value) {
+  if (event.key !== 'Escape') return
+
+  if (activeMobileNote.value) {
+    closeMobileNoteEditor()
+    return
+  }
+
+  if (isFullscreen.value) {
     exitFullscreen()
   }
 }
@@ -924,13 +937,45 @@ function startEditing() {
   draftBlocks.value = boardBlocks.value.length
     ? boardBlocks.value.map((block) => ({ ...block }))
     : [{ id: createId(), type: 'text', title: '', text: '' }]
+  mobileNoteEditorId.value = ''
   hasRemoteChanges.value = false
   isEditing.value = true
   feedback.value = ''
 }
 
 function addTextBlock() {
-  draftBlocks.value = [...draftBlocks.value, { id: createId(), type: 'text', title: '', text: '' }]
+  const block: BoardTextBlock = { id: createId(), type: 'text', title: '', text: '' }
+  draftBlocks.value = [...draftBlocks.value, block]
+
+  if (isPhoneViewport.value) {
+    openMobileNoteEditor(block.id)
+  }
+}
+
+function notePreview(block: BoardTextBlock) {
+  const text = block.text.replace(/\s+/g, ' ').trim()
+  if (!text) return '还没有内容'
+  return text.length > 90 ? `${text.slice(0, 90)}…` : text
+}
+
+function openMobileNoteEditor(blockId: string) {
+  mobileNoteEditorId.value = blockId
+
+  void nextTick(() => {
+    mobileNoteSheet.value?.focus({ preventScroll: true })
+  })
+}
+
+function closeMobileNoteEditor() {
+  mobileNoteEditorId.value = ''
+}
+
+function handlePhoneMediaChange(event: MediaQueryListEvent) {
+  isPhoneViewport.value = event.matches
+
+  if (!event.matches) {
+    closeMobileNoteEditor()
+  }
 }
 
 function getNoteEditorHtml(block: BoardTextBlock) {
@@ -958,10 +1003,15 @@ function moveTextBlock(blockId: string, offset: -1 | 1) {
 
 function removeTextBlock(blockId: string) {
   draftBlocks.value = draftBlocks.value.filter((block) => block.id !== blockId)
+
+  if (mobileNoteEditorId.value === blockId) {
+    closeMobileNoteEditor()
+  }
 }
 
 function cancelEditing() {
   isEditing.value = false
+  mobileNoteEditorId.value = ''
   hasRemoteChanges.value = false
   feedback.value = ''
 }
@@ -1043,6 +1093,7 @@ async function saveBoard() {
 
     applyBoardRow(data as SharedBoardRow)
     isEditing.value = false
+    mobileNoteEditorId.value = ''
     hasRemoteChanges.value = false
     feedback.value = '已保存，另一台设备会自动更新。'
     feedbackTone.value = 'success'
@@ -1095,6 +1146,7 @@ onMounted(() => {
   document.addEventListener('visibilitychange', handleBoardResume)
   window.addEventListener('online', handleBoardResume)
   window.addEventListener('pageshow', handleBoardResume)
+  phoneMediaQuery.addEventListener('change', handlePhoneMediaChange)
   autoRefresh.start()
 })
 
@@ -1103,6 +1155,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', handleBoardResume)
   window.removeEventListener('online', handleBoardResume)
   window.removeEventListener('pageshow', handleBoardResume)
+  phoneMediaQuery.removeEventListener('change', handlePhoneMediaChange)
   autoRefresh.stop()
 })
 </script>
@@ -1212,12 +1265,13 @@ onBeforeUnmount(() => {
             <h3>{{ isEditing ? '整理便签' : '便签' }}</h3>
             <span class="board-note-count">{{ isEditing ? draftBlocks.length : boardBlocks.length }}</span>
           </header>
+          <p v-if="isPhoneViewport && isEditing" class="board-mobile-edit-hint">点一张便签开始编辑，改完再保存展板。</p>
           <div v-if="isEditing ? draftBlocks.length : boardBlocks.length" class="shared-board-wall">
             <article
               v-for="(block, index) in (isEditing ? draftBlocks : boardBlocks)"
               :key="block.id"
               class="board-note"
-              :class="[`board-note-tone-${index % 3}`, { 'is-long-note': block.text.length > 260 }]"
+              :class="[`board-note-tone-${index % 3}`, { 'is-long-note': block.text.length > 260, 'is-mobile-summary': isEditing && isPhoneViewport }]"
             >
               <template v-if="isEditing">
                 <div class="board-note-toolbar">
@@ -1228,12 +1282,29 @@ onBeforeUnmount(() => {
                     <button v-if="draftBlocks.length > 1" type="button" :aria-label="`删除便签 ${index + 1}`" @click="removeTextBlock(block.id)">移除</button>
                   </div>
                 </div>
-                <input v-model="block.title" class="board-note-title-input" maxlength="80" :aria-label="`便签 ${index + 1} 标题`" placeholder="给这张便签起个小标题" />
-                <BoardNoteRichEditor
-                  :initial-html="getNoteEditorHtml(block)"
-                  :ariaLabel="`便签 ${index + 1} 内容`"
-                  @change="updateNoteContent(block, $event)"
-                />
+                <button
+                  v-if="isPhoneViewport"
+                  type="button"
+                  class="board-note-mobile-open"
+                  aria-haspopup="dialog"
+                  aria-controls="board-mobile-note-sheet"
+                  :aria-label="`编辑便签 ${index + 1}：${block.title || '未命名便签'}`"
+                  @click="openMobileNoteEditor(block.id)"
+                >
+                  <span class="board-note-mobile-open-head">
+                    <strong :class="{ 'is-untitled': !block.title }">{{ block.title || '未命名便签' }}</strong>
+                    <span class="board-note-mobile-edit-mark">编辑 ›</span>
+                  </span>
+                  <span class="board-note-mobile-preview">{{ notePreview(block) }}</span>
+                </button>
+                <template v-else>
+                  <input v-model="block.title" class="board-note-title-input" maxlength="80" :aria-label="`便签 ${index + 1} 标题`" placeholder="给这张便签起个小标题" />
+                  <BoardNoteRichEditor
+                    :initial-html="getNoteEditorHtml(block)"
+                    :ariaLabel="`便签 ${index + 1} 内容`"
+                    @change="updateNoteContent(block, $event)"
+                  />
+                </template>
               </template>
               <template v-else>
                 <h3 v-if="block.title">{{ block.title }}</h3>
@@ -1449,6 +1520,54 @@ onBeforeUnmount(() => {
         </div>
         <button v-else class="board-todo-add-button" type="button" @click="todoDraftDate = getBeijingDateKey(); isTodoComposerOpen = true">＋ 添加待办</button>
       </section>
+
+      <div
+        v-if="isPhoneViewport && isEditing && activeMobileNote"
+        class="board-mobile-note-layer"
+        @click.self="closeMobileNoteEditor"
+      >
+        <section
+          id="board-mobile-note-sheet"
+          ref="mobileNoteSheet"
+          class="board-mobile-note-sheet"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="board-mobile-note-title"
+          tabindex="-1"
+        >
+          <header class="board-mobile-note-sheet-header">
+            <div>
+              <p class="board-mobile-note-kicker">便签 {{ `${activeMobileNoteIndex + 1}`.padStart(2, '0') }}</p>
+              <h3 id="board-mobile-note-title">编辑便签</h3>
+            </div>
+            <button type="button" class="board-mobile-note-close" aria-label="收起便签编辑" @click="closeMobileNoteEditor">收起</button>
+          </header>
+
+          <div class="board-mobile-note-sheet-body">
+            <label class="board-mobile-note-field">
+              <span>标题</span>
+              <input v-model="activeMobileNote.title" maxlength="80" aria-label="便签标题" placeholder="给这张便签起个小标题" />
+            </label>
+
+            <div class="board-mobile-note-content">
+              <span class="board-mobile-note-field-label">内容</span>
+              <BoardNoteRichEditor
+                :initial-html="getNoteEditorHtml(activeMobileNote)"
+                :ariaLabel="`便签 ${activeMobileNoteIndex + 1} 内容`"
+                @change="updateNoteContent(activeMobileNote, $event)"
+              />
+            </div>
+
+            <p v-if="feedback && !hasRemoteChanges" class="board-mobile-note-feedback" :class="feedbackClass" role="status" aria-live="polite">{{ feedback }}</p>
+            <p v-if="hasRemoteChanges" class="board-mobile-note-feedback board-feedback-danger" role="status">展板刚被另一位成员更新。先收起并重新载入，再继续编辑。</p>
+          </div>
+
+          <footer class="board-mobile-note-sheet-footer">
+            <button type="button" class="board-mobile-note-secondary" @click="closeMobileNoteEditor">收起</button>
+            <button type="button" class="board-mobile-note-primary" :disabled="isSaving" @click="void saveBoard()">{{ isSaving ? '保存中…' : '保存展板' }}</button>
+          </footer>
+        </section>
+      </div>
 
     </template>
   </section>
@@ -3415,6 +3534,251 @@ export function formatBoardDueDate(value: string) {
 
 .board-note-rich li {
   margin: 0.1em 0;
+}
+
+/* ── 手机编辑：先选便签，再打开单篇编辑面板 ───────────────────
+   手机屏幕窄，三张便签同时展开编辑框既拥挤又容易点错。
+   编辑态先把便签收成可点的摘要卡，点哪张才展开哪张。 */
+.board-mobile-edit-hint {
+  margin: 0.55rem 0 0;
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+
+.board-note.is-mobile-summary {
+  min-height: 0;
+}
+
+.board-note-mobile-open {
+  display: grid;
+  width: 100%;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+  padding: 0.55rem 0 0.2rem;
+  border: 0;
+  border-radius: 8px;
+  color: var(--text-main);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.board-note-mobile-open:focus-visible {
+  outline: 2px solid var(--accent-border);
+  outline-offset: 3px;
+}
+
+.board-note-mobile-open-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.board-note-mobile-open-head strong {
+  min-width: 0;
+  font-family: var(--font-heading);
+  font-size: 1.04em;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.board-note-mobile-open-head strong.is-untitled {
+  color: var(--text-soft);
+  font-weight: 500;
+}
+
+.board-note-mobile-edit-mark {
+  flex: 0 0 auto;
+  padding: 0.22rem 0.55rem;
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  color: var(--accent-dark);
+  background: var(--accent-panel);
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.board-note-mobile-preview {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-soft);
+  font-size: 0.82em;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.board-mobile-note-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(35, 31, 28, 0.44);
+  overscroll-behavior: contain;
+}
+
+.board-mobile-note-sheet {
+  display: flex;
+  width: min(100%, 640px);
+  max-height: 92dvh;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 20px 20px 0 0;
+  outline: none;
+  color: var(--text-main);
+  background: var(--surface-card);
+  box-shadow: 0 -18px 55px rgba(45, 35, 28, 0.24);
+  animation: board-sheet-in 220ms ease both;
+}
+
+.board-mobile-note-sheet-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-card);
+}
+
+.board-mobile-note-kicker {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+}
+
+.board-mobile-note-sheet-header h3 {
+  margin: 0.08rem 0 0;
+  font-family: var(--font-heading);
+  font-size: 1.28rem;
+  line-height: 1.3;
+}
+
+.board-mobile-note-close {
+  min-width: 48px;
+  min-height: 44px;
+  flex: 0 0 auto;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--text-main);
+  background: var(--surface-soft);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.board-mobile-note-sheet-body {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 0.95rem;
+  min-height: 0;
+  padding: 1rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.board-mobile-note-field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.board-mobile-note-field > span,
+.board-mobile-note-field-label {
+  color: var(--text-soft);
+  font-size: 0.76rem;
+}
+
+.board-mobile-note-field input {
+  width: 100%;
+  min-height: 46px;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  color: var(--text-main);
+  background: var(--input-bg);
+  font: inherit;
+  font-size: 1rem;
+}
+
+.board-mobile-note-content {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.board-mobile-note-feedback {
+  margin: 0;
+  padding: 0.6rem 0.7rem;
+  border-radius: 8px;
+  color: var(--text-soft);
+  background: var(--surface-soft);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.board-mobile-note-feedback.board-feedback-danger {
+  color: #8d3f33;
+  background: #f8e9e4;
+}
+
+.board-mobile-note-sheet-footer {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.55rem;
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--line);
+  background: var(--surface-card);
+}
+
+.board-mobile-note-secondary,
+.board-mobile-note-primary {
+  min-height: 46px;
+  flex: 1 1 0;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  color: var(--text-main);
+  background: var(--surface-soft);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.board-mobile-note-primary {
+  border-color: var(--accent-border);
+  background: var(--accent-panel);
+  color: var(--accent-dark);
+}
+
+.board-mobile-note-primary:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+@keyframes board-sheet-in {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-mobile-note-sheet {
+    animation: none;
+  }
 }
 
 /* ── 待办：先从页面移除（数据库不动，随时可恢复）──────────────
