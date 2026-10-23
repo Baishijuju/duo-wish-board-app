@@ -91,7 +91,7 @@ const BOARD_ZOOM_STEP = 0.2
  * 每次发布后加 0.1，用来确认设备上跑的到底是不是最新版
  * （PWA 有 Service Worker 缓存，重开一两次才会换新）。
  */
-const BOARD_BUILD_VERSION = 'v1.2'
+const BOARD_BUILD_VERSION = 'v1.3'
 
 const BOARD_ZOOM_BLOCKS = [
   { key: 'header', label: '看板标题' },
