@@ -3339,4 +3339,32 @@ export function formatBoardDueDate(value: string) {
 .board-todo-panel:not(.is-collapsed) > .board-collapse-bar {
   margin-bottom: 0.5rem;
 }
+/* ── 便签字号：改用真正改字号 ────────────────────────────────
+   之前用 transform: scale()，有两个治不好的毛病：
+     1. 它把文字当位图放大 —— 所以发虚、不清晰
+     2. 它不参与排版 —— 超出部分被裁掉（第三张便签标题被切断就是这个）
+   改成改字号后，文字重新排版，既清晰也不会被裁，内容多了面板内滚动。 */
+
+.shared-board-page .board-notes-panel {
+  transform: none !important;
+  width: auto !important;
+  height: auto !important;
+  overflow-y: auto;
+  font-size: calc(1rem * var(--board-zoom-notes, 1));
+}
+
+.shared-board-page .board-note h3 {
+  font-size: 1.05em;
+}
+
+.shared-board-page .board-note p {
+  font-size: 0.95em;
+}
+
+/* ── 待办：先从页面移除（数据库不动，随时可恢复）──────────────
+   你说目前用不到待办，重点放便签。这里只隐藏界面，
+   表和数据都原样保留，想恢复把这一条删掉即可。 */
+.board-todo-panel {
+  display: none !important;
+}
 </style>
