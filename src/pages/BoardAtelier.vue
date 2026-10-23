@@ -1062,7 +1062,7 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <div v-if="isFullscreen" class="board-zoom-tools">
+    <div class="board-zoom-tools">
       <button
         type="button"
         class="board-zoom-toggle"
@@ -3206,5 +3206,14 @@ export function formatBoardDueDate(value: string) {
   font-weight: 600;
   letter-spacing: 0.02em;
   vertical-align: middle;
+}
+/* 非全屏下也允许放大便签。
+   你主要在普通视图里读便签，那里才是字最需要变大的地方。
+   只对便签生效：标题/图表/待办仍然只在全屏生效，避免动到普通视图的版面。 */
+.shared-board-page:not(.is-fullscreen) .board-notes-panel {
+  transform: scale(var(--board-zoom-notes, 1));
+  transform-origin: top left;
+  width: calc(100% / var(--board-zoom-notes, 1));
+  height: calc(100% / var(--board-zoom-notes, 1));
 }
 </style>
