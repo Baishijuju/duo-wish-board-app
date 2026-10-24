@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { RouterLink } from 'vue-router'
 import {
   getBoardSubtaskProgress,
   getBoardTodoProgress,
@@ -13,6 +14,12 @@ import { supabase } from '../lib/supabase'
 import BoardNoteRichEditor from '../components/BoardNoteRichEditor.vue'
 import BoardWeeklyCharts from '../components/BoardWeeklyCharts.vue'
 import { createBoardAutoRefresh } from '../modules/sync/board.auto-refresh'
+
+const props = defineProps<{
+  quickMode?: boolean
+}>()
+
+const isQuickMode = computed(() => props.quickMode === true)
 
 type BoardTextBlock = {
   id: string
@@ -100,7 +107,7 @@ const BOARD_ZOOM_STEP = 0.2
  * 每次发布后加 0.1，用来确认设备上跑的到底是不是最新版
  * （PWA 有 Service Worker 缓存，重开一两次才会换新）。
  */
-const BOARD_BUILD_VERSION = 'v1.5'
+const BOARD_BUILD_VERSION = 'v1.6'
 
 const BOARD_ZOOM_BLOCKS = [
   { key: 'header', label: '看板标题' },
@@ -174,6 +181,10 @@ const mobileNoteEditorId = ref('')
 const mobileNoteSheet = ref<HTMLElement | null>(null)
 const activeMobileNote = computed(() => draftBlocks.value.find((block) => block.id === mobileNoteEditorId.value) ?? null)
 const activeMobileNoteIndex = computed(() => draftBlocks.value.findIndex((block) => block.id === mobileNoteEditorId.value))
+const quickSelectedNoteId = ref('')
+const quickDirty = ref(false)
+const activeQuickNote = computed(() => draftBlocks.value.find((block) => block.id === quickSelectedNoteId.value) ?? null)
+const activeQuickNoteIndex = computed(() => draftBlocks.value.findIndex((block) => block.id === quickSelectedNoteId.value))
 const feedback = ref('')
 const feedbackTone = ref<'success' | 'danger'>('success')
 const boardTodos = ref<SharedBoardTodo[]>([])
@@ -933,21 +944,36 @@ async function loadBoard(spaceId: string) {
 }
 
 function startEditing() {
+  const previousQuickNoteId = quickSelectedNoteId.value
+
   draftTitle.value = boardTitle.value
   draftBlocks.value = boardBlocks.value.length
     ? boardBlocks.value.map((block) => ({ ...block }))
     : [{ id: createId(), type: 'text', title: '', text: '' }]
   mobileNoteEditorId.value = ''
+  quickSelectedNoteId.value = draftBlocks.value.some((block) => block.id === previousQuickNoteId)
+    ? previousQuickNoteId
+    : (draftBlocks.value[0]?.id ?? '')
+  quickDirty.value = false
   hasRemoteChanges.value = false
   isEditing.value = true
   feedback.value = ''
 }
 
+function markQuickDirty() {
+  if (isQuickMode.value) {
+    quickDirty.value = true
+  }
+}
+
 function addTextBlock() {
   const block: BoardTextBlock = { id: createId(), type: 'text', title: '', text: '' }
   draftBlocks.value = [...draftBlocks.value, block]
+  markQuickDirty()
 
-  if (isPhoneViewport.value) {
+  if (isQuickMode.value) {
+    quickSelectedNoteId.value = block.id
+  } else if (isPhoneViewport.value) {
     openMobileNoteEditor(block.id)
   }
 }
@@ -985,6 +1011,7 @@ function getNoteEditorHtml(block: BoardTextBlock) {
 function updateNoteContent(block: BoardTextBlock, payload: NoteContentChange) {
   block.html = payload.html
   block.text = payload.text
+  markQuickDirty()
 }
 
 function moveTextBlock(blockId: string, offset: -1 | 1) {
@@ -999,13 +1026,19 @@ function moveTextBlock(blockId: string, offset: -1 | 1) {
   const [block] = nextBlocks.splice(currentIndex, 1)
   nextBlocks.splice(nextIndex, 0, block!)
   draftBlocks.value = nextBlocks
+  markQuickDirty()
 }
 
 function removeTextBlock(blockId: string) {
   draftBlocks.value = draftBlocks.value.filter((block) => block.id !== blockId)
+  markQuickDirty()
 
   if (mobileNoteEditorId.value === blockId) {
     closeMobileNoteEditor()
+  }
+
+  if (quickSelectedNoteId.value === blockId) {
+    quickSelectedNoteId.value = draftBlocks.value[0]?.id ?? ''
   }
 }
 
@@ -1016,7 +1049,24 @@ function cancelEditing() {
   feedback.value = ''
 }
 
+function confirmDiscardQuickChanges() {
+  if (!isQuickMode.value || !quickDirty.value) return true
+  return window.confirm('还有修改没有保存，继续会丢掉它们。确定吗？')
+}
+
+function handleQuickBoardLink(event: MouseEvent) {
+  if (!confirmDiscardQuickChanges()) {
+    event.preventDefault()
+  }
+}
+
 function reloadLatestBoard() {
+  if (!confirmDiscardQuickChanges()) {
+    return
+  }
+
+  quickDirty.value = false
+
   if (authStore.currentSpaceId) {
     void loadBoard(authStore.currentSpaceId)
   }
@@ -1092,11 +1142,21 @@ async function saveBoard() {
     }
 
     applyBoardRow(data as SharedBoardRow)
-    isEditing.value = false
-    mobileNoteEditorId.value = ''
     hasRemoteChanges.value = false
     feedback.value = '已保存，另一台设备会自动更新。'
     feedbackTone.value = 'success'
+
+    if (isQuickMode.value) {
+      draftBlocks.value = nextBlocks.map((block) => ({ ...block }))
+      quickSelectedNoteId.value = draftBlocks.value.some((block) => block.id === quickSelectedNoteId.value)
+        ? quickSelectedNoteId.value
+        : (draftBlocks.value[0]?.id ?? '')
+      quickDirty.value = false
+      isEditing.value = true
+    } else {
+      isEditing.value = false
+      mobileNoteEditorId.value = ''
+    }
   } catch (error) {
     feedback.value = error instanceof Error ? `保存失败：${error.message}` : '保存失败，请稍后重试。'
     feedbackTone.value = 'danger'
@@ -1130,6 +1190,31 @@ watch(canAutoRefreshBoard, (allowed) => {
   if (allowed) void autoRefresh.flush()
 })
 
+watch(
+  [isQuickMode, isLoading, boardId],
+  ([quick, loading, id]) => {
+    if (quick && !loading && id && !isEditing.value) {
+      startEditing()
+    }
+  },
+  { flush: 'post' },
+)
+
+function handleQuickSaveShortcut(event: KeyboardEvent) {
+  if (!isQuickMode.value) return
+
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+    event.preventDefault()
+    void saveBoard()
+  }
+}
+
+function handleBeforeUnload(event: BeforeUnloadEvent) {
+  if (!isQuickMode.value || !quickDirty.value) return
+
+  event.preventDefault()
+  event.returnValue = ''
+}
 
 onBeforeUnmount(() => {
   if (isFullscreen.value) {
@@ -1143,25 +1228,137 @@ onBeforeUnmount(() => {
 
 onMounted(() => {
   document.addEventListener('keydown', handleFullscreenKeydown)
+  document.addEventListener('keydown', handleQuickSaveShortcut)
   document.addEventListener('visibilitychange', handleBoardResume)
   window.addEventListener('online', handleBoardResume)
   window.addEventListener('pageshow', handleBoardResume)
+  window.addEventListener('beforeunload', handleBeforeUnload)
   phoneMediaQuery.addEventListener('change', handlePhoneMediaChange)
   autoRefresh.start()
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleFullscreenKeydown)
+  document.removeEventListener('keydown', handleQuickSaveShortcut)
   document.removeEventListener('visibilitychange', handleBoardResume)
   window.removeEventListener('online', handleBoardResume)
   window.removeEventListener('pageshow', handleBoardResume)
+  window.removeEventListener('beforeunload', handleBeforeUnload)
   phoneMediaQuery.removeEventListener('change', handlePhoneMediaChange)
   autoRefresh.stop()
 })
 </script>
 
 <template>
-  <section ref="boardRoot" class="shared-board-page" :class="{ 'is-editing': isEditing, 'is-fullscreen': isFullscreen }" :style="[splitterStyle, boardZoomStyle]">
+  <section v-if="isQuickMode" class="shared-board-page quick-board-page" :class="{ 'is-editing': isEditing }">
+    <header class="quick-board-header">
+      <div class="quick-board-heading">
+        <p class="quick-board-kicker">人生愿望清单 · 快速编辑</p>
+        <h1>{{ boardTitle }}<span class="quick-board-version">{{ BOARD_BUILD_VERSION }}</span></h1>
+        <p v-if="updatedAt && lastEditorName" class="quick-board-meta">最近由{{ lastEditorName }}整理 · {{ formatBoardTime(updatedAt) }}</p>
+      </div>
+      <div class="quick-board-actions">
+        <span class="quick-board-save-state" :class="{ 'is-dirty': quickDirty, 'is-saving': isSaving }">
+          {{ isSaving ? '保存中…' : quickDirty ? '有未保存修改' : '已同步' }}
+        </span>
+        <RouterLink class="quick-board-link" to="/board" @click="handleQuickBoardLink">完整展板</RouterLink>
+        <button class="quick-board-quiet" type="button" :disabled="isLoading || isSaving" @click="reloadLatestBoard">重新读取</button>
+        <button class="quick-board-save" :class="{ 'is-dirty': quickDirty }" type="button" :disabled="isSaving || isLoading || !isAuthenticatedSpace" @click="void saveBoard()">{{ isSaving ? '保存中…' : '保存' }}</button>
+      </div>
+    </header>
+
+    <div v-if="feedback || hasRemoteChanges" class="shared-board-notice quick-board-notice" :class="{ 'is-danger': feedbackTone === 'danger' || hasRemoteChanges }" role="status" aria-live="polite">
+      <span>{{ hasRemoteChanges ? '展板刚被另一位成员更新。重新载入后再编辑，避免覆盖她的内容。' : feedback }}</span>
+      <button v-if="hasRemoteChanges" type="button" @click="reloadLatestBoard">重新载入</button>
+    </div>
+
+    <p v-if="!isAuthenticatedSpace" class="quick-board-state">
+      登录共享空间后，就能快速编辑便签。
+      <RouterLink to="/space">去登录</RouterLink>
+    </p>
+    <p v-else-if="isLoading" class="quick-board-state">正在打开展板…</p>
+
+    <div v-else class="quick-board-workspace">
+      <aside class="quick-note-sidebar" aria-label="便签列表">
+        <header class="quick-note-sidebar-header">
+          <div>
+            <p>便签</p>
+            <strong>{{ draftBlocks.length }}</strong>
+          </div>
+          <button type="button" @click="addTextBlock">＋ 新建</button>
+        </header>
+
+        <div class="quick-note-list">
+          <button
+            v-for="(block, index) in draftBlocks"
+            :key="block.id"
+            type="button"
+            class="quick-note-list-item"
+            :class="{ 'is-selected': quickSelectedNoteId === block.id }"
+            :aria-current="quickSelectedNoteId === block.id ? 'true' : undefined"
+            @click="quickSelectedNoteId = block.id"
+          >
+            <span class="quick-note-number">{{ `${index + 1}`.padStart(2, '0') }}</span>
+            <span class="quick-note-list-body">
+              <strong :class="{ 'is-untitled': !block.title }">{{ block.title || '未命名便签' }}</strong>
+              <span>{{ notePreview(block) }}</span>
+            </span>
+          </button>
+          <p v-if="!draftBlocks.length" class="quick-note-list-empty">还没有便签</p>
+        </div>
+
+        <footer class="quick-note-sidebar-footer">
+          {{ quickDirty ? '改动还只在当前窗口里，记得保存。' : '编辑器已和云端同步。' }}
+        </footer>
+      </aside>
+
+      <main class="quick-note-editor">
+        <template v-if="activeQuickNote">
+          <header class="quick-note-editor-header">
+            <div>
+              <p>便签 {{ `${activeQuickNoteIndex + 1}`.padStart(2, '0') }}</p>
+              <strong>{{ activeQuickNote.title || '未命名便签' }}</strong>
+            </div>
+            <div class="quick-note-editor-actions">
+              <button type="button" :disabled="activeQuickNoteIndex === 0" @click="moveTextBlock(activeQuickNote.id, -1)">上移</button>
+              <button type="button" :disabled="activeQuickNoteIndex === draftBlocks.length - 1" @click="moveTextBlock(activeQuickNote.id, 1)">下移</button>
+              <button v-if="draftBlocks.length > 1" type="button" class="is-danger" @click="removeTextBlock(activeQuickNote.id)">删除</button>
+            </div>
+          </header>
+
+          <div class="quick-note-editor-body">
+            <label class="quick-note-title-field">
+              <span>标题</span>
+              <input v-model="activeQuickNote.title" maxlength="80" aria-label="便签标题" placeholder="给这张便签起个小标题" @input="markQuickDirty" />
+            </label>
+
+            <div class="quick-note-content-field">
+              <span>内容</span>
+              <BoardNoteRichEditor
+                :key="activeQuickNote.id"
+                :initial-html="getNoteEditorHtml(activeQuickNote)"
+                :ariaLabel="`便签 ${activeQuickNoteIndex + 1} 内容`"
+                @change="updateNoteContent(activeQuickNote, $event)"
+              />
+            </div>
+          </div>
+
+          <footer class="quick-note-editor-footer">
+            <span>{{ activeQuickNote.text.length }} 字 · 支持加粗、列表和颜色</span>
+            <button type="button" :disabled="isSaving" @click="void saveBoard()">{{ isSaving ? '保存中…' : '保存 Ctrl+S' }}</button>
+          </footer>
+        </template>
+
+        <div v-else class="quick-note-empty">
+          <h2>没有选中的便签</h2>
+          <p>从左边选一张，或者新建一张。</p>
+          <button type="button" @click="addTextBlock">＋ 新建便签</button>
+        </div>
+      </main>
+    </div>
+  </section>
+
+  <section v-else ref="boardRoot" class="shared-board-page" :class="{ 'is-editing': isEditing, 'is-fullscreen': isFullscreen }" :style="[splitterStyle, boardZoomStyle]">
     <header class="shared-board-header">
       <div class="shared-board-heading">
         <h2 v-if="!isEditing">{{ boardTitle }}<span class="shared-board-version">{{ BOARD_BUILD_VERSION }}</span></h2>
@@ -1552,6 +1749,7 @@ onBeforeUnmount(() => {
             <div class="board-mobile-note-content">
               <span class="board-mobile-note-field-label">内容</span>
               <BoardNoteRichEditor
+                :key="activeMobileNote.id"
                 :initial-html="getNoteEditorHtml(activeMobileNote)"
                 :ariaLabel="`便签 ${activeMobileNoteIndex + 1} 内容`"
                 @change="updateNoteContent(activeMobileNote, $event)"
@@ -3534,6 +3732,500 @@ export function formatBoardDueDate(value: string) {
 
 .board-note-rich li {
   margin: 0.1em 0;
+}
+
+/* ── 电脑快速编辑窗口 ─────────────────────────────────────────
+   单独一个路由，不带站点外壳，打开后直接进入编辑态。
+   左边选便签，右边只显示当前这一张，避免滚动整块展板。 */
+.shared-board-page.quick-board-page {
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  min-height: 0;
+  flex-direction: column;
+  gap: 0.8rem;
+  margin: 0;
+  padding: clamp(0.85rem, 2vw, 1.6rem);
+  overflow: hidden;
+}
+
+.quick-board-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0 0.15rem;
+}
+
+.quick-board-kicker {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.quick-board-heading h1 {
+  margin: 0.18rem 0 0;
+  font-family: var(--font-heading);
+  font-size: clamp(1.35rem, 2.1vw, 1.8rem);
+  line-height: 1.25;
+}
+
+.quick-board-version {
+  margin-left: 0.5rem;
+  color: var(--text-soft);
+  font-size: 0.55em;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.quick-board-meta {
+  margin: 0.25rem 0 0;
+  color: var(--text-soft);
+  font-size: 0.73rem;
+}
+
+.quick-board-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.quick-board-save-state {
+  padding: 0.3rem 0.55rem;
+  border: 1px solid rgba(79, 118, 90, 0.22);
+  border-radius: 999px;
+  color: #4f765a;
+  background: #eef5ef;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.quick-board-save-state.is-dirty {
+  border-color: rgba(168, 116, 36, 0.28);
+  color: #8a5b15;
+  background: #fbf2e2;
+}
+
+.quick-board-save-state.is-saving {
+  color: var(--text-soft);
+  background: var(--surface-soft);
+}
+
+.quick-board-link,
+.quick-board-quiet,
+.quick-board-save {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  color: var(--text-main);
+  background: var(--surface-card);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.quick-board-link:hover,
+.quick-board-quiet:hover:not(:disabled) {
+  border-color: var(--accent-border);
+  background: var(--accent-panel);
+}
+
+.quick-board-save {
+  border-color: var(--accent-border);
+  background: var(--accent-panel);
+  color: var(--accent-dark);
+}
+
+.quick-board-save.is-dirty {
+  border-color: var(--accent-dark);
+  background: var(--accent-dark);
+  color: var(--accent-contrast);
+}
+
+.quick-board-link:focus-visible,
+.quick-board-quiet:focus-visible,
+.quick-board-save:focus-visible {
+  outline: 2px solid var(--accent-border);
+  outline-offset: 2px;
+}
+
+.quick-board-quiet:disabled,
+.quick-board-save:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.quick-board-notice {
+  margin: 0;
+}
+
+.quick-board-state {
+  margin: 0;
+  padding: 2rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--text-soft);
+  background: var(--surface-card);
+  text-align: center;
+}
+
+.quick-board-state a {
+  color: var(--accent-dark);
+  font-weight: 600;
+}
+
+.quick-board-workspace {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 0.9rem;
+  min-height: 0;
+}
+
+.quick-note-sidebar,
+.quick-note-editor {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface-card);
+  box-shadow: 0 10px 30px rgba(78, 55, 39, 0.06);
+}
+
+.quick-note-sidebar {
+  display: flex;
+  flex-direction: column;
+}
+
+.quick-note-sidebar-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.8rem 0.85rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.quick-note-sidebar-header p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.7rem;
+}
+
+.quick-note-sidebar-header strong {
+  display: block;
+  margin-top: 0.05rem;
+  color: var(--text-main);
+  font-family: var(--font-heading);
+  font-size: 1.15rem;
+}
+
+.quick-note-sidebar-header button {
+  min-height: 36px;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  color: var(--text-main);
+  background: var(--surface-soft);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.quick-note-list {
+  display: grid;
+  flex: 1 1 auto;
+  align-content: start;
+  gap: 0.28rem;
+  min-height: 0;
+  padding: 0.4rem;
+  overflow-y: auto;
+}
+
+.quick-note-list-item {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: start;
+  width: 100%;
+  padding: 0.65rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: var(--text-main);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.quick-note-list-item:hover {
+  background: var(--surface-soft);
+}
+
+.quick-note-list-item.is-selected {
+  border-color: var(--accent-border);
+  background: var(--accent-panel);
+}
+
+.quick-note-list-item:focus-visible {
+  outline: 2px solid var(--accent-border);
+  outline-offset: 1px;
+}
+
+.quick-note-number {
+  color: var(--text-soft);
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+}
+
+.quick-note-list-body {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.quick-note-list-body strong {
+  overflow: hidden;
+  font-family: var(--font-heading);
+  font-size: 0.9rem;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-note-list-body strong.is-untitled {
+  color: var(--text-soft);
+  font-weight: 500;
+}
+
+.quick-note-list-body > span {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-soft);
+  font-size: 0.7rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.quick-note-list-empty {
+  margin: 1rem 0.5rem;
+  color: var(--text-soft);
+  font-size: 0.78rem;
+}
+
+.quick-note-sidebar-footer {
+  flex: 0 0 auto;
+  padding: 0.65rem 0.8rem;
+  border-top: 1px solid var(--line);
+  color: var(--text-soft);
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
+.quick-note-editor {
+  display: flex;
+  flex-direction: column;
+}
+
+.quick-note-editor-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.quick-note-editor-header p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.68rem;
+}
+
+.quick-note-editor-header strong {
+  display: block;
+  margin-top: 0.08rem;
+  overflow: hidden;
+  font-family: var(--font-heading);
+  font-size: 1.05rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-note-editor-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.quick-note-editor-actions button,
+.quick-note-empty button {
+  min-height: 34px;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  color: var(--text-main);
+  background: var(--surface-soft);
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.quick-note-editor-actions button.is-danger {
+  color: #8d3f33;
+  background: #f8e9e4;
+}
+
+.quick-note-editor-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.quick-note-editor-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 0.9rem 1rem;
+  overflow-y: auto;
+}
+
+.quick-note-title-field {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 0.3rem;
+}
+
+.quick-note-title-field span,
+.quick-note-content-field > span {
+  color: var(--text-soft);
+  font-size: 0.72rem;
+}
+
+.quick-note-title-field input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  color: var(--text-main);
+  background: var(--input-bg);
+  font: inherit;
+  font-size: 0.95rem;
+}
+
+.quick-note-content-field {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.quick-note-content-field :deep(.note-rich-editor) {
+  flex: 1 1 auto;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+.quick-note-content-field :deep(.note-rich-content) {
+  min-height: clamp(260px, 46vh, 620px);
+  overflow-y: auto;
+}
+
+.quick-note-editor-footer {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 1rem;
+  border-top: 1px solid var(--line);
+  color: var(--text-soft);
+  font-size: 0.7rem;
+}
+
+.quick-note-editor-footer button {
+  min-height: 38px;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  color: var(--accent-dark);
+  background: var(--accent-panel);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.quick-note-empty {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 0.45rem;
+  min-height: 0;
+  flex: 1 1 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+.quick-note-empty h2 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+}
+
+.quick-note-empty p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 900px) {
+  .quick-board-header {
+    flex-direction: column;
+  }
+
+  .quick-board-actions {
+    justify-content: flex-start;
+  }
+
+  .quick-board-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(160px, 26vh) minmax(0, 1fr);
+  }
+
+  .quick-note-sidebar {
+    max-height: 26vh;
+  }
 }
 
 /* ── 手机编辑：先选便签，再打开单篇编辑面板 ───────────────────

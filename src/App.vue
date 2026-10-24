@@ -9,6 +9,7 @@ import { useWishStore } from './stores/wishes'
 const route = useRoute()
 const authStore = useAuthStore()
 const wishStore = useWishStore()
+const isQuickMode = computed(() => route.name === 'quick-board')
 
 type NavItem = {
   label: string
@@ -123,13 +124,14 @@ function isActivePath(targetPath: string) {
 </script>
 
 <template>
-  <div class="app-shell">
-    <header class="shell-header">
+  <div class="app-shell" :class="{ 'is-quick-mode': isQuickMode }">
+    <header v-if="!isQuickMode" class="shell-header">
       <article class="shell-topbar page-card">
         <div class="shell-brand">
           <div class="shell-brand-row">
             <h1>人生愿望清单</h1>
             <RouterLink class="board-entry-link" :to="{ name: 'board' }">展板</RouterLink>
+            <RouterLink class="board-entry-link" :to="{ name: 'quick-board' }">快速编辑</RouterLink>
           </div>
           <p class="shell-status shell-status-inline">
             <span>{{ spaceSummaryLabel }}</span>
@@ -166,7 +168,7 @@ function isActivePath(targetPath: string) {
       <RouterView />
     </main>
 
-    <nav class="mobile-bottom-nav" aria-label="移动端主导航">
+    <nav v-if="!isQuickMode" class="mobile-bottom-nav" aria-label="移动端主导航">
       <RouterLink
         v-for="item in mobileNavItems"
         :key="item.to"
@@ -433,6 +435,23 @@ function isActivePath(targetPath: string) {
 @media (min-width: 721px) {
   .mobile-bottom-nav {
     display: none;
+  }
+}
+
+.app-shell.is-quick-mode {
+  width: 100%;
+  padding: 0;
+}
+
+.app-shell.is-quick-mode .app-main {
+  gap: 0;
+  min-height: 100dvh;
+}
+
+@media (max-width: 720px) {
+  .app-shell.is-quick-mode {
+    width: 100%;
+    padding-bottom: 0;
   }
 }
 </style>

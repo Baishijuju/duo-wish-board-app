@@ -47,6 +47,12 @@ const routes: RouteRecordRaw[] = [
     name: 'board',
     component: BoardPage,
   },
+  {
+    path: '/quick-board',
+    name: 'quick-board',
+    component: BoardPage,
+    props: { quickMode: true },
+  },
 ]
 
 if (import.meta.env.DEV) {
