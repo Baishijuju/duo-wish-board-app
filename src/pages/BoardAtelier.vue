@@ -107,7 +107,7 @@ const BOARD_ZOOM_STEP = 0.2
  * 每次发布后加 0.1，用来确认设备上跑的到底是不是最新版
  * （PWA 有 Service Worker 缓存，重开一两次才会换新）。
  */
-const BOARD_BUILD_VERSION = 'v1.6'
+const BOARD_BUILD_VERSION = 'v1.7'
 
 const BOARD_ZOOM_BLOCKS = [
   { key: 'header', label: '看板标题' },
@@ -189,6 +189,7 @@ const feedback = ref('')
 const feedbackTone = ref<'success' | 'danger'>('success')
 const boardTodos = ref<SharedBoardTodo[]>([])
 const boardMainLayout = ref<HTMLElement | null>(null)
+const notesWall = ref<HTMLElement | null>(null)
 const boardTodoPanel = ref<HTMLElement | null>(null)
 const leftPaneRatio = ref(42)
 const upperPaneRatio = ref(66)
@@ -307,6 +308,8 @@ async function refreshBoardData() {
   return todosUpdated
 }
 let splitterDrag: { axis: 'vertical' | 'horizontal'; pointerId: number; element: HTMLElement } | null = null
+let notesMasonryObserver: ResizeObserver | null = null
+let notesMasonryFrame = 0
 
 const splitterStyle = computed(() => ({
   '--board-left-pane': `${leftPaneRatio.value}%`,
@@ -451,6 +454,70 @@ function handleSplitterKeydown(event: KeyboardEvent, axis: 'vertical' | 'horizon
     event.preventDefault()
     nudgeSplitter(axis, isIncrease ? 1 : -1)
   }
+}
+
+/**
+ * 便签墙的「瀑布流」：CSS Grid 没有 Safari 可用的 masonry，
+ * 所以按卡片的实际高度设置 grid-row span。列数交给 auto-fill，
+ * 横屏自然变 3 列，竖屏 2 列，手机 1 列。
+ *
+ * 长便签在 2 列及以上时占 2 列，避免一张长便签把单列拉得特别长；
+ * 其余卡片通过 grid-auto-flow: dense 回填空位。
+ */
+function applyNotesMasonry() {
+  const wall = notesWall.value
+  if (!wall) return
+
+  wall.classList.add('is-masonry')
+  const styles = getComputedStyle(wall)
+  const rowHeight = Number.parseFloat(styles.gridAutoRows)
+  const rowGap = Number.parseFloat(styles.rowGap)
+  const columns = styles.gridTemplateColumns.split(/\s+/).filter(Boolean).length || 1
+
+  if (!Number.isFinite(rowHeight) || !Number.isFinite(rowGap) || rowHeight <= 0) return
+
+  const cards = Array.from(wall.querySelectorAll<HTMLElement>(':scope > .board-note'))
+
+  for (const card of cards) {
+    card.style.gridColumn = card.classList.contains('is-long-note') && columns > 1
+      ? `span ${Math.min(2, columns)}`
+      : ''
+    card.style.gridRowEnd = ''
+
+    const height = card.getBoundingClientRect().height
+    const span = Math.max(1, Math.ceil((height + rowGap) / (rowHeight + rowGap)))
+    card.style.gridRowEnd = `span ${span}`
+  }
+}
+
+function scheduleNotesMasonry() {
+  if (notesMasonryFrame) {
+    cancelAnimationFrame(notesMasonryFrame)
+  }
+
+  notesMasonryFrame = requestAnimationFrame(() => {
+    notesMasonryFrame = 0
+    applyNotesMasonry()
+  })
+}
+
+function syncNotesMasonryObserver() {
+  notesMasonryObserver?.disconnect()
+  notesMasonryObserver = null
+
+  const wall = notesWall.value
+  if (!wall || typeof ResizeObserver === 'undefined') {
+    applyNotesMasonry()
+    return
+  }
+
+  const observer = new ResizeObserver(scheduleNotesMasonry)
+  observer.observe(wall)
+  for (const card of Array.from(wall.querySelectorAll<HTMLElement>(':scope > .board-note'))) {
+    observer.observe(card)
+  }
+  notesMasonryObserver = observer
+  scheduleNotesMasonry()
 }
 
 function normalizeBoardBlocks(value: unknown): BoardTextBlock[] {
@@ -1200,6 +1267,30 @@ watch(
   { flush: 'post' },
 )
 
+watch(
+  notesWall,
+  async (wall) => {
+    if (!wall) {
+      notesMasonryObserver?.disconnect()
+      notesMasonryObserver = null
+      return
+    }
+
+    await nextTick()
+    syncNotesMasonryObserver()
+  },
+  { flush: 'post' },
+)
+
+watch(
+  [isEditing, boardBlocks, draftBlocks],
+  async () => {
+    await nextTick()
+    syncNotesMasonryObserver()
+  },
+  { flush: 'post' },
+)
+
 function handleQuickSaveShortcut(event: KeyboardEvent) {
   if (!isQuickMode.value) return
 
@@ -1220,6 +1311,8 @@ onBeforeUnmount(() => {
   if (isFullscreen.value) {
     document.body.style.overflow = previousBodyOverflow
   }
+  notesMasonryObserver?.disconnect()
+  if (notesMasonryFrame) cancelAnimationFrame(notesMasonryFrame)
   loadSequence += 1
   if (boardChannel && supabase) {
     void supabase.removeChannel(boardChannel)
@@ -1235,6 +1328,7 @@ onMounted(() => {
   window.addEventListener('beforeunload', handleBeforeUnload)
   phoneMediaQuery.addEventListener('change', handlePhoneMediaChange)
   autoRefresh.start()
+  void nextTick(syncNotesMasonryObserver)
 })
 
 onBeforeUnmount(() => {
@@ -1463,7 +1557,7 @@ onBeforeUnmount(() => {
             <span class="board-note-count">{{ isEditing ? draftBlocks.length : boardBlocks.length }}</span>
           </header>
           <p v-if="isPhoneViewport && isEditing" class="board-mobile-edit-hint">点一张便签开始编辑，改完再保存展板。</p>
-          <div v-if="isEditing ? draftBlocks.length : boardBlocks.length" class="shared-board-wall">
+          <div v-if="isEditing ? draftBlocks.length : boardBlocks.length" ref="notesWall" class="shared-board-wall">
             <article
               v-for="(block, index) in (isEditing ? draftBlocks : boardBlocks)"
               :key="block.id"
@@ -2057,13 +2151,13 @@ export function formatBoardDueDate(value: string) {
 }
 
 .board-notes-panel .shared-board-wall {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.6rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+  gap: 0.65rem;
   padding: 0.6rem 0 0;
 }
 
 .board-notes-panel .board-note {
-  min-height: 100px;
+  min-height: 0;
   padding: 0.8rem;
   border-radius: 8px;
   box-shadow: none;
@@ -2078,10 +2172,6 @@ export function formatBoardDueDate(value: string) {
 .board-notes-panel .board-note p {
   font-size: 0.84rem;
   line-height: 1.55;
-}
-
-.board-notes-panel .board-note.is-long-note {
-  grid-column: 1 / -1;
 }
 
 .board-notes-panel .board-note-toolbar > span,
@@ -2533,10 +2623,17 @@ export function formatBoardDueDate(value: string) {
 
 .shared-board-wall {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
   align-items: start;
-  gap: 0.9rem;
+  align-content: start;
+  grid-auto-flow: dense;
+  grid-auto-rows: auto;
+  gap: 0.65rem;
   padding: 0.35rem 0 1.2rem;
+}
+
+.shared-board-wall.is-masonry {
+  grid-auto-rows: 8px;
 }
 
 .board-note {
@@ -2557,10 +2654,6 @@ export function formatBoardDueDate(value: string) {
 
 .board-note-tone-2 {
   background: #f8f1ee;
-}
-
-.board-note.is-long-note {
-  grid-column: 1 / -1;
 }
 
 .board-note-topline,
@@ -2735,15 +2828,6 @@ export function formatBoardDueDate(value: string) {
     font-size: 1.3rem;
   }
 
-  .board-notes-panel .shared-board-wall {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0.7rem;
-  }
-
-  .board-note.is-long-note {
-    grid-column: auto;
-  }
-
   .shared-board-header {
     align-items: flex-start;
   }
@@ -2833,17 +2917,6 @@ export function formatBoardDueDate(value: string) {
   .board-todo-composer {
     grid-template-columns: 1fr 1fr;
   }
-}
-
-@media (min-width: 721px) and (max-width: 820px) {
-  .board-notes-panel .shared-board-wall {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .board-note.is-long-note {
-    grid-column: auto;
-  }
-
 }
 
 @media (min-width: 721px) and (min-height: 900px), (min-width: 900px) and (orientation: landscape) {
