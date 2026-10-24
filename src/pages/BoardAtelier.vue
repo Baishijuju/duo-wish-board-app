@@ -4156,7 +4156,7 @@ export function formatBoardDueDate(value: string) {
 }
 
 .quick-note-content-field :deep(.note-rich-content) {
-  min-height: clamp(260px, 46vh, 620px);
+  min-height: clamp(160px, 24vh, 520px);
   overflow-y: auto;
 }
 
