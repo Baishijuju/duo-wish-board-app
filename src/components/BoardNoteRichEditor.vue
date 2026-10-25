@@ -412,7 +412,7 @@ onBeforeUnmount(() => {
   outline: none;
   color: var(--text-main, #2b3430);
   font: inherit;
-  font-size: 0.95em;
+  font-size: calc(0.95em * var(--note-font-scale, 1));
   line-height: 1.75;
   white-space: pre-wrap;
   overflow-wrap: anywhere;

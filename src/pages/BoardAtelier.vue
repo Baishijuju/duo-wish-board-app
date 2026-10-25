@@ -92,80 +92,57 @@ function persistShowDoneTodos(value: boolean) {
   }
 }
 
-/* ── 全屏看板的按区块缩放 ──────────────────────────────────────
-   数值是倍数，1 = 原大小。做成可调是因为「站远看」到底要多大
-   只有本人知道 —— 先在面板里调好，再把数值写死成默认值即可。 */
+/* ── 便签字号：按每张便签单独设置 ─────────────────────────────
+   这是「这台设备上怎么显示」的偏好，不写进共享数据，
+   所以不会因为某台设备调大了就影响另一台。 */
+const NOTE_FONT_SCALE_STORAGE_KEY = 'duo-wish-board-note-font-scale:v1'
+const NOTE_FONT_SCALE_MIN = 0.7
+const NOTE_FONT_SCALE_MAX = 2.2
+const NOTE_FONT_SCALE_STEP = 0.1
 
-const BOARD_ZOOM_STORAGE_KEY = 'duo-wish-board-zoom:v1'
-const BOARD_ZOOM_MIN = 0.8
-const BOARD_ZOOM_MAX = 3
-/** 步进用 0.2：0.05 要点太多次 */
-const BOARD_ZOOM_STEP = 0.2
+function readNoteFontScales(): Record<string, number> {
+  try {
+    const raw = window.localStorage.getItem(NOTE_FONT_SCALE_STORAGE_KEY)
+    if (!raw) return {}
+
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    const next: Record<string, number> = {}
+
+    for (const [blockId, rawValue] of Object.entries(parsed ?? {})) {
+      const value = Number(rawValue)
+      if (blockId && Number.isFinite(value) && value >= NOTE_FONT_SCALE_MIN && value <= NOTE_FONT_SCALE_MAX) {
+        next[blockId] = value
+      }
+    }
+
+    return next
+  } catch {
+    return {}
+  }
+}
+
+function persistNoteFontScales(value: Record<string, number>) {
+  try {
+    window.localStorage.setItem(NOTE_FONT_SCALE_STORAGE_KEY, JSON.stringify(value))
+  } catch {
+    // 隐私模式等场景下不可用，忽略即可：这只是个显示偏好
+  }
+}
 
 /**
  * 展板上显示的版本号。
  * 每次发布后加 0.1，用来确认设备上跑的到底是不是最新版
  * （PWA 有 Service Worker 缓存，重开一两次才会换新）。
  */
-const BOARD_BUILD_VERSION = 'v1.7'
-
-const BOARD_ZOOM_BLOCKS = [
-  { key: 'header', label: '看板标题' },
-  { key: 'chart', label: '图表' },
-  { key: 'notes', label: '便签' },
-  { key: 'todo', label: '待办' },
-] as const
-
-type BoardZoomKey = (typeof BOARD_ZOOM_BLOCKS)[number]['key']
-type BoardZoomMap = Record<BoardZoomKey, number>
-
-function createDefaultBoardZoom(): BoardZoomMap {
-  return { header: 1, chart: 1, notes: 1, todo: 1 }
-}
-
-function readBoardZoom(): BoardZoomMap {
-  const fallback = createDefaultBoardZoom()
-
-  try {
-    const raw = window.localStorage.getItem(BOARD_ZOOM_STORAGE_KEY)
-
-    if (!raw) {
-      return fallback
-    }
-
-    const parsed = JSON.parse(raw) as Record<string, unknown>
-    const next = createDefaultBoardZoom()
-
-    for (const block of BOARD_ZOOM_BLOCKS) {
-      const value = Number(parsed?.[block.key])
-
-      if (Number.isFinite(value) && value >= BOARD_ZOOM_MIN && value <= BOARD_ZOOM_MAX) {
-        next[block.key] = value
-      }
-    }
-
-    return next
-  } catch {
-    return fallback
-  }
-}
-
-function persistBoardZoom(value: BoardZoomMap) {
-  try {
-    window.localStorage.setItem(BOARD_ZOOM_STORAGE_KEY, JSON.stringify(value))
-  } catch {
-    // 隐私模式等场景下不可用，忽略即可：这只是个显示偏好
-  }
-}
+const BOARD_BUILD_VERSION = 'v1.8'
 
 const authStore = useAuthStore()
 const isLoading = ref(false)
 const isSaving = ref(false)
 const isEditing = ref(false)
 const isFullscreen = ref(false)
-const boardZoom = ref<BoardZoomMap>(readBoardZoom())
-const isZoomPanelOpen = ref(false)
-const zoomCopyLabel = ref('复制数值')
+const noteFontScales = ref<Record<string, number>>(readNoteFontScales())
+const isNoteFontPanelOpen = ref(false)
 const hasRemoteChanges = ref(false)
 const boardId = ref('')
 const boardTitle = ref('我们的展板')
@@ -317,43 +294,55 @@ const splitterStyle = computed(() => ({
   '--board-lower-fr': `${100 - upperPaneRatio.value}`,
 }))
 
-const boardZoomStyle = computed(() => ({
-  '--board-zoom-header': String(boardZoom.value.header),
-  '--board-zoom-chart': String(boardZoom.value.chart),
-  '--board-zoom-notes': String(boardZoom.value.notes),
-  '--board-zoom-todo': String(boardZoom.value.todo),
-}))
+/** 看板标题保持原大小，图表固定 0.8，便签按每张自己的字号显示。 */
+const boardDisplayStyle: Record<string, string> = {
+  '--board-zoom-header': '1',
+  '--board-zoom-chart': '0.8',
+  '--board-zoom-notes': '1',
+  '--board-zoom-todo': '1',
+}
 
-/** 调好之后把这一行发我即可 */
-const boardZoomSummary = computed(() =>
-  BOARD_ZOOM_BLOCKS.map((block) => `${block.label} ${boardZoom.value[block.key].toFixed(2)}`).join(' · '))
+const noteFontPanelBlocks = computed(() => isEditing.value ? draftBlocks.value : boardBlocks.value)
 
-function stepBoardZoom(key: BoardZoomKey, direction: 1 | -1) {
+function noteFontScale(blockId: string) {
+  return noteFontScales.value[blockId] ?? 1
+}
+
+function noteFontStyle(blockId: string): Record<string, string> {
+  return { '--note-font-scale': String(noteFontScale(blockId)) }
+}
+
+function noteFontPercent(blockId: string) {
+  return `${Math.round(noteFontScale(blockId) * 100)}%`
+}
+
+function stepNoteFontScale(blockId: string, direction: 1 | -1) {
   const next = Math.min(
-    BOARD_ZOOM_MAX,
-    Math.max(BOARD_ZOOM_MIN, Number((boardZoom.value[key] + direction * BOARD_ZOOM_STEP).toFixed(2))),
+    NOTE_FONT_SCALE_MAX,
+    Math.max(NOTE_FONT_SCALE_MIN, Number((noteFontScale(blockId) + direction * NOTE_FONT_SCALE_STEP).toFixed(1))),
   )
+  const nextScales = { ...noteFontScales.value }
 
-  boardZoom.value = { ...boardZoom.value, [key]: next }
-  persistBoardZoom(boardZoom.value)
-}
-
-function resetBoardZoom() {
-  boardZoom.value = createDefaultBoardZoom()
-  persistBoardZoom(boardZoom.value)
-}
-
-async function copyBoardZoom() {
-  try {
-    await navigator.clipboard.writeText(boardZoomSummary.value)
-    zoomCopyLabel.value = '已复制'
-  } catch {
-    zoomCopyLabel.value = '复制失败，请手动读'
+  if (Math.abs(next - 1) < 0.001) {
+    delete nextScales[blockId]
+  } else {
+    nextScales[blockId] = next
   }
 
-  window.setTimeout(() => {
-    zoomCopyLabel.value = '复制数值'
-  }, 1600)
+  noteFontScales.value = nextScales
+  persistNoteFontScales(nextScales)
+}
+
+function resetNoteFontScale(blockId: string) {
+  const nextScales = { ...noteFontScales.value }
+  delete nextScales[blockId]
+  noteFontScales.value = nextScales
+  persistNoteFontScales(nextScales)
+}
+
+function resetAllNoteFontScales() {
+  noteFontScales.value = {}
+  persistNoteFontScales({})
 }
 
 function enterFullscreen() {
@@ -1406,7 +1395,7 @@ onBeforeUnmount(() => {
         </footer>
       </aside>
 
-      <main class="quick-note-editor">
+      <main class="quick-note-editor" :style="activeQuickNote ? noteFontStyle(activeQuickNote.id) : undefined">
         <template v-if="activeQuickNote">
           <header class="quick-note-editor-header">
             <div>
@@ -1452,7 +1441,7 @@ onBeforeUnmount(() => {
     </div>
   </section>
 
-  <section v-else ref="boardRoot" class="shared-board-page" :class="{ 'is-editing': isEditing, 'is-fullscreen': isFullscreen }" :style="[splitterStyle, boardZoomStyle]">
+  <section v-else ref="boardRoot" class="shared-board-page" :class="{ 'is-editing': isEditing, 'is-fullscreen': isFullscreen }" :style="[splitterStyle, boardDisplayStyle]">
     <header class="shared-board-header">
       <div class="shared-board-heading">
         <h2 v-if="!isEditing">{{ boardTitle }}<span class="shared-board-version">{{ BOARD_BUILD_VERSION }}</span></h2>
@@ -1480,29 +1469,46 @@ onBeforeUnmount(() => {
       <button
         type="button"
         class="board-zoom-toggle"
-        aria-controls="board-zoom-panel"
-        :aria-expanded="isZoomPanelOpen"
-        @click="isZoomPanelOpen = !isZoomPanelOpen"
+        aria-controls="board-note-font-panel"
+        :aria-expanded="isNoteFontPanelOpen"
+        @click="isNoteFontPanelOpen = !isNoteFontPanelOpen"
       >
-        Aa 字号
+        Aa 便签字号
       </button>
 
-      <div v-if="isZoomPanelOpen" id="board-zoom-panel" class="board-zoom-panel">
-        <p class="board-zoom-hint">按区块放大。数值是倍数，1.00 就是原大小。调好后把下面那行发我，我写死成默认值。</p>
+      <div v-if="isNoteFontPanelOpen" id="board-note-font-panel" class="board-zoom-panel board-note-font-panel">
+        <p class="board-zoom-hint">每张便签单独调字号，只影响这台设备。点中间百分比可以恢复 100%。</p>
 
-        <div v-for="block in BOARD_ZOOM_BLOCKS" :key="block.key" class="board-zoom-row">
-          <span class="board-zoom-label">{{ block.label }}</span>
-          <button type="button" :aria-label="`缩小${block.label}`" @click="stepBoardZoom(block.key, -1)">−</button>
-          <output class="board-zoom-value">{{ boardZoom[block.key].toFixed(2) }}</output>
-          <button type="button" :aria-label="`放大${block.label}`" @click="stepBoardZoom(block.key, 1)">＋</button>
+        <div v-if="noteFontPanelBlocks.length" class="board-note-font-list">
+          <div v-for="(block, index) in noteFontPanelBlocks" :key="block.id" class="board-note-font-row">
+            <span class="board-note-font-label" :title="block.title || '未命名便签'">{{ index + 1 }}. {{ block.title || '未命名便签' }}</span>
+            <div class="board-note-font-stepper">
+              <button
+                type="button"
+                :disabled="noteFontScale(block.id) <= NOTE_FONT_SCALE_MIN"
+                :aria-label="`缩小便签 ${index + 1} 的字号`"
+                @click="stepNoteFontScale(block.id, -1)"
+              >−</button>
+              <button
+                type="button"
+                class="board-note-font-value"
+                :aria-label="`将便签 ${index + 1} 的字号恢复为 100%`"
+                @click="resetNoteFontScale(block.id)"
+              >{{ noteFontPercent(block.id) }}</button>
+              <button
+                type="button"
+                :disabled="noteFontScale(block.id) >= NOTE_FONT_SCALE_MAX"
+                :aria-label="`放大便签 ${index + 1} 的字号`"
+                @click="stepNoteFontScale(block.id, 1)"
+              >＋</button>
+            </div>
+          </div>
         </div>
+        <p v-else class="board-zoom-hint">还没有便签。</p>
 
         <div class="board-zoom-actions">
-          <button type="button" @click="resetBoardZoom()">恢复 1.00</button>
-          <button type="button" class="is-primary" @click="void copyBoardZoom()">{{ zoomCopyLabel }}</button>
+          <button type="button" @click="resetAllNoteFontScales()">全部恢复 100%</button>
         </div>
-
-        <p class="board-zoom-summary">{{ boardZoomSummary }}</p>
       </div>
     </div>
 
@@ -1563,6 +1569,7 @@ onBeforeUnmount(() => {
               :key="block.id"
               class="board-note"
               :class="[`board-note-tone-${index % 3}`, { 'is-long-note': block.text.length > 260, 'is-mobile-summary': isEditing && isPhoneViewport }]"
+              :style="noteFontStyle(block.id)"
             >
               <template v-if="isEditing">
                 <div class="board-note-toolbar">
@@ -1825,6 +1832,7 @@ onBeforeUnmount(() => {
           aria-modal="true"
           aria-labelledby="board-mobile-note-title"
           tabindex="-1"
+          :style="noteFontStyle(activeMobileNote.id)"
         >
           <header class="board-mobile-note-sheet-header">
             <div>
@@ -2188,7 +2196,7 @@ export function formatBoardDueDate(value: string) {
 
 .board-notes-panel .board-note-title-input {
   margin: 0.35rem 0 0.25rem;
-  font-size: 0.9rem;
+  font-size: calc(0.9rem * var(--note-font-scale, 1));
 }
 
 .board-notes-panel .board-note .note-rich-editor {
@@ -3590,48 +3598,72 @@ export function formatBoardDueDate(value: string) {
   line-height: 1.55;
 }
 
-.board-zoom-row {
-  display: flex;
+.board-note-font-list {
+  display: grid;
+  max-height: min(52vh, 430px);
+  gap: 0.1rem;
+  overflow-y: auto;
+  padding-right: 0.1rem;
+}
+
+.board-note-font-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.32rem 0;
+  padding: 0.38rem 0;
   border-bottom: 1px solid var(--line);
 }
 
-.board-zoom-row:last-of-type {
+.board-note-font-row:last-child {
   border-bottom: 0;
 }
 
-.board-zoom-label {
-  flex: 1 1 auto;
+.board-note-font-label {
+  overflow: hidden;
   color: var(--text-main);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.board-zoom-row button {
-  width: 2.1rem;
-  height: 2.1rem;
+.board-note-font-stepper {
+  display: flex;
+  align-items: center;
+  gap: 0.22rem;
+}
+
+.board-note-font-stepper button {
+  min-width: 2.2rem;
+  height: 2.2rem;
+  padding: 0 0.3rem;
   border: 1px solid var(--line-strong);
-  border-radius: 8px;
+  border-radius: 7px;
   background: var(--surface-soft);
   color: var(--text-main);
   font: inherit;
-  font-size: 1rem;
+  font-size: 0.95rem;
   line-height: 1;
   cursor: pointer;
+  touch-action: manipulation;
 }
 
-.board-zoom-row button:hover {
+.board-note-font-stepper button:hover:not(:disabled) {
   border-color: var(--accent);
   color: var(--accent-dark);
 }
 
-.board-zoom-value {
-  min-width: 3.1rem;
-  color: var(--text-main);
-  font-size: 0.86rem;
+.board-note-font-stepper button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.board-note-font-stepper .board-note-font-value {
+  min-width: 3.25rem;
+  color: var(--text-soft);
+  font-size: 0.72rem;
   font-variant-numeric: tabular-nums;
-  text-align: center;
 }
 
 .board-zoom-actions {
@@ -3652,23 +3684,6 @@ export function formatBoardDueDate(value: string) {
   cursor: pointer;
 }
 
-.board-zoom-actions .is-primary {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--accent-contrast);
-}
-
-.board-zoom-summary {
-  margin: 0.6rem 0 0;
-  padding-top: 0.5rem;
-  border-top: 1px dashed var(--line);
-  color: var(--text-soft);
-  font-size: 0.72rem;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.55;
-  word-break: break-word;
-}
-
 /* 展板标题旁的版本号：用来确认设备上是哪一版 */
 .shared-board-version {
   margin-left: 0.5rem;
@@ -3677,15 +3692,6 @@ export function formatBoardDueDate(value: string) {
   font-weight: 600;
   letter-spacing: 0.02em;
   vertical-align: middle;
-}
-/* 非全屏下也允许放大便签。
-   你主要在普通视图里读便签，那里才是字最需要变大的地方。
-   只对便签生效：标题/图表/待办仍然只在全屏生效，避免动到普通视图的版面。 */
-.shared-board-page:not(.is-fullscreen) .board-notes-panel {
-  transform: scale(var(--board-zoom-notes, 1));
-  transform-origin: top left;
-  width: calc(100% / var(--board-zoom-notes, 1));
-  height: calc(100% / var(--board-zoom-notes, 1));
 }
 /* ── 上中下布局（竖屏为主）──────────────────────────────────
    关键：这里必须继续用 grid，不能改成 flex。
@@ -3776,12 +3782,12 @@ export function formatBoardDueDate(value: string) {
 }
 
 .shared-board-page .board-note h3 {
-  font-size: 1.05em;
+  font-size: calc(1.05em * var(--note-font-scale, 1));
 }
 
 .shared-board-page .board-note p,
 .shared-board-page .board-note-rich {
-  font-size: 0.95em;
+  font-size: calc(0.95em * var(--note-font-scale, 1));
 }
 
 /* 富文本便签：与纯文本看起来要一致，只是多了格式 */
@@ -4211,7 +4217,7 @@ export function formatBoardDueDate(value: string) {
   color: var(--text-main);
   background: var(--input-bg);
   font: inherit;
-  font-size: 0.95rem;
+  font-size: calc(0.95rem * var(--note-font-scale, 1));
 }
 
 .quick-note-content-field {
@@ -4475,7 +4481,7 @@ export function formatBoardDueDate(value: string) {
   color: var(--text-main);
   background: var(--input-bg);
   font: inherit;
-  font-size: 1rem;
+  font-size: calc(1rem * var(--note-font-scale, 1));
 }
 
 .board-mobile-note-content {
